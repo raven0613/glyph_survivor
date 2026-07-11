@@ -34,7 +34,7 @@ React UI
    ↓ commands            ↑ immutable UI snapshots
 GameHost / Bridge
    ↓
-Plain JavaScript Game Runtime
+TypeScript Game Runtime
    ↓ render snapshots
 PixiJS Render Adapter
    ↓
@@ -53,8 +53,8 @@ The ownership rules are:
 
 - Keep React limited to UI, menus, settings, HUD, upgrade choices, pause overlays, and game-over screens.
 - Implement the game loop, gameplay state, systems, and PixiJS canvas code as ordinary ESM modules under `src/game/**`.
-- Use `.ts` for XState state-machine modules under `src/game/runtime/**`. Continue using `.js` elsewhere under `src/game/**` unless the user explicitly changes that rule.
-- Use TypeScript types for state-machine contracts. Use JSDoc typedefs for JavaScript modules and runtime validation at important cross-boundary entry points in both languages.
+- Use `.ts` for every project-authored executable source/config module and `.tsx` for React components that contain JSX. Do not add `.js` files outside dependencies or generated artifacts.
+- Use TypeScript types for module contracts and runtime validation at important cross-boundary entry points.
 - Give the Game Runtime exclusive write access to authoritative gameplay state.
 - Communicate from React to the game through explicit commands.
 - Communicate from the game to React through small, immutable UI snapshots or discrete events.
@@ -85,47 +85,48 @@ src/
     screens/                   Menu, Settings, Upgrade, GameOver
     hooks/                     useGameCommands, useGameUiSnapshot
 
-  game/                        Plain ESM JavaScript; never imports React
+  game/                        Plain ESM TypeScript; never imports React
     host/                      Lifecycle and dependency wiring
-      createGameHost.js
+      createGameHost.ts
 
     bridge/                    Cross-boundary contracts
-      gameCommands.js
-      uiSnapshot.js
-      renderSnapshot.js
+      gameCommands.ts
+      uiSnapshot.ts
+      renderSnapshot.ts
 
     runtime/                   Loop, clock, phase, scheduler
-      createGameLoop.js
-      gameClock.js
-      gamePhase.js
-      systemScheduler.js
+      gameMachine.ts
+      createGameLoop.ts
+      gameClock.ts
+      gamePhase.ts
+      systemScheduler.ts
 
     core/                      Engine-agnostic data structures
-      entityStore.js
-      eventQueue.js
-      seededRng.js
-      spatialHash.js
-      objectPool.js
+      entityStore.ts
+      eventQueue.ts
+      seededRng.ts
+      spatialHash.ts
+      objectPool.ts
 
     systems/                   Gameplay behavior
-      inputSystem.js
-      movementSystem.js
-      directorSystem.js
-      targetingSystem.js
-      weaponSystem.js
-      projectileSystem.js
-      collisionSystem.js
-      damageSystem.js
-      deathSystem.js
-      dropSystem.js
-      upgradeSystem.js
-      cleanupSystem.js
+      inputSystem.ts
+      movementSystem.ts
+      directorSystem.ts
+      targetingSystem.ts
+      weaponSystem.ts
+      projectileSystem.ts
+      collisionSystem.ts
+      damageSystem.ts
+      deathSystem.ts
+      dropSystem.ts
+      upgradeSystem.ts
+      cleanupSystem.ts
 
     glyph/                     Text-body simulation
-      glyphStore.js
-      glyphLayout.js
-      glyphMaterial.js
-      localDamage.js
+      glyphStore.ts
+      glyphLayout.ts
+      glyphMaterial.ts
+      localDamage.ts
 
     content/                   Validated data definitions
       weapons/
@@ -133,12 +134,12 @@ src/
       upgrades/
 
     rendering/                 The only normal PixiJS dependency boundary
-      createPixiApp.js
-      createSceneLayers.js
-      renderSync.js
-      glyphViewPool.js
-      projectileViewPool.js
-      effectViewPool.js
+      createPixiApp.ts
+      createSceneLayers.ts
+      renderSync.ts
+      glyphViewPool.ts
+      projectileViewPool.ts
+      effectViewPool.ts
 
     persistence/               Settings/save adapters and migrations
 
@@ -151,7 +152,7 @@ tests/
   e2e/
 ```
 
-Do not create generic `utils.js`, `helpers.js`, or catch-all `manager` modules. Name modules after one clear responsibility.
+Do not create generic `utils.ts`, `helpers.ts`, or catch-all `manager` modules. Name modules after one clear responsibility.
 
 ## 5. Allowed dependency graph
 
@@ -197,7 +198,7 @@ Recommended responsibilities:
 
 The bridge API should remain small and explicit. A representative shape is:
 
-```js
+```ts
 const gameHost = await createGameHost({ canvas, config })
 
 gameHost.startRun({ seed })
@@ -226,6 +227,7 @@ Use an explicit phase/state machine rather than scattered booleans:
 ```text
 BOOT
   → LOADING
+  → READY
   → RUNNING
   ↔ PAUSED_MENU
   → PAUSED_UPGRADE
@@ -237,6 +239,7 @@ BOOT
 Required behavior:
 
 - Asset/config failure stays in `LOADING` or transitions to a documented error state; it must not start a partial simulation.
+- `READY` means initialization succeeded and the runtime is waiting for an explicit `startRun` command; fixed simulation steps have not started.
 - `PAUSED_UPGRADE` stops fixed simulation steps completely.
 - Menu pause stops gameplay time. Rendering may remain static or run at a deliberately reduced rate.
 - Repeated `start`, `pause`, `resume`, and `dispose` calls must have defined idempotent behavior.
@@ -303,24 +306,23 @@ Random behavior must use an injected seeded RNG. Do not call `Math.random()` ins
 
 A Glyph Cell needs enough data to support the spec:
 
-```js
-/**
- * @typedef {object} GlyphCell
- * @property {number} id
- * @property {number} ownerId
- * @property {number} glyphFrame
- * @property {number} localX
- * @property {number} localY
- * @property {number} hpLayer
- * @property {number} alpha
- * @property {number} rotation
- * @property {number} offsetX
- * @property {number} offsetY
- * @property {number} velocityX
- * @property {number} velocityY
- * @property {number} scale
- * @property {number} flags
- */
+```ts
+interface GlyphCell {
+  id: number
+  ownerId: number
+  glyphFrame: number
+  localX: number
+  localY: number
+  hpLayer: number
+  alpha: number
+  rotation: number
+  offsetX: number
+  offsetY: number
+  velocityX: number
+  velocityY: number
+  scale: number
+  flags: number
+}
 ```
 
 This is a conceptual contract; optimize storage after measurement. For high counts, prefer packed arrays, struct-of-arrays, or paged typed arrays over thousands of class instances.
@@ -463,7 +465,7 @@ Quality degradation order should be deliberate, for example:
 
 Do not degrade gameplay projectile accuracy, local damage correctness, or Boss HP invariants to improve visuals.
 
-## 16. TypeScript and JavaScript standards for `src/game/**`
+## 16. TypeScript standards for `src/game/**`
 
 - Use ESM imports/exports.
 - Use descriptive function and variable names.
@@ -474,7 +476,7 @@ Do not degrade gameplay projectile accuracy, local damage correctness, or Boss H
 - Validate content, save data, and cross-boundary commands at entry points.
 - Handle async initialization errors explicitly.
 - Name constants instead of scattering magic numbers.
-- Use TypeScript types in `.ts` modules and JSDoc for exported contracts in `.js` modules and non-obvious public functions.
+- Use explicit TypeScript interfaces and type aliases for exported contracts and non-obvious public functions.
 - Comment why a constraint exists; do not narrate obvious code.
 - Keep performance mutations inside owned stores and document the ownership boundary.
 - Prefer guard clauses over deeply nested control flow.
@@ -534,7 +536,7 @@ Before declaring completion, check:
 
 - Does React remain outside the frame loop?
 - Is authoritative state still outside Pixi objects?
-- Does `src/game/**` still follow the approved language boundary (`.ts` for runtime state machines and `.js` elsewhere unless explicitly changed)?
+- Are all project-authored executable source/config modules still `.ts` or `.tsx`, with no new `.js` files outside dependencies or generated artifacts?
 - Can the gameplay behavior run headlessly?
 - Are pause, restart, and disposal correct?
 - Are temporary objects pooled when they are high frequency?

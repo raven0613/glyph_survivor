@@ -1,5 +1,7 @@
+$background-color: #050505;
+
 :root {
-  --bg: #050505;
+  --bg: #{$background-color};
   --text-h: #f4f4f0;
   --text-muted: #777;
   --border: #272727;

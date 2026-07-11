@@ -12,11 +12,12 @@ const upgradeChoices = [
 function startRunningActor(machine: typeof gameMachine = gameMachine) {
   const actor = createActor(machine).start()
   actor.send({ type: 'INITIALIZE' })
-  actor.send({ type: 'LOAD_SUCCEEDED', seed: 'test-seed' })
+  actor.send({ type: 'LOAD_SUCCEEDED' })
+  actor.send({ type: 'START_RUN', seed: 'test-seed' })
   return actor
 }
 
-test('starts a run only after initialization succeeds', () => {
+test('waits in ready after loading and starts only after the play command', () => {
   const actor = createActor(gameMachine).start()
 
   assert.equal(actor.getSnapshot().value, GAME_PHASE.BOOT)
@@ -24,7 +25,14 @@ test('starts a run only after initialization succeeds', () => {
   actor.send({ type: 'INITIALIZE' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.LOADING)
 
-  actor.send({ type: 'LOAD_SUCCEEDED', seed: 'run-001' })
+  actor.send({ type: 'START_RUN', seed: 'too-early' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.LOADING)
+
+  actor.send({ type: 'LOAD_SUCCEEDED' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.READY)
+  assert.equal(actor.getSnapshot().context.seed, null)
+
+  actor.send({ type: 'START_RUN', seed: 'run-001' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
   assert.equal(actor.getSnapshot().context.seed, 'run-001')
 })

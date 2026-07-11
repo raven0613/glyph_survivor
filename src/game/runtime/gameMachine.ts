@@ -3,6 +3,7 @@ import { assign, setup } from 'xstate'
 export const GAME_PHASE = Object.freeze({
   BOOT: 'BOOT',
   LOADING: 'LOADING',
+  READY: 'READY',
   RUNNING: 'RUNNING',
   PAUSED_MENU: 'PAUSED_MENU',
   PAUSED_UPGRADE: 'PAUSED_UPGRADE',
@@ -46,8 +47,9 @@ type SelectUpgradeEvent = {
 
 export type GameMachineEvent =
   | { readonly type: 'INITIALIZE' }
-  | { readonly type: 'LOAD_SUCCEEDED'; readonly seed?: string | number }
+  | { readonly type: 'LOAD_SUCCEEDED' }
   | { readonly type: 'LOAD_FAILED'; readonly error: unknown }
+  | { readonly type: 'START_RUN'; readonly seed: string | number }
   | { readonly type: 'PAUSE_REQUESTED' }
   | { readonly type: 'RESUME_REQUESTED' }
   | UpgradeOfferedEvent
@@ -178,6 +180,9 @@ const gameMachineSetup = setup({
       pendingUpgradeCount: () => 0,
       recoverableError: () => null,
     }),
+    clearRecoverableError: assign({
+      recoverableError: () => null,
+    }),
     consumeQueuedUpgrade: assign(({ context }) => ({
       upgradeChoices: Object.freeze([]),
       pendingUpgradeCount: context.pendingUpgradeCount - 1,
@@ -185,7 +190,7 @@ const gameMachineSetup = setup({
     })),
     resetRunContext: assign(({ event }) => {
       const seed =
-        event.type === 'LOAD_SUCCEEDED' || event.type === 'RESTART'
+        event.type === 'START_RUN' || event.type === 'RESTART'
           ? (event.seed ?? null)
           : null
 
@@ -233,11 +238,19 @@ export const gameMachine = gameMachineSetup.createMachine({
     [GAME_PHASE.LOADING]: {
       on: {
         LOAD_SUCCEEDED: {
-          target: GAME_PHASE.RUNNING,
-          actions: 'resetRunContext',
+          target: GAME_PHASE.READY,
+          actions: 'clearRecoverableError',
         },
         LOAD_FAILED: {
           actions: 'assignLoadFailure',
+        },
+      },
+    },
+    [GAME_PHASE.READY]: {
+      on: {
+        START_RUN: {
+          target: GAME_PHASE.RUNNING,
+          actions: 'resetRunContext',
         },
       },
     },
