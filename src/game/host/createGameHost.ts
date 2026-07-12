@@ -2,13 +2,19 @@ import { createActor } from 'xstate'
 import {
   INITIAL_UI_SNAPSHOT,
   createUiSnapshot,
+  type GameplayUiData,
   type UiSnapshot,
 } from '../bridge/uiSnapshot.ts'
-import { gameMachine } from '../runtime/gameMachine.ts'
-
-export interface CanvasPort {
-  getContext(...args: never[]): unknown
-}
+import {
+  createRenderSnapshot,
+  writeRenderSnapshot,
+} from '../bridge/renderSnapshot.ts'
+import { createRenderAdapter } from '../rendering/createRenderAdapter.ts'
+import { createGameLoop } from '../runtime/createGameLoop.ts'
+import { GAME_PHASE, gameMachine } from '../runtime/gameMachine.ts'
+import { runSimulationStep } from '../runtime/runSimulationStep.ts'
+import { createWorldState, type WorldState } from '../runtime/worldState.ts'
+import { createInputAdapter } from './createInputAdapter.ts'
 
 export interface StartRunOptions {
   readonly seed: string | number
@@ -23,6 +29,13 @@ export interface GameHost {
   dispose(): void
 }
 
+export interface CreateGameHostOptions {
+  readonly canvas: HTMLCanvasElement
+  readonly signal?: AbortSignal
+}
+
+const UI_PUBLISH_INTERVAL_MS = 250
+
 function isValidSeed(seed: unknown): seed is string | number {
   return (
     (typeof seed === 'string' && seed.length > 0) ||
@@ -30,28 +43,96 @@ function isValidSeed(seed: unknown): seed is string | number {
   )
 }
 
-/**
- * Owns the lifecycle actor and exposes only commands plus immutable UI snapshots.
- * Pixi initialization will be added behind this boundary in a later slice.
- */
-export function createGameHost({ canvas }: { readonly canvas: CanvasPort }): GameHost {
+function getGameplayUi(world: WorldState | null): GameplayUiData {
+  return world
+    ? {
+        xp: world.player.xp,
+        level: world.player.level,
+        runTimeMs: world.runTimeMs,
+        enemyCount: world.enemies.length,
+      }
+    : { xp: 0, level: 1, runTimeMs: 0, enemyCount: 0 }
+}
+
+/** Owns browser adapters, authoritative runtime state, and lifecycle commands. */
+export async function createGameHost({
+  canvas,
+  signal,
+}: CreateGameHostOptions): Promise<GameHost> {
   if (!canvas || typeof canvas.getContext !== 'function') {
-    throw new TypeError('createGameHost requires a canvas-like object.')
+    throw new TypeError('createGameHost requires an HTML canvas element.')
   }
 
   const uiListeners = new Set<UiSnapshotListener>()
   const gameActor = createActor(gameMachine)
+  const renderSnapshot = createRenderSnapshot()
+  let world: WorldState | null = null
   let currentUiSnapshot = INITIAL_UI_SNAPSHOT
   let isDisposed = false
+  let lastUiPublishTimeMs = 0
 
-  const actorSubscription = gameActor.subscribe((machineSnapshot) => {
-    currentUiSnapshot = createUiSnapshot(machineSnapshot)
+  function publishUi(): void {
+    currentUiSnapshot = createUiSnapshot(
+      gameActor.getSnapshot(),
+      getGameplayUi(world),
+    )
     uiListeners.forEach((listener) => listener(currentUiSnapshot))
-  })
+  }
 
+  const actorSubscription = gameActor.subscribe(publishUi)
   gameActor.start()
   gameActor.send({ type: 'INITIALIZE' })
+
+  let renderAdapter
+  try {
+    renderAdapter = await createRenderAdapter(canvas, signal)
+  } catch (error) {
+    gameActor.send({ type: 'LOAD_FAILED', error })
+    actorSubscription.unsubscribe()
+    gameActor.stop()
+    throw error
+  }
+
+  const inputAdapter = createInputAdapter(canvas, () =>
+    renderAdapter.getViewportSize(),
+  )
+  const gameLoop = createGameLoop({
+    shouldStep: () =>
+      world !== null && gameActor.getSnapshot().value === GAME_PHASE.RUNNING,
+    step: (fixedStepMs) => {
+      if (!world) {
+        return
+      }
+
+      inputAdapter.sample(world.input)
+      runSimulationStep(world, fixedStepMs)
+    },
+    render: (interpolationAlpha) => {
+      if (!world) {
+        return
+      }
+
+      const viewport = renderAdapter.getViewportSize()
+      world.viewportWidth = viewport.width
+      world.viewportHeight = viewport.height
+      writeRenderSnapshot(world, renderSnapshot, interpolationAlpha)
+      renderAdapter.render(renderSnapshot)
+
+      const nowMs = performance.now()
+      if (nowMs - lastUiPublishTimeMs >= UI_PUBLISH_INTERVAL_MS) {
+        lastUiPublishTimeMs = nowMs
+        publishUi()
+      }
+    },
+    recordDroppedTime: (droppedTimeMs) => {
+      if (world) {
+        world.diagnostics.droppedSimulationTimeMs += droppedTimeMs
+      }
+    },
+  })
+
   gameActor.send({ type: 'LOAD_SUCCEEDED' })
+  gameLoop.start()
 
   return Object.freeze({
     startRun({ seed }: StartRunOptions) {
@@ -60,9 +141,17 @@ export function createGameHost({ canvas }: { readonly canvas: CanvasPort }): Gam
       }
 
       if (!isValidSeed(seed)) {
-        throw new TypeError('startRun requires a non-empty string or finite number seed.')
+        throw new TypeError(
+          'startRun requires a non-empty string or finite number seed.',
+        )
       }
 
+      if (gameActor.getSnapshot().value !== GAME_PHASE.READY) {
+        return
+      }
+
+      const viewport = renderAdapter.getViewportSize()
+      world = createWorldState(seed, viewport.width, viewport.height)
       gameActor.send({ type: 'START_RUN', seed })
     },
 
@@ -78,10 +167,7 @@ export function createGameHost({ canvas }: { readonly canvas: CanvasPort }): Gam
 
       uiListeners.add(listener)
       listener(currentUiSnapshot)
-
-      return () => {
-        uiListeners.delete(listener)
-      }
+      return () => uiListeners.delete(listener)
     },
 
     getUiSnapshot() {
@@ -93,11 +179,15 @@ export function createGameHost({ canvas }: { readonly canvas: CanvasPort }): Gam
         return
       }
 
+      isDisposed = true
+      gameLoop.dispose()
+      inputAdapter.dispose()
+      renderAdapter.dispose()
       gameActor.send({ type: 'DISPOSE' })
       actorSubscription.unsubscribe()
       gameActor.stop()
       uiListeners.clear()
-      isDisposed = true
+      world = null
     },
   })
 }

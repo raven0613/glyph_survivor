@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "node --experimental-strip-types ./node_modules/eslint/bin/eslint.js --flag unstable_native_nodejs_ts_config .",
-    "test": "node --test tests/**/*.test.ts",
-    "test:coverage": "node --test --experimental-test-coverage tests/**/*.test.ts",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage tests/**/*.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

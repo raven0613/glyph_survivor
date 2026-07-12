@@ -6,6 +6,8 @@
 
 玩家的第一印象應該是：「整個世界都是文字。」
 
+所有戰鬥生命體（Enemy、Elite、Boss）都由 Glyph Cell 組成。Glyph Cell 不是美術效果，而是生命體的最小生命與戰鬥單位；整個戰鬥系統必須以 Glyph Cell 為中心，而不是以傳統 Entity HP Bar 為中心。
+
 ---
 
 # Gameplay
@@ -85,6 +87,8 @@ Everything is Text.
 敵人不是貼圖。
 敵人身體本身由文字組成。
 
+所有 Enemy、Elite、Boss 都必須由一個或多個 Glyph Cell 組成，不得建立繞過 Glyph Cell 的第二套生命值或受傷模型。
+
 例如：
 
 SLIME Boss
@@ -107,8 +111,11 @@ SLIMESLIMESLIME...
 
 - Character
 - Local Position
-- HP Layer
+- Current Durability
+- Max Durability
 - Alpha
+- Material
+- State（Alive / Destroyed）
 - Rotation
 - Offset
 - Velocity
@@ -116,39 +123,72 @@ SLIMESLIMESLIME...
 
 因此每個字母都可以：
 
+- 受傷
+- 變淡
+- 被摧毀
 - 擊退
 - 飛散
 - 旋轉
 - 消失
 - 回彈
 - 聚合
+- 分裂或轉移至其他 Entity，但仍保留同一個 Glyph 身分
 
 不要把字母當成貼圖。把字母當成活著的物件。
 
 ---
 
-# Damage System
+# Durability
+
+每個 Glyph Cell 都有自己的 Current Durability 與 Max Durability。生命體顯示或對外提供的 HP，只能由目前所有存活 Glyph Cell 的 Current Durability 加總得出：
+
+```text
+Entity HP = sum(Alive Glyph Cell Current Durability)
+Entity Max HP = sum(All Glyph Cell Max Durability)
+```
+
+Entity HP 是唯讀的衍生摘要，不是另一份可獨立修改的權威狀態。不得讓 `Enemy HP -= Damage` 與 Glyph Durability 同時存在，也不得用額外的隱藏 HP 讓 Boss 變耐打。
 
 小怪：
 
-一個字母通常只有一層 HP。打掉就消失。
+一個字母通常具有 1 點 Durability。以 `BAT` 為例，`B`、`A`、`T` 各自具有 1 點 Durability；普通子彈命中並摧毀 `B` 後，身體會局部剩下 `AT`。
 
 Boss：
 
-一個字母可以具有多層 HP。例如亮度：
+Boss 的每個字母可以具有較高 Durability。例如 `SLIME` 的每個 Glyph 都有 5 點 Durability，其受傷亮度階段可以是：
 
-第一層：100%
-第二層：80%
-第三層：50%
-最後：消失。
+100% → 80% → 60% → 40% → 20% → Destroyed
 
-因此 Boss 可以非常耐打。同時仍然保持："慢慢被蠶食"的視覺效果。
+因此 Boss 的耐久來自 Glyph Cell 本身，可以非常耐打，同時仍然保持「慢慢被蠶食」的視覺效果。
+
+當 Glyph Cell 的 Current Durability 降至零時，它進入 Destroyed 狀態。依內容機制，它可以消失、飛散、生成掉落物，或由特定 Boss 機制以同一個 Glyph 身分重新聚合；任何恢復 Durability 的行為都必須是明確的治療或重組規則，不能偷偷建立額外 HP。
+
+當一個生命體的所有 Glyph Cell 都進入 Destroyed 狀態時，該生命體死亡。死亡不是 Entity HP 欄位觸發的另一套規則。
+
+---
+
+# Damage System
+
+玩家的武器不是對 Enemy、Elite 或 Boss 的 Entity HP 造成傷害，而是以 Damage Shape 找出命中的 Glyph Cell，並降低各自的 Current Durability：
+
+```text
+Glyph Cell Current Durability -= Damage Amount
+```
+
+每種武器都必須明確定義 Damage Shape、Damage Radius（或對應的幾何尺寸）與 Damage Amount。武器差異首先來自命中哪些 Glyph，以及留下什麼破壞形狀，而不只是單一 Damage 數值。
+
+- 普通子彈：Point 或近似 Radius = 0，只傷害實際命中的 Glyph Cell。
+- 爆炸：Circle / Large Radius，同時傷害範圍內所有 Glyph Cell。
+- Railgun：Line 或 Capsule，沿路徑傷害所有命中的 Glyph Cell。
+- Scatter Shot：Cone，傷害錐形範圍內所有 Glyph Cell。
+
+Damage Shape 必須在 Glyph Cell 層級做精確命中判定；不能先扣 Entity HP，再用視覺效果假裝局部字母受傷。
 
 ---
 
 # Local Damage
 
-傷害應盡量局部。例如：
+Glyph Damage 永遠必須是局部的。例如：
 
 玩家一直攻擊 Boss 左肩。只有左肩開始：
 
@@ -159,6 +199,19 @@ Boss：
 而不是整隻 Boss 一起變透明。
 
 玩家需要感受到："我正在把這裡打穿。"
+
+---
+
+# Material System
+
+每個 Glyph Cell 都具有 Material。生命體可以提供預設 Material，但實際受擊反應屬於 Glyph Cell；Material 決定 Durability、擊退、飛散、回彈、聚合、破壞與恢復行為。
+
+例如：
+
+- Slime：容易飛散、容易聚合、擊退幅度大。
+- Rock：Durability 高、幾乎不擊退、緩慢崩壞。
+
+Material 不能只改整個 Entity 的透明度或播放一個無關 Gameplay 的動畫。它必須影響被命中的局部 Glyph Cell。
 
 ---
 
@@ -230,7 +283,14 @@ SLIME
 HP 到一定程度：分裂成兩隻。
 
 注意：不是生成新 HP。
-只是：原本所有字母重新分配。總 HP 不增加。總字母數不增加。
+只是：原本所有 Glyph Cell 重新分配到新的 Entity。分裂必須同時滿足：
+
+- Total Glyph Count 不變。
+- Total Current Durability 不變。
+- Total Max Durability 不變。
+- 每個原始 Glyph ID 恰好屬於一個分裂後的 Entity，不得複製或遺失。
+
+因此玩家不會因為 Boss 分裂而需要重新造成更多傷害。
 
 ---
 
@@ -409,6 +469,15 @@ GOLEM
 
 這應成為整款遊戲最具辨識度的特色。
 
+7. 任何新戰鬥功能都應先回答「它如何作用於 Glyph Cell」，而不是「它如何修改 Entity HP」。例如：
+   - 火焰：持續降低 Glyph Durability。
+   - 冰凍：改變 Glyph Material 反應，使 Glyph 不易飛散。
+   - 腐蝕：持續降低 Durability，並讓受影響的 Glyph 逐步變淡。
+   - 雷電：沿鄰接關係同時傷害多個 Glyph Cell。
+   - 黑洞：吸引、位移並扭曲 Glyph Cell。
+
+8. 血量來自 Glyph Cell，傷害作用於 Glyph Cell，武器摧毀 Glyph Cell，Boss 分裂只重新分配 Glyph Cell；生命體死亡就是其 Glyph Cell 全部被摧毀。
+
 # 企劃補充案：代碼概念升級與視覺可讀性優化
 
 ## 一、 戰利品與 Build 的新型態：開發者語意升級 (Developer Semantics Upgrades)
@@ -458,7 +527,7 @@ GOLEM
 
 ### 3. 動態動能與粒子淡出 (Velocity-Based Alpha fading)
 
-- **非 Gameplay 粒子不擋視線：** 被打散、擊飛的 Boss 字母碎片（Glyph Cells），在飛散的瞬間其傷害判定即消失（轉為純視覺粒子）。
+- **非 Gameplay 粒子不擋視線：** 只有已進入 Destroyed 狀態且不再參與重組的 Boss 字母碎片，才可在飛散時移除傷害判定並轉為純視覺粒子。仍存活、可受傷或可重新聚合的 Glyph Cell 必須保留 Gameplay 身分，不得因渲染效果而提前失去權威狀態。
 - **快速淡出：** 這些飛散的碎片在離開 Boss 核心主體後，其透明度（Alpha）應在 0.2 至 0.5 秒內呈指數型（Ease-out）變淡並消失，避免碎裂的英文字母長時間堆積在畫面上干擾走位判斷。
 
 ### 4. 相對靜止與動態對比 (Motion Contrast)

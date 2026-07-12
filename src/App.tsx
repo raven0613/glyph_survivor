@@ -10,6 +10,9 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameHostRef = useRef<GameHost | null>(null)
   const [uiSnapshot, setUiSnapshot] = useState(INITIAL_UI_SNAPSHOT)
+  const [initializationError, setInitializationError] = useState<string | null>(
+    null,
+  )
   const isReady = uiSnapshot.phase === 'READY'
   const hasStarted = !['BOOT', 'LOADING', 'READY'].includes(uiSnapshot.phase)
 
@@ -20,15 +23,44 @@ function App() {
       return
     }
 
-    const gameHost = createGameHost({ canvas })
-    gameHostRef.current = gameHost
-    const unsubscribeUi = gameHost.subscribeUi(setUiSnapshot)
+    const abortController = new AbortController()
+    let mountedHost: GameHost | null = null
+    let unsubscribeUi = () => {}
+
+    // Deferring one microtask prevents React StrictMode's probe mount from
+    // starting a second Pixi initialization on the same canvas.
+    void Promise.resolve().then(async () => {
+      if (abortController.signal.aborted) {
+        return
+      }
+
+      try {
+        const gameHost = await createGameHost({
+          canvas,
+          signal: abortController.signal,
+        })
+
+        if (abortController.signal.aborted) {
+          gameHost.dispose()
+          return
+        }
+
+        mountedHost = gameHost
+        gameHostRef.current = gameHost
+        unsubscribeUi = gameHost.subscribeUi(setUiSnapshot)
+      } catch (error) {
+        if (error instanceof Error && error.name !== 'AbortError') {
+          setInitializationError(error.message)
+        }
+      }
+    })
 
     return () => {
+      abortController.abort()
       unsubscribeUi()
-      gameHost.dispose()
+      mountedHost?.dispose()
 
-      if (gameHostRef.current === gameHost) {
+      if (gameHostRef.current === mountedHost) {
         gameHostRef.current = null
       }
     }
@@ -70,10 +102,23 @@ function App() {
           <div className="canvas-status" aria-hidden="true">
             <span>Everything is text.</span>
             <span className="canvas-status__state">
-              {uiSnapshot.phase.charAt(0)}
-              {uiSnapshot.phase.slice(1).toLowerCase()}_
+              {initializationError ?? (
+                <>
+                  {uiSnapshot.phase.charAt(0)}
+                  {uiSnapshot.phase.slice(1).toLowerCase()}_
+                </>
+              )}
             </span>
           </div>
+        )}
+
+        {hasStarted && (
+          <aside className="game-hud" aria-label="Run status">
+            <span>LV.{uiSnapshot.level}</span>
+            <span>XP {uiSnapshot.xp}</span>
+            <span>ENEMIES {uiSnapshot.enemyCount}</span>
+            <span>{Math.floor(uiSnapshot.runTimeMs / 1_000)}s</span>
+          </aside>
         )}
       </main>
 
