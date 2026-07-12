@@ -1,4 +1,5 @@
 import type { InputState } from '../runtime/worldEntities.ts'
+import { hasPointerPositionChanged } from './pointerMovement.ts'
 
 export interface ViewportSize {
   readonly width: number
@@ -11,6 +12,7 @@ export interface InputAdapter {
 }
 
 const MOVEMENT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD'])
+const POINTER_AIM_UPDATE_DISTANCE = 0.5
 
 export function createInputAdapter(
   canvas: HTMLCanvasElement,
@@ -20,6 +22,7 @@ export function createInputAdapter(
   let pointerScreenX = 0
   let pointerScreenY = 0
   let hasPointer = false
+  let pointerRevision = 0
 
   function handleKeyDown(event: KeyboardEvent): void {
     if (MOVEMENT_KEYS.has(event.code)) {
@@ -40,10 +43,26 @@ export function createInputAdapter(
       return
     }
 
-    pointerScreenX =
+    const nextPointerScreenX =
       ((event.clientX - rectangle.left) / rectangle.width) * viewport.width
-    pointerScreenY =
+    const nextPointerScreenY =
       ((event.clientY - rectangle.top) / rectangle.height) * viewport.height
+
+    if (
+      !hasPointer ||
+      hasPointerPositionChanged(
+        pointerScreenX,
+        pointerScreenY,
+        nextPointerScreenX,
+        nextPointerScreenY,
+        POINTER_AIM_UPDATE_DISTANCE,
+      )
+    ) {
+      pointerScreenX = nextPointerScreenX
+      pointerScreenY = nextPointerScreenY
+      pointerRevision += 1
+    }
+
     hasPointer = true
   }
 
@@ -65,6 +84,7 @@ export function createInputAdapter(
       target.pointerScreenX = pointerScreenX
       target.pointerScreenY = pointerScreenY
       target.hasPointer = hasPointer
+      target.pointerRevision = pointerRevision
     },
 
     dispose() {

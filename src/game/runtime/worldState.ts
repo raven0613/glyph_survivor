@@ -61,6 +61,7 @@ function createPlayer(): PlayerState {
     moveY: 0,
     aimX: 1,
     aimY: 0,
+    lastProcessedPointerRevision: 0,
     xp: 0,
     level: 1,
   }
@@ -81,6 +82,7 @@ export function createWorldState(
       pointerScreenX: viewportWidth / 2,
       pointerScreenY: viewportHeight / 2,
       hasPointer: false,
+      pointerRevision: 0,
     },
     enemies: [],
     enemyPool: [],

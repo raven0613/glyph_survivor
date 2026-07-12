@@ -1,8 +1,4 @@
-import {
-  calculateCameraView,
-  calculatePlayerMovementBounds,
-  screenToWorld,
-} from '../runtime/cameraTransform.ts'
+import { calculatePlayerMovementBounds } from '../runtime/cameraTransform.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { normalizeMovement } from './movementVector.ts'
@@ -39,26 +35,6 @@ export function runMovementSystem(world: WorldState, deltaMs: number): void {
     playerBounds.minY,
     playerBounds.maxY,
   )
-
-  if (world.input.hasPointer) {
-    const camera = calculateCameraView(
-      player.x,
-      player.y,
-      world.viewportWidth,
-      world.viewportHeight,
-    )
-    const pointer = screenToWorld(
-      world.input.pointerScreenX,
-      world.input.pointerScreenY,
-      camera,
-    )
-    const aim = normalizeMovement(pointer.x - player.x, pointer.y - player.y)
-
-    if (aim.x !== 0 || aim.y !== 0) {
-      player.aimX = aim.x
-      player.aimY = aim.y
-    }
-  }
 
   for (const enemy of world.enemies) {
     enemy.previousX = enemy.x

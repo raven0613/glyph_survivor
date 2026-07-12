@@ -487,6 +487,7 @@ Only destroyed Glyphs that are no longer recoverable may be converted into rende
 - Keyboard and pointer input belong to an `InputAdapter`, not React state.
 - Store key/button state and the latest pointer position, then sample them at the start of each fixed step.
 - Convert pointer coordinates into world coordinates through the render/camera adapter.
+- Update the player's stored aim direction only when the pointer position revision changes. Player movement, camera following, fixed-step catch-up, and viewport resize must not rotate an idle pointer's aim direction.
 - Input events enqueue commands or update input state; they must not mutate entities directly.
 - Remove all listeners during GameHost disposal.
 

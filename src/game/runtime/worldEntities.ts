@@ -14,6 +14,7 @@ export interface PlayerState {
   moveY: number
   aimX: number
   aimY: number
+  lastProcessedPointerRevision: number
   xp: number
   level: number
 }
@@ -72,4 +73,5 @@ export interface InputState {
   pointerScreenX: number
   pointerScreenY: number
   hasPointer: boolean
+  pointerRevision: number
 }
