@@ -1,33 +1,40 @@
 import { Rectangle, Texture } from 'pixi.js'
+import {
+  PRINTABLE_ASCII_GLYPH_COUNT,
+  getPrintableAsciiCharacter,
+  getPrintableAsciiGlyphFrame,
+} from '../glyph/glyphFrame.ts'
 
-export type GlyphFrameName =
+export type FixedGlyphFrameName =
   | 'player'
-  | 'enemy'
   | 'projectile'
   | 'experience'
   | 'background'
 
 export interface GlyphAtlas {
-  readonly frames: Readonly<Record<GlyphFrameName, Texture>>
+  readonly frames: Readonly<Record<FixedGlyphFrameName, Texture>>
+  readonly printableFrames: readonly Texture[]
   destroy(): void
 }
 
 const CELL_SIZE = 64
-const GLYPHS: readonly {
-  readonly name: GlyphFrameName
-  readonly character: string
-}[] = [
-  { name: 'player', character: '@' },
-  { name: 'enemy', character: 'M' },
-  { name: 'projectile', character: 'o' },
-  { name: 'experience', character: '*' },
-  { name: 'background', character: '+' },
-]
+const ATLAS_COLUMNS = 16
+const ATLAS_ROWS = Math.ceil(PRINTABLE_ASCII_GLYPH_COUNT / ATLAS_COLUMNS)
+
+function getFramePosition(glyphFrame: number): {
+  readonly x: number
+  readonly y: number
+} {
+  return {
+    x: (glyphFrame % ATLAS_COLUMNS) * CELL_SIZE,
+    y: Math.floor(glyphFrame / ATLAS_COLUMNS) * CELL_SIZE,
+  }
+}
 
 export function createGlyphAtlas(): GlyphAtlas {
   const canvas = document.createElement('canvas')
-  canvas.width = CELL_SIZE * GLYPHS.length
-  canvas.height = CELL_SIZE
+  canvas.width = CELL_SIZE * ATLAS_COLUMNS
+  canvas.height = CELL_SIZE * ATLAS_ROWS
   const context = canvas.getContext('2d')
 
   if (!context) {
@@ -42,29 +49,40 @@ export function createGlyphAtlas(): GlyphAtlas {
   context.strokeStyle = '#000000'
   context.fillStyle = '#ffffff'
 
-  GLYPHS.forEach((glyph, index) => {
-    const centerX = index * CELL_SIZE + CELL_SIZE / 2
-    const centerY = CELL_SIZE / 2 + 1
-    context.strokeText(glyph.character, centerX, centerY)
-    context.fillText(glyph.character, centerX, centerY)
-  })
+  for (let glyphFrame = 0; glyphFrame < PRINTABLE_ASCII_GLYPH_COUNT; glyphFrame += 1) {
+    const position = getFramePosition(glyphFrame)
+    const centerX = position.x + CELL_SIZE / 2
+    const centerY = position.y + CELL_SIZE / 2 + 1
+    const character = getPrintableAsciiCharacter(glyphFrame)
+    context.strokeText(character, centerX, centerY)
+    context.fillText(character, centerX, centerY)
+  }
 
   const atlasTexture = Texture.from(canvas, true)
-  const frames = {} as Record<GlyphFrameName, Texture>
-
-  GLYPHS.forEach((glyph, index) => {
-    frames[glyph.name] = new Texture({
-      source: atlasTexture.source,
-      frame: new Rectangle(index * CELL_SIZE, 0, CELL_SIZE, CELL_SIZE),
-      defaultAnchor: { x: 0.5, y: 0.5 },
-      label: `glyph-${glyph.name}`,
-    })
+  const printableFrames = Array.from(
+    { length: PRINTABLE_ASCII_GLYPH_COUNT },
+    (_, glyphFrame) => {
+      const position = getFramePosition(glyphFrame)
+      return new Texture({
+        source: atlasTexture.source,
+        frame: new Rectangle(position.x, position.y, CELL_SIZE, CELL_SIZE),
+        defaultAnchor: { x: 0.5, y: 0.5 },
+        label: `glyph-ascii-${glyphFrame}`,
+      })
+    },
+  )
+  const frames = Object.freeze({
+    player: printableFrames[getPrintableAsciiGlyphFrame('@')],
+    projectile: printableFrames[getPrintableAsciiGlyphFrame('o')],
+    experience: printableFrames[getPrintableAsciiGlyphFrame('*')],
+    background: printableFrames[getPrintableAsciiGlyphFrame('+')],
   })
 
   return Object.freeze({
-    frames: Object.freeze(frames),
+    frames,
+    printableFrames: Object.freeze(printableFrames),
     destroy() {
-      Object.values(frames).forEach((texture) => texture.destroy(false))
+      printableFrames.forEach((texture) => texture.destroy(false))
       atlasTexture.destroy(true)
     },
   })

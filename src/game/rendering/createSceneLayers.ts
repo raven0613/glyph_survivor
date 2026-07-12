@@ -41,7 +41,7 @@ function createBackground(atlas: GlyphAtlas): ParticleContainer<Particle> {
     }
   }
 
-  return new ParticleContainer({
+  const backgroundLayer = new ParticleContainer({
     texture: atlas.frames.background,
     particles,
     boundsArea: createWorldBounds(),
@@ -53,6 +53,10 @@ function createBackground(atlas: GlyphAtlas): ParticleContainer<Particle> {
       color: false,
     },
   })
+
+  // Pre-populated static properties must be uploaded before the first draw.
+  backgroundLayer.update()
+  return backgroundLayer
 }
 
 export function createSceneLayers(
@@ -69,7 +73,7 @@ export function createSceneLayers(
     boundsArea: createWorldBounds(),
   })
   const enemyLayer = new ParticleContainer<Particle>({
-    texture: atlas.frames.enemy,
+    texture: atlas.printableFrames[0],
     boundsArea: createWorldBounds(),
     dynamicProperties: {
       position: true,

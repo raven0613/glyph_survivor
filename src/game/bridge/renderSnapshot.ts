@@ -1,13 +1,17 @@
 import { calculateCameraView } from '../runtime/cameraTransform.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import { GLYPH_CELL_STATE } from '../glyph/glyphStore.ts'
+import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 
 export interface RenderGlyph {
   id: number
+  glyphFrame: number
   x: number
   y: number
   scale: number
   alpha: number
+  tint: number
 }
 
 export interface RenderSnapshot {
@@ -30,17 +34,21 @@ function writeGlyph(
   buffer: RenderGlyph[],
   index: number,
   id: number,
+  glyphFrame: number,
   x: number,
   y: number,
   scale: number,
   alpha: number,
+  tint: number,
 ): void {
-  const glyph = buffer[index] ?? { id, x, y, scale, alpha }
+  const glyph = buffer[index] ?? { id, glyphFrame, x, y, scale, alpha, tint }
   glyph.id = id
+  glyph.glyphFrame = glyphFrame
   glyph.x = x
   glyph.y = y
   glyph.scale = scale
   glyph.alpha = alpha
+  glyph.tint = tint
   buffer[index] = glyph
 }
 
@@ -101,19 +109,41 @@ export function writeRenderSnapshot(
 
   let enemyCount = 0
   for (const enemy of world.enemies) {
-    const x = interpolate(enemy.previousX, enemy.x, interpolationAlpha)
-    const y = interpolate(enemy.previousY, enemy.y, interpolationAlpha)
-
-    if (!isVisible(x, y, camera)) {
+    if (enemy.phase === 'DEAD') {
       continue
     }
 
+    const rootX = interpolate(enemy.previousX, enemy.x, interpolationAlpha)
+    const rootY = interpolate(enemy.previousY, enemy.y, interpolationAlpha)
     const progress =
       enemy.phase === 'MATERIALIZING'
         ? 1 - enemy.materializeRemainingMs / enemy.materializeDurationMs
         : 1
-    writeGlyph(snapshot.enemies, enemyCount, enemy.id, x, y, progress, progress)
-    enemyCount += 1
+
+    for (const glyph of world.glyphStore.getOwnerGlyphs(enemy.id)) {
+      if (glyph.state !== GLYPH_CELL_STATE.ALIVE) {
+        continue
+      }
+
+      const x = getGlyphWorldX(rootX, glyph)
+      const y = getGlyphWorldY(rootY, glyph)
+      if (!isVisible(x, y, camera)) {
+        continue
+      }
+
+      writeGlyph(
+        snapshot.enemies,
+        enemyCount,
+        glyph.id,
+        glyph.glyphFrame,
+        x,
+        y,
+        progress * glyph.scale,
+        progress * glyph.alpha,
+        glyph.tint,
+      )
+      enemyCount += 1
+    }
   }
   snapshot.enemies.length = enemyCount
 
@@ -131,7 +161,17 @@ export function writeRenderSnapshot(
     )
 
     if (projectile.isAlive && isVisible(x, y, camera)) {
-      writeGlyph(snapshot.projectiles, projectileCount, projectile.id, x, y, 0.55, 1)
+      writeGlyph(
+        snapshot.projectiles,
+        projectileCount,
+        projectile.id,
+        0,
+        x,
+        y,
+        0.55,
+        1,
+        0x66ddff,
+      )
       projectileCount += 1
     }
   }
@@ -140,7 +180,17 @@ export function writeRenderSnapshot(
   let dropCount = 0
   for (const drop of world.drops) {
     if (drop.isAlive && isVisible(drop.x, drop.y, camera)) {
-      writeGlyph(snapshot.drops, dropCount, drop.id, drop.x, drop.y, 0.7, 1)
+      writeGlyph(
+        snapshot.drops,
+        dropCount,
+        drop.id,
+        0,
+        drop.x,
+        drop.y,
+        0.7,
+        1,
+        0xffcc33,
+      )
       dropCount += 1
     }
   }

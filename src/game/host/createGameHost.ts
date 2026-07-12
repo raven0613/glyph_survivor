@@ -9,6 +9,10 @@ import {
   createRenderSnapshot,
   writeRenderSnapshot,
 } from '../bridge/renderSnapshot.ts'
+import {
+  prepareGameContent,
+  type PreparedGameContent,
+} from '../content/gameContent.ts'
 import { createRenderAdapter } from '../rendering/createRenderAdapter.ts'
 import { createGameLoop } from '../runtime/createGameLoop.ts'
 import { GAME_PHASE, gameMachine } from '../runtime/gameMachine.ts'
@@ -83,8 +87,10 @@ export async function createGameHost({
   gameActor.start()
   gameActor.send({ type: 'INITIALIZE' })
 
+  let gameContent: PreparedGameContent
   let renderAdapter
   try {
+    gameContent = prepareGameContent()
     renderAdapter = await createRenderAdapter(canvas, signal)
   } catch (error) {
     gameActor.send({ type: 'LOAD_FAILED', error })
@@ -151,7 +157,12 @@ export async function createGameHost({
       }
 
       const viewport = renderAdapter.getViewportSize()
-      world = createWorldState(seed, viewport.width, viewport.height)
+      world = createWorldState(
+        seed,
+        viewport.width,
+        viewport.height,
+        gameContent,
+      )
       gameActor.send({ type: 'START_RUN', seed })
     },
 

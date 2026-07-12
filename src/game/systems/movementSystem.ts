@@ -1,7 +1,10 @@
 import { calculatePlayerMovementBounds } from '../runtime/cameraTransform.ts'
+import { getCreatureDefinition } from '../content/gameContent.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { normalizeMovement } from './movementVector.ts'
+import { runCreatureLayoutBehavior } from './creatureLayoutStrategies.ts'
+import { runCreatureMovementBehavior } from './creatureMovementStrategies.ts'
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(value, maximum))
@@ -56,8 +59,9 @@ export function runMovementSystem(world: WorldState, deltaMs: number): void {
       continue
     }
 
-    const chase = normalizeMovement(player.x - enemy.x, player.y - enemy.y)
-    enemy.x += chase.x * enemy.speed * deltaSeconds
-    enemy.y += chase.y * enemy.speed * deltaSeconds
+    const definition = getCreatureDefinition(world.content, enemy.definitionId)
+    enemy.behaviorElapsedMs += deltaMs
+    runCreatureMovementBehavior(world, enemy, definition, deltaMs)
+    runCreatureLayoutBehavior(world, enemy, definition)
   }
 }

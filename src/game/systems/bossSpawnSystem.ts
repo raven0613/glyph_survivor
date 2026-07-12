@@ -1,11 +1,7 @@
 import { calculateCameraView } from '../runtime/cameraTransform.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import { spawnEnemy, type WorldState } from '../runtime/worldState.ts'
-import {
-  chooseSpawnSide,
-  createSpawnCandidate,
-  isSpawnCandidateValid,
-} from './spawnGeometry.ts'
+import { createSpawnCandidate, isSpawnCandidateValid } from './spawnGeometry.ts'
 
 const WORLD_BOUNDS = Object.freeze({
   left: 0,
@@ -14,46 +10,35 @@ const WORLD_BOUNDS = Object.freeze({
   bottom: GAME_CONFIG.worldHeight,
 })
 
-function getSpawnIntervalMs(runTimeMs: number): number {
-  return Math.max(
-    GAME_CONFIG.spawnIntervalMinimumMs,
-    GAME_CONFIG.spawnIntervalStartMs - runTimeMs / 60,
-  )
-}
-
-export function runDirectorSystem(world: WorldState, deltaMs: number): void {
-  world.spawnCooldownMs -= deltaMs
-
-  if (world.spawnCooldownMs > 0) {
+/** Spawns the first-wave boss from its explicit pending gameplay event. */
+export function runBossSpawnSystem(world: WorldState): void {
+  const side = world.pendingBossSpawnSide
+  if (side === null || world.slimeBossSpawned) {
     return
   }
 
-  world.spawnCooldownMs += getSpawnIntervalMs(world.runTimeMs)
+  const definition = world.content.slimeBossDefinition
+  const radius = definition.broadPhaseRadius
   const camera = calculateCameraView(
     world.player.x,
     world.player.y,
     world.viewportWidth,
     world.viewportHeight,
   )
-  const enemyRadius = world.content.ordinaryEnemyDefinition.broadPhaseRadius
+
   for (let attempt = 0; attempt < GAME_CONFIG.spawnAttemptCount; attempt += 1) {
-    const side = chooseSpawnSide(
-      world.player.moveX,
-      world.player.moveY,
-      world.rng.next,
-    )
     const candidate = createSpawnCandidate(camera, side, world.rng.next)
     const nearbyEnemies = world.enemySpatialHash.queryCircle(
       candidate.x,
       candidate.y,
-      enemyRadius * 2,
+      radius + world.content.maximumEnemyBroadPhaseRadius,
       world.spawnCandidates,
     )
 
     if (
       !isSpawnCandidateValid(
         candidate,
-        enemyRadius,
+        radius,
         camera,
         WORLD_BOUNDS,
         nearbyEnemies,
@@ -64,18 +49,16 @@ export function runDirectorSystem(world: WorldState, deltaMs: number): void {
     }
 
     const materializeDurationMs = 300 + world.rng.next() * 200
-    const enemy = spawnEnemy(
+    const boss = spawnEnemy(
       world,
       candidate.x,
       candidate.y,
       materializeDurationMs,
-      world.content.ordinaryEnemyDefinition,
+      definition,
     )
-    world.enemySpatialHash.insert(enemy)
-    if (!world.firstWaveStarted) {
-      world.firstWaveStarted = true
-      world.pendingBossSpawnSide = side
-    }
+    world.enemySpatialHash.insert(boss)
+    world.slimeBossSpawned = true
+    world.pendingBossSpawnSide = null
     return
   }
 }

@@ -464,6 +464,7 @@ Rendering rules:
 
 - Use PixiJS scene objects only inside the rendering layer.
 - Use a shared glyph atlas. Prefer bitmap/MSDF glyph rendering for frequently changing or numerous text visuals.
+- The first release uses a Printable ASCII glyph atlas. Expanding the required gameplay atlas to CJK or emoji is a separate product and performance decision.
 - Do not use `Text` or `HTMLText` for per-frame-updated high-volume Glyphs.
 - `Text` is acceptable for small, static, or infrequently changed labels.
 - `BitmapText` is suitable for frequently changing counters or longer text whose characters do not need independent gameplay ownership.
@@ -501,6 +502,15 @@ Initial engineering targets, subject to target-device validation:
 - Reduced-quality frame p95: at or below 33 ms.
 - Simulation step p95 in ordinary combat: at or below 6 ms.
 - Simulation step p95 in the agreed Boss stress case: at or below 10 ms.
+
+The agreed first-pass validation platform is a modern desktop or laptop browser at 1080p, with approximately four CPU cores, integrated graphics, and 8 GB RAM. Mobile is not guaranteed in the first release.
+
+Use these reproducible benchmark populations as engineering scenarios, not runtime hard caps:
+
+- Ordinary combat: approximately 300 creatures, 2,000 Alive Glyphs, 500 gameplay projectiles, and 2,000 visual particles.
+- Boss stress: approximately 500 creatures, 5,000 Alive Glyphs, 1,000 gameplay projectiles, and 5,000 visual particles.
+
+Regular play targets 60 FPS. Reduced quality may target 30 FPS in the Boss stress scenario while fixed simulation semantics remain unchanged.
 
 Track at minimum:
 
@@ -597,8 +607,8 @@ Before declaring completion, check:
 
 Do not silently hard-code these product decisions when they materially affect implementation:
 
-- minimum supported device and concrete entity/Glyph budgets;
-- ASCII/Latin-only atlas versus CJK/emoji support;
+- changes to the agreed minimum device or concrete entity/Glyph benchmark budgets;
+- expanding the first-release Printable ASCII atlas requirement to CJK or emoji;
 - save/replay requirements across content versions;
 - analytics/telemetry collection;
 - the testing stack to add when tests are first implemented.

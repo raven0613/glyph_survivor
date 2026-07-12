@@ -1,0 +1,252 @@
+# SLIME Boss Content Sheet
+
+> 狀態：M3 已完成完整史萊姆（不含分裂）。分體、PlayerHealth 與 Boss 主動攻擊仍屬後續里程碑。
+
+本文是第一隻 Boss `SLIME` 的專屬內容設定。跨怪物共用的生命、Glyph、分裂守恆與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；不要把本文的史萊姆數值搬進 `AGENTS.md`。
+
+本文中的欄位名稱是預定的內容契約名稱。正式實作時可依 TypeScript 型別微調命名，但不得改變其語意或把它們變成第二套可變 HP。
+
+## 1. 內容摘要
+
+| 欄位 | 首版設定 |
+| --- | --- |
+| `contentId` | `boss.slime.prototype` |
+| `contentVersion` | `1` |
+| 分類 | Boss |
+| 字元範圍 | Printable ASCII |
+| `requiredGlyphs` | `S`, `L`, `I`, `M`, `E`, `O` |
+| 初始 Body Blueprint Cells | 50（48 個身體格、2 個眼睛格） |
+| `totalMaxDurability` | 70，僅供 LOADING 編譯與驗證 |
+| 初始 Current Durability | 每格等於該格 Max Durability |
+| 耐久分布 | `CENTER_HARD` authored strict band |
+| 預設 Material | `SLIME` |
+| 最大移動速度 | 60 world units/s |
+| 接觸傷害 | 每次被接受的接觸命中為 1 Player HP |
+| 分體固定基準 | 根史萊姆最初設定的 50 Cells |
+| 獨立分體門檻 | `ceil(50 × 0.30) = 15` 個 Alive Cells；15 格也算通過 |
+
+## 2. 載入與生成責任
+
+LOADING 階段由 GameHost 協調兩條互不反向依賴的工作：
+
+- Pure content compiler 驗證並編譯 Body Blueprint、耐久圖與行為參數，產生不可變 prepared definition 及 `requiredGlyphs`；它不得 import PixiJS。
+- Rendering bootstrap 依 `requiredGlyphs` 準備共用 Atlas frames 與 View Pool；它不得建立或修改 Gameplay state。
+- GameHost 等兩者都成功後才可進入 READY；任一路徑失敗都不得啟動部分模擬。
+
+真正的 Creature、Glyph ID、Current Durability、位置與行為狀態，必須在 Runtime 收到生成事件時才建立。LOADING 失敗時不得使用部分編譯完成的史萊姆進入 READY。
+
+`totalMaxDurability` 是 authoring budget，不是 Runtime HP。編譯完成後，權威生命只存在各 Glyph Cell 的 `currentDurability` 與 `maxDurability`；史萊姆總 HP 永遠是它們的唯讀加總。
+
+## 3. 固定 50 格 Body Blueprint
+
+首版中性形狀如下。編譯器以實際 marker 數量為準，不相信註解中的手算數字；每列固定為 14 columns。
+
+下列引號只用來保留前後空白，不屬於 mask 資料：
+
+```text
+"    XXXXXX    "
+"  XXXXXXXXXX  "
+"XXXXoXXXXoXXXX"
+" XXXXXXXXXXXX "
+"   XXXXXXXX   "
+```
+
+總數：`6 + 10 + 14 + 12 + 8 = 50`。
+
+Marker 定義：
+
+- `X`：一般身體 slot。
+- `o`：眼睛 slot；它仍是完整、可受傷的 Gameplay Glyph Cell。
+- space：沒有 slot。
+
+編譯後每個 occupied slot 都取得穩定 `slotId`、canonical grid coordinate 與 row-major `sequenceIndex`。包含 `o` 在內的每個 occupied slot 都先由 `sequenceIndex` 取得重複的 `baseCharacter`：`S → L → I → M → E`；Eye role 再以 presentation override 顯示 `O`。如此 Eye role 被移除時，該 Cell 能確定性地恢復自己的 `baseCharacter`。
+
+形狀變形不得增加、刪除或複製 slot。寬扁、直立與中性形狀都必須是同一批 50 個 `slotId` 的不同 layout anchors。
+
+## 4. 固定 70 點耐久分布
+
+耐久圖與 Body Blueprint 使用相同 5 × 14 grid：
+
+下列引號同樣不屬於耐久圖資料：
+
+```text
+"    111111    "
+"  1122222211  "
+"11122222222111"
+" 111222222111 "
+"   11111111   "
+```
+
+- `1`：該 Cell 的 `maxDurability = 1`。
+- `2`：該 Cell 的 `maxDurability = 2`。
+- space：必須與 Body Blueprint 的空位完全一致。
+
+分布結果：
+
+- 外圍 30 Cells × 1 = 30。
+- 中央 20 Cells × 2 = 40。
+- Total Max Durability = 70。
+
+這是「中心硬、外圍軟」的可閱讀分布。兩個初始 Eye slots 都落在中央耐久帶，因此初始 Max Durability 為 2，但這只是位置帶來的結果，不是眼睛加成。
+
+所有初始可見 Cell 至少要有 1 點 Max Durability。額外 20 點耐久只加厚指定 Cells，不得建立第 51 格，也不得在 Runtime 保留一個可另外扣除的 70 HP 欄位。
+
+分裂、重排與蠕動都不得重新執行耐久分配器。Glyph ID 一旦建立，它的 Current／Max Durability 就跟著該 Glyph 移動。
+
+## 5. 眼睛規則
+
+- 眼睛不是弱點，沒有傷害倍率、命中獎勵、AI、階段或死亡觸發。
+- 眼睛是正常 Gameplay Glyph Cells，因此可以受傷、被真正擊退並在耐久歸零時消失。
+- 眼睛套用所在 Cell 原本的 Durability 與 `SLIME` Material，不建立特例。
+- 眼睛被摧毀後保留洞；一般受傷、morph 與 Material recovery 不自動補眼，也不恢復耐久。
+- 每個獨立分體完成 ownership 分配後，從該身體既有的 Alive Glyph 中決定最多兩個眼睛。只改顯示角色／Glyph frame；不得建立新 Glyph，也不得改變 ID、Current Durability、Max Durability 或 Material。
+- 上一項是 split／reassembly commit 時的明確外觀重排，因此可能讓另一個既有 Alive Glyph 顯示成眼睛；原本被摧毀的 Eye Glyph 仍是 Destroyed，沒有被替換或復活。
+- 重新指定前先清除未入選 Alive Cells 的 Eye presentation override，讓它們顯示既有 `baseCharacter`；Destroyed Cells 不需顯示，但其資料也不得被覆寫成 Alive。
+- 眼睛選擇必須是穩定、可重現的：優先選擇最接近 layout 內兩個 face target 的 Alive Cells；距離相同時以較小 Glyph ID 決定。
+- 少於兩個 Alive Cells 時，只顯示仍可指派的眼睛數；沒有眼睛不影響生命或行為。
+
+## 6. 移動與蠕動
+
+- 首版最大移動速度為 60 world units/s，比目前普通怪物的 72 world units/s 慢。
+- 移動採平滑、具阻尼的追蹤，不允許瞬間改變 world position。
+- 蠕動是 layout anchor 在中性、寬扁、直立形狀間的連續變形；不是 renderer 私自移動 Glyph。
+- 同一個 Glyph ID 在所有 morph layouts 中都存在。形狀改變造成文字重新排成不同列，但不交換生命、不重新分配耐久。
+- 眼睛使用同一批眼睛 Cells 跟隨 face targets 移動；一般 morph 不反覆挑選新眼睛。
+- `worldGlyphPosition = creatureRootPosition + layoutAnchor + deformationOffset`。移動更新 root，蠕動更新 anchor，受擊更新 offset／velocity，三者不可互相覆寫。
+
+首版三組 50-slot anchors 固定如下：
+
+- 中性：`6 / 10 / 14 / 12 / 8` 五列，沿用第 3 節 blueprint。
+- 寬扁：`10 / 14 / 14 / 12` 四列，眼睛位於第二列的第 5、10 格。
+- 直立：`4 / 6 / 8 / 10 / 10 / 8 / 4` 七列，眼睛位於第三列的第 3、6 格。
+- 完整 morph cycle 為 2,400 ms：`neutral → wide → neutral → tall → neutral`，每段 600 ms，使用 smoothstep easing。
+- 阻尼追蹤 responsiveness 為 `4`；移動速度仍受 60 world units/s 上限約束。
+
+這些數值是 M3 prototype 的首版調校基準；後續可以調整座標與時間，但不得以增減 Cells 代替視覺調校。
+
+## 7. 受擊與 `SLIME` Material
+
+- 傷害先作用在實際命中的 Glyph Cell Durability，再套用該次 Material response。
+- 未被摧毀的受擊 Cell 接受幅度較大的權威 deformation impulse；它的 collision position 也跟著位移。
+- 當外力停止，即使 Creature root 沒有移動，Alive Cell 也以彈簧式恢復回當前 layout anchor。
+- Creature root 正在移動或蠕動時，Cell 追逐的是更新後的 anchor，不是舊 world position。
+- Destroyed Cell 不因回彈而復活或補洞。若它已不再參與任何重組，可另產生短命、純渲染碎片。
+- SLIME 的位移幅度高、回復具彈性、重新聚合傾向強；未來 ROCK／GOLEM 等硬材質則使用較低位移與較剛性的回復。
+
+M3 首版 `SLIME` Material 數值為：
+
+- knockback impulse：`220` world units/s。
+- spring strength：`22`。
+- damping：`7`。
+- maximum deformation offset：`34` world units。
+- hit flash duration：`80 ms`。
+
+這些數值透過 Material definition 套用，不依 `contentId` 寫物種分支。命中後仍存活的 Cell 才接受 impulse；Destroyed Cell 直接留下洞。
+
+## 8. 顏色與 Glyph Atlas
+
+史萊姆使用不搶過玩家亮綠色的中等綠色階：
+
+| 顯示狀態 | CSS hex | Pixi numeric tint |
+| --- | --- | --- |
+| Current Durability = 1 | `#4C956C` | `0x4C956C` |
+| Current Durability >= 2 | `#70B77E` | `0x70B77E` |
+| 短暫受擊閃光 | `#B7E4C7` | `0xB7E4C7` |
+| Destroyed | 不繪製本體，留下局部洞 | 不適用 |
+
+眼睛使用相同的耐久 tint 階級，不以紅色、白色或特殊發光暗示弱點。受擊閃光只是一個短暫 render response，不能取代 Durability 或權威 displacement。
+
+首版字元只需共用 Printable ASCII Atlas。不得為每個 Cell 建立一個 PixiJS `Text`／`HTMLText`；高量 Glyph 使用共用 Atlas frame 與 pooled view。
+
+## 9. 出現時機與接觸傷害
+
+- 根史萊姆與第一波怪一起出現。
+- 正式觸發語意是：第一隻普通怪成功 commit spawn 時，Runtime 發出一次性的 `FIRST_WAVE_STARTED`；Boss 專用 spawn request 在下一個允許消費 structural events 的明確 boundary 排入，不能在仍迭代 spawn collection 時直接改動它。這仍屬於同一波生成。
+- 普通怪 spawn 候選失敗時不算第一波開始，也不得因此生成史萊姆。
+- 史萊姆不走普通怪 director 的一般生成路徑。首版在第一波同側、鏡頭外的合法位置生成；找不到合法位置時延後 Boss request，不得強塞進視野或障礙物。
+- 史萊姆使用 seeded 0.3–0.5 秒文字聚合生成階段；Runtime 決定何時轉為 Active，renderer 只顯示狀態。
+
+`contactDamage = 1 Player HP` 是已固定的內容值。PlayerHealth 尚未實作，因此本階段只保留契約，不加入無法正確執行的 dormant damage code。未來一次接觸事件只造成一次 1 HP，不按接觸 Glyph 數量或每個 fixed step 重複扣血；重複命中的 invulnerability／cooldown 由 PlayerHealth 契約定義。
+
+## 10. 分體與重新聚合
+
+### 10.1 固定門檻
+
+每個根史萊姆在建立時固定保存：
+
+```text
+splitReferenceCellCount = root initial Body Blueprint count = 50
+minimumIndependentAliveCellCount = ceil(50 × 0.30) = 15
+```
+
+所有後代都繼承相同的 `splitReferenceCellCount = 50`。不得依目前 Alive 數量、該分體取得的數量或最新 layout 重新計算 30%，以免遞迴產生越來越小的獨立史萊姆。
+
+Alive connected component 有 15 格以上時可成為獨立史萊姆；「以上」包含正好 15 格。計數只看 Alive Cell 數量，不看 Current／Max Durability 總和。
+
+### 10.2 連通性
+
+- 連通圖使用目前已 commit 的 canonical body layout grid，以四方向鄰接：上、下、左、右。
+- 對角線不算連通。
+- 只有 Destroyed Cell 會切斷連通；暫時擊退、飛散、回彈或 morph 造成的 world-space 距離不會觸發分裂。
+- 中性／寬扁／直立 morph layouts 共用同一份 topology；只有分體或重新聚合完成時，才可在 structural boundary 為新的 body layout commit 新 canonical coordinates 與 adjacency。
+- 只在 Glyph destruction 將 owner 標為 topology-dirty 時，於 Damage／Death 後的 structural boundary 重算；不得每個 fixed step 掃描所有史萊姆。
+
+### 10.3 Component resolution
+
+1. 找出所有 Alive connected components。
+2. 若 Alive Cell 數為 0，直接進入 Creature／Boss encounter death resolution；此時沒有「最大 component」，也不執行重聚、layout 或 eye assignment。
+3. 若仍只有一個 component，不進行 split／reassembly layout commit，不重選眼睛；只保留這次破壞造成的洞。
+4. 若有多個 components，將至少 15 格者列為 qualifying components。30% 以上包含正好 15 格。
+5. 有 qualifying components 時，每一個都成為最終 body target；最大者保留原 Creature ID，其他 qualifying components 取得新的 Creature ID。大小相同時，以 component 中最小 Glyph ID 排序。至少兩個 qualifying components 時才算真正新增分體。
+6. 沒有 qualifying component 時，以最大的 Alive component 作為唯一重新聚合 target，並保留原 Creature ID。Creature 不因未達分體門檻而直接死亡。
+7. 少於 15 格的 components 不消失、不轉成純粒子，也不損失耐久；它們重新指派給最近的最終 body target，並以 `SLIME` recovery 移向新 layout anchors。
+8. 「最近」使用 structural boundary 當下的權威 world-space component centroid；距離相同時，以目標 component 的最小 Glyph ID 決定，確保結果可重現。
+9. Alive component 決定分體拓撲；每個 Destroyed Glyph ID 仍須確定性地歸屬最近的最終 body，但保持 Destroyed、不得連通、不得計入 15 格，也不得補回洞。
+10. 每個最終 body 必須透過 pure deterministic `compileSlimeBodyLayout`，為自己既有的每個 Glyph ID 恰好產生一個 anchor 與 canonical topology position。重排時先保留 Cell 當下 world position 為 deformation offset，再由 Material recovery 合攏，避免瞬移。
+11. 只有本節的多-component layout commit 完成後，才依第 5 節規則重新指定各最終 body 的外觀眼睛；一般單一 component 受傷不會讓眼睛漂移。
+
+所有新舊 bodies 都繼承相同的 `encounterId`、`rootBossId` 與 `splitReferenceCellCount = 50`。Boss UI 的 Current／Max HP 以 encounter 內所有 Glyph 聚合；只有 encounter 內全部 Glyph Destroyed 才結束 Boss 戰，死亡獎勵只結算一次，不能由每個 child 重複發放。
+
+### 10.4 分體守恆
+
+每次分體前後必須同時成立：
+
+```text
+glyphCountBefore === glyphCountAfter
+sumCurrentDurabilityBefore === sumCurrentDurabilityAfter
+sumMaxDurabilityBefore === sumMaxDurabilityAfter
+every original glyphId has exactly one owner
+```
+
+分體不得 clone、復活、治療、重跑 70 點耐久圖，或為了補出完整的 `SLIME` 字樣建立 Cells。
+
+## 11. 效能與驗證
+
+### 載入驗證必須拒絕
+
+- Body Blueprint 不是 5 × 14，或 occupied marker 不等於 50。
+- Body Blueprint 含有 `X`、`o`、space 以外的 marker，或 `o` 不等於 2。
+- `requiredGlyphs` 含 Printable ASCII 以外的字元，或 Rendering bootstrap 缺少任一必要 Atlas frame。
+- 耐久圖 occupied positions 與 Body Blueprint 不一致。
+- 耐久圖不是 30 個 `1`、20 個 `2`，或總和不等於 70。
+- 任一初始 Cell Max Durability 小於 1。
+- 任一 morph layout 缺少、重複或增加既有 `slotId`。
+- 分體比例不在 `(0, 1]`，或編譯門檻不是 15。
+
+### Runtime 熱路徑限制
+
+- morph 只更新既有 anchors／frames，不配置 Glyph objects。
+- split 只轉移 ownership 與重建必要 layout，不複製 Glyph arrays 或 Durability。
+- 連通性按 destruction dirty event 計算，不在每幀輪詢。
+- Glyph render views 使用 Atlas 與 pool；Eye 只是 frame 變更，不建立另一套 display-object 類型。
+- 壓力驗證沿用 `AGENTS.md` 的 Desktop-first normal／stress Glyph budgets；不得為了 FPS 犧牲分體守恆、局部傷害或 collision accuracy。
+
+## 12. 後續里程碑仍需定案的調校值
+
+以下項目尚未被硬寫成產品規則，應在對應實作階段先完成可視或 headless prototype，再回填本文：
+
+- `compileSlimeBodyLayout` 的確定性 packing 規則、Destroyed-hole anchor 配置與 face targets。它是 split 實作的 blocking decision；在規則回填前不得猜測 child layout。
+- 生成聚合期間是否可受傷、可碰撞，以及 Active 切換當步的精確順序。
+- Boss spawn 的每次候選上限、retry cadence，以及第一波同側在世界邊界無合法點時的 seeded fallback side。
+- PlayerHealth 的接觸無敵時間／重複命中 cooldown。
+- Boss 主動攻擊、階段、死亡演出與獎勵內容。

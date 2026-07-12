@@ -150,13 +150,17 @@ Entity Max HP = sum(All Glyph Cell Max Durability)
 
 Entity HP 是唯讀的衍生摘要，不是另一份可獨立修改的權威狀態。不得讓 `Enemy HP -= Damage` 與 Glyph Durability 同時存在，也不得用額外的隱藏 HP 讓 Boss 變耐打。
 
+每種生命體的 Body Blueprint 必須明確定義固定 occupied slots；這個 Blueprint 是初始 Cell 數量的唯一來源。內容可以另外提供 Total Max Durability authoring budget，但 LOADING 必須先依可閱讀的耐久圖將它完整編譯成各 Cell 的 Max Durability，且每個初始可見 Cell 至少為 1。額外耐久只加厚既有 Cells，不得增加形狀所需的 Cell 數量。Runtime 不保留可獨立受傷的 total budget。
+
+耐久分布優先使用可辨識的規則，例如中心硬／外圍軟、外殼硬／內部軟、正面硬／背面軟、核心硬或核心脆，以及少數明確裝甲區塊。共用 profile 負責一般分配；特殊生命體可以提供明確 authored map，但不得為每個物種各寫一套隱藏分配演算法。
+
 小怪：
 
 一個字母通常具有 1 點 Durability。以 `BAT` 為例，`B`、`A`、`T` 各自具有 1 點 Durability；普通子彈命中並摧毀 `B` 後，身體會局部剩下 `AT`。
 
 Boss：
 
-Boss 的每個字母可以具有較高 Durability。例如 `SLIME` 的每個 Glyph 都有 5 點 Durability，其受傷亮度階段可以是：
+Boss 的 Glyph 可以具有較高 Durability。例如某個 Max Durability 為 5 的 Cell，其受傷亮度階段可以是：
 
 100% → 80% → 60% → 40% → 20% → Destroyed
 
@@ -227,6 +231,14 @@ Material 不能只改整個 Entity 的透明度或播放一個無關 Gameplay �
 形成：果凍/磁力/材質的感覺。
 Boss 必須具有重量感。不是單純 HP 減少。
 
+只要主要 Glyph 的畫面位移被表現為擊退，不論幅度大小，都必須是 Runtime 的權威 deformation，而不是 renderer-only 假位移：
+
+```text
+World Glyph Position = Creature Root Position + Layout Anchor + Deformation Offset
+```
+
+碰撞與後續攻擊必須使用包含 Deformation Offset 的實際位置。Alive Glyph 在受力結束後回到當前 Layout Anchor；Creature 移動或形變時 Anchor 可以持續更新。Destroyed Glyph 不會因回彈而自動復活或補洞。Renderer 可以疊加不影響主要 Glyph 位置的微小閃光或震動，但不能用它取代權威擊退。
+
 ---
 
 # Boss
@@ -281,7 +293,7 @@ SNAKE
 
 SLIME
 
-HP 到一定程度：分裂成兩隻。
+史萊姆不是依 Entity HP 門檻憑空分裂成兩隻。局部破壞切斷 canonical Glyph topology 後，足夠大的 Alive connected components 才能成為新的 Entity；未達內容門檻的小塊仍保留 Gameplay Glyph 身分，並重新聚合到某個 qualifying／最終 body。暫時擊退或形變不會單獨觸發分裂。
 
 注意：不是生成新 HP。
 只是：原本所有 Glyph Cell 重新分配到新的 Entity。分裂必須同時滿足：
@@ -292,6 +304,8 @@ HP 到一定程度：分裂成兩隻。
 - 每個原始 Glyph ID 恰好屬於一個分裂後的 Entity，不得複製或遺失。
 
 因此玩家不會因為 Boss 分裂而需要重新造成更多傷害。
+
+SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準；精確形狀、30% 門檻、連通性、眼睛與重新聚合規則記錄在 [`docs/content/slime-boss.md`](docs/content/slime-boss.md)。
 
 ---
 

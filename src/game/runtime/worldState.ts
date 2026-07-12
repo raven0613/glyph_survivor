@@ -1,6 +1,17 @@
 import type { Bounds } from './cameraTransform.ts'
+import type { PreparedGameContent } from '../content/gameContent.ts'
+import type { CreatureDefinition } from '../content/creatures/creatureDefinition.ts'
 import { createSeededRng, type SeededRng } from '../core/seededRng.ts'
 import { createSpatialHash, type SpatialHash } from '../core/spatialHash.ts'
+import { createGlyphStore, type GlyphStore } from '../glyph/glyphStore.ts'
+import {
+  getGlyphDurabilityTint,
+  getGlyphMaterialDefinition,
+} from '../glyph/glyphMaterial.ts'
+import {
+  createGlyphDamageQueue,
+  type GlyphDamageQueue,
+} from '../glyph/localDamage.ts'
 import { GAME_CONFIG } from './gameConfig.ts'
 import type { ProjectileTrackingProfile } from '../content/weapons/projectileTracking.ts'
 import type {
@@ -9,6 +20,7 @@ import type {
   InputState,
   PlayerState,
   ProjectileState,
+  SpawnSide,
 } from './worldEntities.ts'
 
 export interface WorldDiagnostics {
@@ -19,13 +31,17 @@ export interface WorldDiagnostics {
   dropPoolMisses: number
   targetSearchCount: number
   targetReacquireCount: number
+  glyphPoolMisses: number
 }
 
 export interface WorldState {
   readonly seed: string | number
+  readonly content: PreparedGameContent
   readonly rng: SeededRng
   readonly player: PlayerState
   readonly input: InputState
+  readonly glyphStore: GlyphStore
+  readonly glyphDamageQueue: GlyphDamageQueue
   readonly enemies: EnemyState[]
   readonly enemyPool: EnemyState[]
   readonly enemyById: Map<number, EnemyState>
@@ -47,6 +63,9 @@ export interface WorldState {
   nextEntityId: number
   targetSearchCursor: number
   activeEnemyCount: number
+  firstWaveStarted: boolean
+  pendingBossSpawnSide: SpawnSide | null
+  slimeBossSpawned: boolean
 }
 
 function createPlayer(): PlayerState {
@@ -71,9 +90,22 @@ export function createWorldState(
   seed: string | number,
   viewportWidth: number,
   viewportHeight: number,
+  content: PreparedGameContent,
 ): WorldState {
+  const diagnostics: WorldDiagnostics = {
+    droppedSimulationTimeMs: 0,
+    simulationStepCount: 0,
+    enemyPoolMisses: 0,
+    projectilePoolMisses: 0,
+    dropPoolMisses: 0,
+    targetSearchCount: 0,
+    targetReacquireCount: 0,
+    glyphPoolMisses: 0,
+  }
+
   return {
     seed,
+    content,
     rng: createSeededRng(seed),
     player: createPlayer(),
     input: {
@@ -84,6 +116,12 @@ export function createWorldState(
       hasPointer: false,
       pointerRevision: 0,
     },
+    glyphStore: createGlyphStore({
+      onPoolMiss: () => {
+        diagnostics.glyphPoolMisses += 1
+      },
+    }),
+    glyphDamageQueue: createGlyphDamageQueue(),
     enemies: [],
     enemyPool: [],
     enemyById: new Map(),
@@ -96,15 +134,7 @@ export function createWorldState(
     collisionCandidates: [],
     spawnCandidates: [],
     targetCandidates: [],
-    diagnostics: {
-      droppedSimulationTimeMs: 0,
-      simulationStepCount: 0,
-      enemyPoolMisses: 0,
-      projectilePoolMisses: 0,
-      dropPoolMisses: 0,
-      targetSearchCount: 0,
-      targetReacquireCount: 0,
-    },
+    diagnostics,
     viewportWidth,
     viewportHeight,
     runTimeMs: 0,
@@ -113,6 +143,9 @@ export function createWorldState(
     nextEntityId: 1,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
+    firstWaveStarted: false,
+    pendingBossSpawnSide: null,
+    slimeBossSpawned: false,
   }
 }
 
@@ -127,6 +160,7 @@ export function spawnEnemy(
   x: number,
   y: number,
   materializeDurationMs: number,
+  definition: CreatureDefinition = world.content.ordinaryEnemyDefinition,
 ): EnemyState {
   const enemy = world.enemyPool.pop()
 
@@ -135,15 +169,36 @@ export function spawnEnemy(
   }
 
   const activeEnemy = enemy ?? ({} as EnemyState)
+  const enemyId = getNextEntityId(world)
+  const body = definition.body
+  for (const slot of body.slots) {
+    const material = getGlyphMaterialDefinition(slot.material)
+    world.glyphStore.createGlyph({
+      ownerId: enemyId,
+      bodySlotId: slot.slotId,
+      character: slot.character,
+      glyphFrame: slot.glyphFrame,
+      localX: slot.localX,
+      localY: slot.localY,
+      maxDurability: slot.maxDurability,
+      collisionRadius: slot.collisionRadius,
+      scale: slot.scale,
+      material: slot.material,
+      baseTint: getGlyphDurabilityTint(material, slot.maxDurability),
+    })
+  }
   Object.assign(activeEnemy, {
-    id: getNextEntityId(world),
+    id: enemyId,
+    definitionId: definition.id,
     x,
     y,
     previousX: x,
     previousY: y,
-    radius: GAME_CONFIG.enemyRadius,
-    speed: GAME_CONFIG.enemySpeed,
-    hp: 1,
+    radius: definition.broadPhaseRadius,
+    speed: definition.maximumSpeed,
+    velocityX: 0,
+    velocityY: 0,
+    behaviorElapsedMs: 0,
     phase: 'MATERIALIZING' as const,
     materializeRemainingMs: materializeDurationMs,
     materializeDurationMs,

@@ -1,6 +1,8 @@
 import { runCleanupSystem } from '../systems/cleanupSystem.ts'
 import { runAimSystem } from '../systems/aimSystem.ts'
 import { runCollisionSystem } from '../systems/collisionSystem.ts'
+import { runDamageSystem } from '../systems/damageSystem.ts'
+import { runDeathSystem } from '../systems/deathSystem.ts'
 import { runDirectorSystem } from '../systems/directorSystem.ts'
 import { runDropSystem } from '../systems/dropSystem.ts'
 import { runEnemySpatialIndexSystem } from '../systems/enemySpatialIndexSystem.ts'
@@ -11,6 +13,8 @@ import {
   runProjectileTargetingSystem,
 } from '../systems/projectileTargetingSystem.ts'
 import { runWeaponSystem } from '../systems/weaponSystem.ts'
+import { runBossSpawnSystem } from '../systems/bossSpawnSystem.ts'
+import { runGlyphMaterialSystem } from '../systems/glyphMaterialSystem.ts'
 import type { WorldState } from './worldState.ts'
 
 export function runSimulationStep(world: WorldState, deltaMs: number): void {
@@ -18,13 +22,17 @@ export function runSimulationStep(world: WorldState, deltaMs: number): void {
   world.diagnostics.simulationStepCount += 1
   runAimSystem(world)
   runMovementSystem(world, deltaMs)
+  runGlyphMaterialSystem(world, deltaMs)
   runEnemySpatialIndexSystem(world)
   runDirectorSystem(world, deltaMs)
+  runBossSpawnSystem(world)
   prepareProjectileTargetingSystem(world)
   runWeaponSystem(world, deltaMs)
   runProjectileTargetingSystem(world, deltaMs)
   runProjectileSystem(world, deltaMs)
   runCollisionSystem(world)
+  runDamageSystem(world)
+  runDeathSystem(world)
   runDropSystem(world)
   runCleanupSystem(world)
 }

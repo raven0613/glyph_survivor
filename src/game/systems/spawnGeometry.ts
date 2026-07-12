@@ -1,7 +1,8 @@
 import type { Bounds, CameraView } from '../runtime/cameraTransform.ts'
+import type { SpawnSide } from '../runtime/worldEntities.ts'
 import { circlesIntersect } from './combatGeometry.ts'
 
-export type SpawnSide = 'top' | 'right' | 'bottom' | 'left'
+export type { SpawnSide } from '../runtime/worldEntities.ts'
 
 export interface CircleFootprint {
   readonly x: number

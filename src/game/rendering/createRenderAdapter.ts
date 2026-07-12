@@ -19,18 +19,15 @@ export async function createRenderAdapter(
   const scene = createSceneLayers(application.stage, atlas)
   const enemyViews = createParticleLayerPool(
     scene.enemyLayer,
-    atlas.frames.enemy,
-    0xc94b5f,
+    atlas.printableFrames,
   )
   const projectileViews = createParticleLayerPool(
     scene.projectileLayer,
-    atlas.frames.projectile,
-    0x66ddff,
+    [atlas.frames.projectile],
   )
   const dropViews = createParticleLayerPool(
     scene.dropLayer,
-    atlas.frames.experience,
-    0xffcc33,
+    [atlas.frames.experience],
   )
   let isDisposed = false
 

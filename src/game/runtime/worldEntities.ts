@@ -4,6 +4,7 @@ import type {
 } from '../content/weapons/projectileTracking.ts'
 
 export type EnemyPhase = 'MATERIALIZING' | 'ACTIVE' | 'DEAD'
+export type SpawnSide = 'top' | 'right' | 'bottom' | 'left'
 
 export interface PlayerState {
   x: number
@@ -21,13 +22,16 @@ export interface PlayerState {
 
 export interface EnemyState {
   id: number
+  definitionId: string
   x: number
   y: number
   previousX: number
   previousY: number
   radius: number
   speed: number
-  hp: number
+  velocityX: number
+  velocityY: number
+  behaviorElapsedMs: number
   phase: EnemyPhase
   materializeRemainingMs: number
   materializeDurationMs: number

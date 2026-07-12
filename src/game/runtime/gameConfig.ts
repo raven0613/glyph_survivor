@@ -6,7 +6,6 @@ export const GAME_CONFIG = Object.freeze({
   maxStepsPerFrame: 5,
   playerSpeed: 260,
   enemySpeed: 72,
-  enemyRadius: 18,
   projectileSpeed: 620,
   projectileRadius: 7,
   projectileLifetimeMs: 1_800,
