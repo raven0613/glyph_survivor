@@ -28,6 +28,7 @@ export function runCleanupSystem(world: WorldState): void {
     const enemy = world.enemies[index]
 
     if (enemy.phase === 'DEAD' && enemy.rewardCommitted) {
+      world.enemyById.delete(enemy.id)
       world.enemyPool.push(removeAtSwap(world.enemies, index))
     }
   }

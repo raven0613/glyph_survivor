@@ -17,4 +17,5 @@ export const GAME_CONFIG = Object.freeze({
   pickupRadius: 34,
   renderMargin: 120,
   spatialHashCellSize: 96,
+  targetSearchBudgetPerStep: 64,
 })

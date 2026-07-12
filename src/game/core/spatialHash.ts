@@ -12,11 +12,16 @@ export interface SpatialHash<T extends Positioned> {
 export function createSpatialHash<T extends Positioned>(
   cellSize: number,
 ): SpatialHash<T> {
-  const buckets = new Map<string, T[]>()
+  const buckets = new Map<number, T[]>()
   const recycledBuckets: T[][] = []
+  const CELL_KEY_STRIDE = 65_536
 
   function getCellCoordinate(value: number): number {
     return Math.floor(value / cellSize)
+  }
+
+  function getCellKey(cellX: number, cellY: number): number {
+    return cellX * CELL_KEY_STRIDE + cellY
   }
 
   return {
@@ -29,7 +34,10 @@ export function createSpatialHash<T extends Positioned>(
     },
 
     insert(item) {
-      const key = `${getCellCoordinate(item.x)},${getCellCoordinate(item.y)}`
+      const key = getCellKey(
+        getCellCoordinate(item.x),
+        getCellCoordinate(item.y),
+      )
       let bucket = buckets.get(key)
 
       if (!bucket) {
@@ -49,7 +57,7 @@ export function createSpatialHash<T extends Positioned>(
 
       for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
         for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
-          const bucket = buckets.get(`${cellX},${cellY}`)
+          const bucket = buckets.get(getCellKey(cellX, cellY))
 
           if (bucket) {
             output.push(...bucket)

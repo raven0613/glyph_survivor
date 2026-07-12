@@ -35,13 +35,6 @@ export function runDirectorSystem(world: WorldState, deltaMs: number): void {
     world.viewportWidth,
     world.viewportHeight,
   )
-  world.enemySpatialHash.clear()
-  for (const enemy of world.enemies) {
-    if (enemy.phase !== 'DEAD') {
-      world.enemySpatialHash.insert(enemy)
-    }
-  }
-
   for (let attempt = 0; attempt < GAME_CONFIG.spawnAttemptCount; attempt += 1) {
     const side = chooseSpawnSide(
       world.player.moveX,
@@ -70,7 +63,13 @@ export function runDirectorSystem(world: WorldState, deltaMs: number): void {
     }
 
     const materializeDurationMs = 300 + world.rng.next() * 200
-    spawnEnemy(world, candidate.x, candidate.y, materializeDurationMs)
+    const enemy = spawnEnemy(
+      world,
+      candidate.x,
+      candidate.y,
+      materializeDurationMs,
+    )
+    world.enemySpatialHash.insert(enemy)
     return
   }
 }

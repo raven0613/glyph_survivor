@@ -436,6 +436,11 @@ Every damaging attack defines a `DamageShape`, its geometric dimensions such as 
 
 Gameplay projectiles are the only projectile-like objects that participate in damage/collision. Visual particles are rendering-only and never cause damage.
 
+- Every fired gameplay projectile uses an explicit tracking profile.
+- `ASSISTED` projectiles may make limited corrections toward their initial target, but permanently become ballistic after passing or losing that target. They must not reacquire or turn back.
+- `HOMING` projectiles may use stronger steering, keep targets behind them, and reacquire through a budgeted spatial query after target loss.
+- Target IDs, target validity, steering, and reacquisition are authoritative runtime concerns. The renderer only visualizes projectile positions.
+
 Upgrade effects should produce explicit modifiers or strategy changes. Avoid scattered checks such as `if (hasUpgradeX)` across unrelated systems.
 
 New combat features must first define their Glyph interaction instead of modifying creature HP. For example, fire applies durability damage over time, freezing changes Glyph displacement/material response, corrosion damages and fades Glyphs, lightning selects adjacent Glyphs, and black holes attract and deform Glyphs.

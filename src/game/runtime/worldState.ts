@@ -2,6 +2,7 @@ import type { Bounds } from './cameraTransform.ts'
 import { createSeededRng, type SeededRng } from '../core/seededRng.ts'
 import { createSpatialHash, type SpatialHash } from '../core/spatialHash.ts'
 import { GAME_CONFIG } from './gameConfig.ts'
+import type { ProjectileTrackingProfile } from '../content/weapons/projectileTracking.ts'
 import type {
   EnemyState,
   ExperienceDropState,
@@ -16,6 +17,8 @@ export interface WorldDiagnostics {
   enemyPoolMisses: number
   projectilePoolMisses: number
   dropPoolMisses: number
+  targetSearchCount: number
+  targetReacquireCount: number
 }
 
 export interface WorldState {
@@ -25,6 +28,7 @@ export interface WorldState {
   readonly input: InputState
   readonly enemies: EnemyState[]
   readonly enemyPool: EnemyState[]
+  readonly enemyById: Map<number, EnemyState>
   readonly projectiles: ProjectileState[]
   readonly projectilePool: ProjectileState[]
   readonly drops: ExperienceDropState[]
@@ -33,6 +37,7 @@ export interface WorldState {
   readonly enemySpatialHash: SpatialHash<EnemyState>
   readonly collisionCandidates: EnemyState[]
   readonly spawnCandidates: EnemyState[]
+  readonly targetCandidates: EnemyState[]
   readonly diagnostics: WorldDiagnostics
   viewportWidth: number
   viewportHeight: number
@@ -40,6 +45,8 @@ export interface WorldState {
   spawnCooldownMs: number
   weaponCooldownMs: number
   nextEntityId: number
+  targetSearchCursor: number
+  activeEnemyCount: number
 }
 
 function createPlayer(): PlayerState {
@@ -77,6 +84,7 @@ export function createWorldState(
     },
     enemies: [],
     enemyPool: [],
+    enemyById: new Map(),
     projectiles: [],
     projectilePool: [],
     drops: [],
@@ -85,12 +93,15 @@ export function createWorldState(
     enemySpatialHash: createSpatialHash(GAME_CONFIG.spatialHashCellSize),
     collisionCandidates: [],
     spawnCandidates: [],
+    targetCandidates: [],
     diagnostics: {
       droppedSimulationTimeMs: 0,
       simulationStepCount: 0,
       enemyPoolMisses: 0,
       projectilePoolMisses: 0,
       dropPoolMisses: 0,
+      targetSearchCount: 0,
+      targetReacquireCount: 0,
     },
     viewportWidth,
     viewportHeight,
@@ -98,6 +109,8 @@ export function createWorldState(
     spawnCooldownMs: 350,
     weaponCooldownMs: 0,
     nextEntityId: 1,
+    targetSearchCursor: 0,
+    activeEnemyCount: 0,
   }
 }
 
@@ -133,8 +146,10 @@ export function spawnEnemy(
     materializeRemainingMs: materializeDurationMs,
     materializeDurationMs,
     rewardCommitted: false,
+    trackingLoad: 0,
   })
   world.enemies.push(activeEnemy)
+  world.enemyById.set(activeEnemy.id, activeEnemy)
   return activeEnemy
 }
 
@@ -144,6 +159,8 @@ export function spawnProjectile(
   y: number,
   directionX: number,
   directionY: number,
+  trackingProfile: ProjectileTrackingProfile,
+  targetEnemyId: number | null,
 ): ProjectileState {
   const projectile = world.projectilePool.pop()
 
@@ -164,6 +181,21 @@ export function spawnProjectile(
     damage: 1,
     lifetimeMs: GAME_CONFIG.projectileLifetimeMs,
     isAlive: true,
+    trackingMode: trackingProfile.mode,
+    trackingState:
+      targetEnemyId !== null
+        ? ('LOCKED' as const)
+        : trackingProfile.mode === 'ASSISTED'
+          ? ('BALLISTIC' as const)
+          : ('SEEKING' as const),
+    targetEnemyId,
+    launchDirectionX: directionX,
+    launchDirectionY: directionY,
+    trackingRange: trackingProfile.range,
+    homingResponsiveness: trackingProfile.responsiveness,
+    maximumCorrectionCos: trackingProfile.maximumCorrectionCos,
+    retargetIntervalMs: trackingProfile.retargetIntervalMs,
+    nextTargetSearchTimeMs: world.runTimeMs,
   })
   world.projectiles.push(activeProjectile)
   return activeProjectile

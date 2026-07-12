@@ -1,3 +1,8 @@
+import type {
+  ProjectileTrackingMode,
+  ProjectileTrackingState,
+} from '../content/weapons/projectileTracking.ts'
+
 export type EnemyPhase = 'MATERIALIZING' | 'ACTIVE' | 'DEAD'
 
 export interface PlayerState {
@@ -26,6 +31,7 @@ export interface EnemyState {
   materializeRemainingMs: number
   materializeDurationMs: number
   rewardCommitted: boolean
+  trackingLoad: number
 }
 
 export interface ProjectileState {
@@ -40,6 +46,16 @@ export interface ProjectileState {
   damage: number
   lifetimeMs: number
   isAlive: boolean
+  trackingMode: ProjectileTrackingMode
+  trackingState: ProjectileTrackingState
+  targetEnemyId: number | null
+  launchDirectionX: number
+  launchDirectionY: number
+  trackingRange: number
+  homingResponsiveness: number
+  maximumCorrectionCos: number
+  retargetIntervalMs: number
+  nextTargetSearchTimeMs: number
 }
 
 export interface ExperienceDropState {

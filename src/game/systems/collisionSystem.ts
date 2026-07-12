@@ -3,14 +3,6 @@ import type { WorldState } from '../runtime/worldState.ts'
 import { circlesIntersect } from './combatGeometry.ts'
 
 export function runCollisionSystem(world: WorldState): void {
-  world.enemySpatialHash.clear()
-
-  for (const enemy of world.enemies) {
-    if (enemy.phase === 'ACTIVE') {
-      world.enemySpatialHash.insert(enemy)
-    }
-  }
-
   for (const projectile of world.projectiles) {
     if (!projectile.isAlive) {
       continue
