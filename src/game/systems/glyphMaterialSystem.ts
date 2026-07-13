@@ -1,5 +1,4 @@
 import { getGlyphMaterialDefinition } from '../glyph/glyphMaterial.ts'
-import { GLYPH_CELL_STATE } from '../glyph/glyphStore.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 
 export function runGlyphMaterialSystem(
@@ -7,12 +6,15 @@ export function runGlyphMaterialSystem(
   deltaMs: number,
 ): void {
   for (const glyph of world.glyphStore.cells) {
-    if (glyph.state === GLYPH_CELL_STATE.ALIVE) {
-      world.glyphStore.stepMaterial(
-        glyph.id,
-        deltaMs,
-        getGlyphMaterialDefinition(glyph.material),
-      )
+    const ownerPhase = world.enemyById.get(glyph.ownerId)?.phase
+    if (ownerPhase === 'COLLAPSING' || ownerPhase === 'DEAD') {
+      continue
     }
+    world.glyphStore.stepMaterial(
+      glyph.id,
+      deltaMs,
+      getGlyphMaterialDefinition(glyph.material),
+      ownerPhase === 'REASSEMBLING',
+    )
   }
 }

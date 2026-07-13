@@ -15,6 +15,8 @@ import {
 import { runWeaponSystem } from '../systems/weaponSystem.ts'
 import { runBossSpawnSystem } from '../systems/bossSpawnSystem.ts'
 import { runGlyphMaterialSystem } from '../systems/glyphMaterialSystem.ts'
+import { runGlyphDiagnosticsSystem } from '../systems/glyphDiagnosticsSystem.ts'
+import { runSlimeSplitSystem } from '../systems/slimeSplitSystem.ts'
 import type { WorldState } from './worldState.ts'
 
 export function runSimulationStep(world: WorldState, deltaMs: number): void {
@@ -32,7 +34,9 @@ export function runSimulationStep(world: WorldState, deltaMs: number): void {
   runProjectileSystem(world, deltaMs)
   runCollisionSystem(world)
   runDamageSystem(world)
-  runDeathSystem(world)
+  runSlimeSplitSystem(world)
+  runDeathSystem(world, deltaMs)
   runDropSystem(world)
   runCleanupSystem(world)
+  runGlyphDiagnosticsSystem(world)
 }

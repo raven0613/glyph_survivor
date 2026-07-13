@@ -3,8 +3,24 @@ import type {
   ProjectileTrackingState,
 } from '../content/weapons/projectileTracking.ts'
 
-export type EnemyPhase = 'MATERIALIZING' | 'ACTIVE' | 'DEAD'
+export type EnemyPhase =
+  | 'MATERIALIZING'
+  | 'ACTIVE'
+  | 'REASSEMBLING'
+  | 'INACTIVE'
+  | 'COLLAPSING'
+  | 'DEAD'
 export type SpawnSide = 'top' | 'right' | 'bottom' | 'left'
+export type EnemyLayoutMode = 'AUTHORED' | 'COMPILED'
+export type BossEncounterPhase = 'ACTIVE' | 'COLLAPSING' | 'DEFEATED'
+
+export interface BossEncounterState {
+  readonly id: number
+  readonly rootBossId: number
+  phase: BossEncounterPhase
+  collapseRemainingMs: number
+  collapseDurationMs: number
+}
 
 export interface PlayerState {
   x: number
@@ -32,10 +48,17 @@ export interface EnemyState {
   velocityX: number
   velocityY: number
   behaviorElapsedMs: number
+  layoutMode: EnemyLayoutMode
   phase: EnemyPhase
   materializeRemainingMs: number
   materializeDurationMs: number
+  collapseRemainingMs: number
+  collapseDurationMs: number
   rewardCommitted: boolean
+  rewardEligible: boolean
+  encounterId: number | null
+  rootBossId: number | null
+  splitReferenceCellCount: number
   trackingLoad: number
 }
 
@@ -78,4 +101,12 @@ export interface InputState {
   pointerScreenY: number
   hasPointer: boolean
   pointerRevision: number
+}
+
+export function isEnemyCombatPhase(phase: EnemyPhase): boolean {
+  return phase === 'ACTIVE' || phase === 'REASSEMBLING'
+}
+
+export function isEnemyOutlineCollisionPhase(phase: EnemyPhase): boolean {
+  return isEnemyCombatPhase(phase) || phase === 'INACTIVE'
 }

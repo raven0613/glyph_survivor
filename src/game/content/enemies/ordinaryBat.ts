@@ -1,6 +1,7 @@
 import {
   CREATURE_LAYOUT_BEHAVIOR,
   CREATURE_MOVEMENT_BEHAVIOR,
+  CREATURE_SPLIT_BEHAVIOR,
   defineCreature,
   type CreatureDefinition,
 } from '../creatures/creatureDefinition.ts'
@@ -20,6 +21,8 @@ export const ORDINARY_BAT_BODY_INPUT: GlyphBodyInput = Object.freeze({
         slotId,
         role: 'BODY' as const,
         character,
+        topologyX: slotId,
+        topologyY: 0,
         localX: (slotId - 1) * BAT_GLYPH_SPACING,
         localY: 0,
         maxDurability: 1,
@@ -41,6 +44,11 @@ export function prepareOrdinaryBatDefinition(): CreatureDefinition {
     movementResponsiveness: 0,
     layoutBehaviorId: CREATURE_LAYOUT_BEHAVIOR.STATIC,
     layoutCycleDurationMs: 0,
+    authoredMorphStrength: 0,
+    compiledMorphStrength: 0,
+    splitBehaviorId: CREATURE_SPLIT_BEHAVIOR.NONE,
+    minimumIndependentCellRatio: 0,
     contactDamage: 1,
+    collapseDurationMs: 300,
   })
 }

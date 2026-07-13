@@ -7,7 +7,11 @@ import { circlesIntersect } from './combatGeometry.ts'
 
 export function runDropSystem(world: WorldState): void {
   for (const enemy of world.enemies) {
-    if (enemy.phase === 'DEAD' && !enemy.rewardCommitted) {
+    if (
+      enemy.phase === 'DEAD' &&
+      enemy.rewardEligible &&
+      !enemy.rewardCommitted
+    ) {
       spawnExperienceDrop(world, enemy.x, enemy.y)
       enemy.rewardCommitted = true
     }

@@ -20,8 +20,9 @@ These rules come directly from `spec.md` and must survive refactors:
 - A Glyph is an independently controllable gameplay Cell, not merely a decorative character.
 - Every Enemy, Elite, and Boss is composed of Glyph Cells. Glyph Cells are the smallest authoritative units of creature life and combat.
 - Damage always changes Glyph Cell durability. Creature HP and max HP are read-only aggregates derived from Glyph durability, never independent mutable combat state.
-- A creature dies only when all of its Glyph Cells are destroyed.
-- Local damage must visibly remove or weaken only the hit region of a body.
+- Every Enemy, Elite, and Boss Glyph follows the same `HEALTHY → DAMAGED → HUSK` life cycle. A Husk has zero current durability and cannot take further durability damage, but remains an authoritative, dimly rendered Cell in the creature's full gameplay outline and hitbox.
+- A creature starts `COLLAPSING` only when all of its Glyph Cells are Husks. Rewards and cleanup happen only after that whole-body collapse resolves.
+- Hit effects must remain local to the DamageShape's actual Impact Cells, including Husks. Durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk.
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
 - Weapon identity comes from target logic, attack shape, and destruction shape—not only numeric damage.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
@@ -247,6 +248,7 @@ Required behavior:
 - Menu pause stops gameplay time. Rendering may remain static or run at a deliberately reduced rate.
 - Repeated `start`, `pause`, `resume`, and `dispose` calls must have defined idempotent behavior.
 - Disposal removes DOM listeners, input listeners, ticker/RAF callbacks, subscriptions, scene nodes, and owned GPU resources.
+- `COLLAPSING` is an individual creature lifecycle phase, not a global game phase. A collapsing creature no longer participates in targeting, damage, or collision. The runtime owns collapse timing and allows reward/cleanup only after the whole-body collapse resolves, even if an explicit death rule hands its visual fragments to the renderer during that phase.
 
 For PixiJS v8:
 
@@ -287,7 +289,7 @@ Input sample
 → Targeting / Weapons
 → Projectile movement / Collision
 → Damage / Glyph material response
-→ Death / Boss split / Drops / XP
+→ Death detection / Boss split / Creature collapse / Drops / XP
 → Upgrade trigger
 → Cleanup
 → Snapshot publication
@@ -361,29 +363,48 @@ Preserve the distinction between:
 - offset/velocity: temporary deformation, knockback, scattering, and recovery;
 - current/max durability: authoritative local life and its initial capacity;
 - material: local hit response, displacement, recovery, and destruction rules;
-- state: at minimum `ALIVE` or `DESTROYED`;
+- state: exactly the living progression `HEALTHY`, `DAMAGED`, or `HUSK` for active creature Glyphs;
 - render alpha/tint: visual output derived from gameplay state.
+
+The state and durability invariants are:
+
+```text
+HEALTHY: currentDurability === maxDurability
+DAMAGED: 0 < currentDurability < maxDurability
+HUSK: currentDurability === 0
+```
+
+A Glyph with `maxDurability === 1` may transition directly from `HEALTHY` to `HUSK`; do not create hidden durability merely to force a visible `DAMAGED` step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at deliberately low alpha/tint so the creature silhouette does not shrink as it is consumed.
+
+Do not use one state check to answer unrelated questions. Define explicit Glyph predicates or queries for at least:
+
+- living/damageable: `HEALTHY` or `DAMAGED`;
+- outline/hitbox participation: `HEALTHY`, `DAMAGED`, or `HUSK` while the creature is active;
+- rendering: all three states until runtime-authorized cleanup;
+- living topology/connectivity: `HEALTHY` or `DAMAGED`, unless a content rule explicitly defines otherwise.
 
 Every Enemy, Elite, and Boss owns one or more Glyph Cells. Do not add an authoritative mutable `hp` field to these creature entities. If UI, AI, phase logic, or content needs creature HP, compute or cache a derived aggregate whose invalidation is owned by `GlyphStore`:
 
 ```text
-currentHp = sum(currentDurability for ALIVE glyphs owned by the creature)
+currentHp = sum(currentDurability for HEALTHY or DAMAGED glyphs owned by the creature)
 maxHp = sum(maxDurability for glyphs owned by the creature)
 ```
 
 Any cached aggregate is disposable derived data and must never diverge into a second damage model. Weapons, hazards, damage-over-time effects, phase transitions, and death rules must operate on or observe Glyph Cells; they must not subtract from creature HP directly.
 
-Local damage flow:
+Local damage flow separates impact visualization from durability targets:
 
-1. Weapon emits a `DamageShape` and impact parameters.
-2. Spatial index returns candidate Glyphs.
-3. Precise shape test filters candidates.
-4. Damage changes only those Glyph Cells' current durability.
-5. Material response changes offset/velocity/recovery behavior.
-6. A Glyph whose durability reaches zero enters `DESTROYED` and leaves a visible local hole.
-7. Content rules decide whether that same Glyph disappears, scatters, drops something, or remains eligible for explicit reassembly.
+1. Weapon emits a `DamageShape`, damage amount, and impact parameters.
+2. Spatial index returns candidate outline Glyphs; entity-level collision may be used only as a broad phase.
+3. A precise shape test produces the **Impact Cells**: every distinct `HEALTHY`, `DAMAGED`, or `HUSK` Cell intersecting the DamageShape.
+4. If there are no Impact Cells, the attack misses. If there are Impact Cells, local hit flash, particles, material displacement, and other impact effects apply only to those Cells, regardless of their life state.
+5. For each struck creature/body, select **Damage Targets** only from its living/damageable Cells. Prefer living Impact Cells first, then use a deterministic multi-source topology-frontier search outward from the struck region to fill the attack's target quota. The frontier may eventually reach a living Cell at the other end of the body; do not make an attack ineffective merely because its local Impact Cells are already Husks.
+6. A single-target/point attack has a quota of `1`. An area attack's per-body `targetQuota` equals the number of distinct outline Cells of that body in its Impact Cells. Each living Cell may be selected at most once by that attack; an unfilled quota is discarded rather than stacked repeatedly onto a surviving Cell.
+7. Apply durability damage only to the selected Damage Targets. A remote frontier target receives no local hit flash, particle, impulse, or other impact effect unless it was also an Impact Cell.
+8. A Glyph whose durability reaches zero enters `HUSK`, keeps its gameplay outline footprint, and becomes immune to further durability damage.
+9. When the owner has no living Glyphs, transition the creature to `COLLAPSING`; only after collapse resolution may death rewards and cleanup occur.
 
-Glyph damage is always local. Never implement it by subtracting creature HP first, damaging every Glyph uniformly, or reducing a whole creature container's alpha.
+Damage selection must be local-first and topology-driven, never random or transferred to another owner. Never implement damage by subtracting creature HP first, damaging every Glyph uniformly, reducing a whole creature container's alpha, or using render state as the hitbox source of truth.
 
 ## 11. Boss and material rules
 
@@ -432,7 +453,7 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 
 Content definitions may select strategies and parameters. They must not contain hidden mutable runtime state.
 
-Every damaging attack defines a `DamageShape`, its geometric dimensions such as radius/length/angle, and a damage amount. A point-like bullet damages only the directly hit Glyph; circles, lines/capsules, and cones may damage every Glyph inside their precise shape. Entity-level collision may be used only as a broad phase before Glyph-level queries and shape tests.
+Every damaging attack defines a `DamageShape`, its geometric dimensions such as radius/length/angle, and a damage amount. A shape intersects the full authoritative creature outline, including Husks. A point-like attack selects one living Damage Target from the struck body; area shapes derive each struck body's quota from the number of its distinct intersected outline Cells. In-shape living Cells are selected first, and deterministic topology-frontier selection fills any remaining quota. DamageShape intersection and durability-target selection are separate from local visual effects: only the actual in-shape Impact Cells receive those effects. Entity-level collision may be used only as a broad phase before Glyph-level queries and precise shape tests.
 
 Gameplay projectiles are the only projectile-like objects that participate in damage/collision. Visual particles are rendering-only and never cause damage.
 
@@ -481,7 +502,7 @@ Rendering rules:
 
 The visual representation may use an atlas texture internally. This does not violate the product rule that a Glyph is a living Cell: gameplay identity lives in `GlyphStore`, while the texture is only a batched rendering technique.
 
-Only destroyed Glyphs that are no longer recoverable may be converted into rendering-only fragments. A displaced, scattered, damageable, or reassembling Glyph retains its gameplay ID and authoritative state until the runtime explicitly resolves its mechanic.
+A Husk is not ordinary rendering debris: while its creature is active it remains an authoritative part of the full gameplay outline and must not be converted into a rendering-only fragment. Only after every owned Glyph is a Husk, the runtime explicitly enters `COLLAPSING`, and the creature is removed from targeting, damage, and combat collision may an explicit death rule hand the collapsing Glyph visuals to rendering-only fragments. The runtime still owns collapse timing and must not issue death rewards or cleanup before that presentation resolves. A displaced, scattered, damageable, reassembling, or active Husk Glyph retains its gameplay ID and authoritative state until the runtime explicitly resolves its mechanic.
 
 ## 14. Input rules
 
@@ -505,17 +526,19 @@ Initial engineering targets, subject to target-device validation:
 
 The agreed first-pass validation platform is a modern desktop or laptop browser at 1080p, with approximately four CPU cores, integrated graphics, and 8 GB RAM. Mobile is not guaranteed in the first release.
 
-Use these reproducible benchmark populations as engineering scenarios, not runtime hard caps:
+Use these reproducible benchmark populations as engineering scenarios, not runtime hard caps. Preserve the agreed living-Glyph populations and record retained Husks separately; this rule change does not silently establish a new total retained-Glyph budget:
 
-- Ordinary combat: approximately 300 creatures, 2,000 Alive Glyphs, 500 gameplay projectiles, and 2,000 visual particles.
-- Boss stress: approximately 500 creatures, 5,000 Alive Glyphs, 1,000 gameplay projectiles, and 5,000 visual particles.
+- Ordinary combat: approximately 300 creatures, 2,000 Living Glyphs (`HEALTHY` or `DAMAGED`), retained Husk count reported separately, 500 gameplay projectiles, and 2,000 visual particles.
+- Boss stress: approximately 500 creatures, 5,000 Living Glyphs (`HEALTHY` or `DAMAGED`), retained Husk count reported separately, 1,000 gameplay projectiles, and 5,000 visual particles.
+
+A concrete total retained-Glyph benchmark or hard cap requires explicit user agreement because Husk retention increases render and synchronization population without changing combat HP.
 
 Regular play targets 60 FPS. Reduced quality may target 30 FPS in the Boss stress scenario while fixed simulation semantics remain unchanged.
 
 Track at minimum:
 
 - frame time and simulation time;
-- active entity/Glyph/projectile/effect counts;
+- active entity/projectile/effect counts and Glyph counts split by `HEALTHY`, `DAMAGED`, and `HUSK`;
 - pool capacity and pool misses;
 - draw calls when practical;
 - capped/dropped simulation steps;
@@ -559,13 +582,18 @@ Testing is selective and risk-driven, not coverage-driven:
 - Do not use line, branch, function, or statement coverage percentages as delivery KPIs.
 - Do not add tests solely to increase coverage or mirror implementation details.
 - Integration, bridge, lifecycle, performance, and E2E tests are not required by default. Add them only when the user explicitly requests them.
-- Prefer pure tests for geometry, coordinate conversion, fixed-step calculations, seeded selection, collision and damage shapes, Glyph material rules, and Boss split invariants.
+- Prefer pure tests for geometry, coordinate conversion, fixed-step calculations, seeded selection, collision and damage shapes, Impact Cell/Damage Target separation, topology-frontier target selection, Glyph material and Husk rules, and Boss split invariants.
 - Rendering and orchestration code may remain without automated tests when extracting a pure function would make the design less clear.
 
 Use behavior-focused names, for example:
 
 ```text
-damages only glyphs inside the explosion radius
+keeps husks in the gameplay outline without damaging them again
+prioritizes living impact cells before topology-frontier targets
+uses the number of distinct outline impact cells as the area target quota
+applies hit effects only to impact cells, including husks
+does not emit local impact effects for topology-frontier-only damage targets
+starts collapse only after every owned glyph becomes a husk
 preserves total glyph hp when slime splits
 rejects spawn positions inside the camera viewport
 converts pointer coordinates through the inverse camera transform

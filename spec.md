@@ -116,7 +116,7 @@ SLIMESLIMESLIME...
 - Max Durability
 - Alpha
 - Material
-- State（Alive / Destroyed）
+- State（HEALTHY / DAMAGED / HUSK）
 - Rotation
 - Offset
 - Velocity
@@ -126,11 +126,11 @@ SLIMESLIMESLIME...
 
 - 受傷
 - 變淡
-- 被摧毀
+- 劣化為死亡殘骸（`HUSK`）
 - 擊退
 - 飛散
 - 旋轉
-- 消失
+- 在生命體整體崩解時飛散、淡出或消失
 - 回彈
 - 聚合
 - 分裂或轉移至其他 Entity，但仍保留同一個 Glyph 身分
@@ -141,10 +141,22 @@ SLIMESLIMESLIME...
 
 # Durability
 
-每個 Glyph Cell 都有自己的 Current Durability 與 Max Durability。生命體顯示或對外提供的 HP，只能由目前所有存活 Glyph Cell 的 Current Durability 加總得出：
+每個 Glyph Cell 都有自己的 Current Durability 與 Max Durability。所有 Enemy、Elite、Boss 的 Glyph Cell 統一經歷以下生命狀態：
 
 ```text
-Entity HP = sum(Alive Glyph Cell Current Durability)
+HEALTHY（完整）→ DAMAGED（受損）→ HUSK（死亡殘骸）
+```
+
+- `HEALTHY`：`Current Durability === Max Durability`。
+- `DAMAGED`：`0 < Current Durability < Max Durability`。
+- `HUSK`：`Current Durability === 0`，不再具有生命值，也不再接受傷害。
+
+`Max Durability = 1` 的 Cell 可以在第一次有效傷害後直接由 `HEALTHY` 進入 `HUSK`，不需要為了顯示 `DAMAGED` 階段而增加隱藏耐久。
+
+生命體顯示或對外提供的 HP，只能由 `HEALTHY` 與 `DAMAGED` Glyph Cell 的 Current Durability 加總得出：
+
+```text
+Entity HP = sum(HEALTHY and DAMAGED Glyph Cell Current Durability)
 Entity Max HP = sum(All Glyph Cell Max Durability)
 ```
 
@@ -156,60 +168,84 @@ Entity HP 是唯讀的衍生摘要，不是另一份可獨立修改的權威狀�
 
 小怪：
 
-一個字母通常具有 1 點 Durability。以 `BAT` 為例，`B`、`A`、`T` 各自具有 1 點 Durability；普通子彈命中並摧毀 `B` 後，身體會局部剩下 `AT`。
+一個字母通常具有 1 點 Durability。以 `BAT` 為例，`B`、`A`、`T` 各自具有 1 點 Durability；普通子彈命中 `B` 後，`B` 直接由 `HEALTHY` 變成低亮度的 `HUSK`，`A`、`T` 仍保持存活。`B` 不會從輪廓或碰撞體積中消失。
 
 Boss：
 
 Boss 的 Glyph 可以具有較高 Durability。例如某個 Max Durability 為 5 的 Cell，其受傷亮度階段可以是：
 
-100% → 80% → 60% → 40% → 20% → Destroyed
+100% `HEALTHY` → 80% `DAMAGED` → 60% → 40% → 20% → `HUSK`
 
 因此 Boss 的耐久來自 Glyph Cell 本身，可以非常耐打，同時仍然保持「慢慢被蠶食」的視覺效果。
 
-當 Glyph Cell 的 Current Durability 降至零時，它進入 Destroyed 狀態。依內容機制，它可以消失、飛散、生成掉落物，或由特定 Boss 機制以同一個 Glyph 身分重新聚合；任何恢復 Durability 的行為都必須是明確的治療或重組規則，不能偷偷建立額外 HP。
+當 Glyph Cell 的 Current Durability 降至零時，它進入 `HUSK` 狀態。`HUSK` 必須保留極低亮度、Gameplay Glyph ID、Owner、Max Durability、Layout Anchor、變形資料與原本的輪廓位置。`HUSK` 不接受更多 Durability 傷害，但仍是生命體完整輪廓 hitbox 的一部分，也可以對命中播放局部閃光、材質位移與粒子效果。`HEALTHY`／`DAMAGED` Cell 的任何 Durability 恢復都必須來自明確的治療規則，不能偷偷建立額外 HP；`HUSK` 可以隨明確的 body 重組、形變或分裂規則重新排列，但不能恢復 Durability 或復活。
 
-當一個生命體的所有 Glyph Cell 都進入 Destroyed 狀態時，該生命體死亡。死亡不是 Entity HP 欄位觸發的另一套規則。
+`HEALTHY`、`DAMAGED`、`HUSK` 都參與生命體的完整輪廓碰撞，因此玩家不會在大型怪物接近死亡時只剩一個可命中的字母。生命體仍在戰鬥中時，不得把 `HUSK` 提前轉成 rendering-only fragment，或因為它沒有 Durability 就從 hitbox、Glyph Store 或 Owner 關係中移除。
+
+當一個生命體的所有 Glyph Cell 都進入 `HUSK` 狀態時，該生命體先進入 `COLLAPSING`。崩解期間停止成為攻擊目標、停止接受傷害並移除戰鬥碰撞，整體輪廓才開始飛散與淡出；崩解演出完成後才正式死亡、發放獎勵並清理 Glyph 與 Entity。死亡不是 Entity HP 欄位觸發的另一套規則。
 
 ---
 
 # Damage System
 
-玩家的武器不是對 Enemy、Elite 或 Boss 的 Entity HP 造成傷害，而是以 Damage Shape 找出命中的 Glyph Cell，並降低各自的 Current Durability：
+玩家的武器不是對 Enemy、Elite 或 Boss 的 Entity HP 造成傷害，而是以 Damage Shape 找出命中的完整 Glyph 輪廓，再從中決定實際降低 Current Durability 的 Glyph Cell：
 
 ```text
 Glyph Cell Current Durability -= Damage Amount
 ```
 
-每種武器都必須明確定義 Damage Shape、Damage Radius（或對應的幾何尺寸）與 Damage Amount。武器差異首先來自命中哪些 Glyph，以及留下什麼破壞形狀，而不只是單一 Damage 數值。
+每種武器都必須明確定義 Damage Shape、Damage Radius（或對應的幾何尺寸）、Damage Amount 與單次命中的 target quota 規則。武器差異首先來自命中哪些 Glyph，以及留下什麼壞死形狀，而不只是單一 Damage 數值。
 
-- 普通子彈：Point 或近似 Radius = 0，只傷害實際命中的 Glyph Cell。
-- 爆炸：Circle / Large Radius，同時傷害範圍內所有 Glyph Cell。
-- Railgun：Line 或 Capsule，沿路徑傷害所有命中的 Glyph Cell。
-- Scatter Shot：Cone，傷害錐形範圍內所有 Glyph Cell。
+- 普通子彈：Point 或近似 Radius = 0，`targetQuota = 1`。
+- 爆炸：Circle / Large Radius，target quota 等於範圍內命中的不同輪廓 Cell 數。
+- Railgun：Line 或 Capsule，target quota 等於沿路徑命中的不同輪廓 Cell 數。
+- Scatter Shot：Cone，target quota 等於錐形範圍內命中的不同輪廓 Cell 數。
 
-Damage Shape 必須在 Glyph Cell 層級做精確命中判定；不能先扣 Entity HP，再用視覺效果假裝局部字母受傷。
+Damage Shape 必須在 Glyph Cell 層級做精確命中判定；不能先扣 Entity HP，再用視覺效果假裝局部字母受傷。每次命中必須明確拆成兩組 Cell：
+
+### Impact Cells
+
+Impact Cells 是 Damage Shape 幾何範圍內的所有 Glyph Cell，包含 `HEALTHY`、`DAMAGED` 與 `HUSK`。它們負責：
+
+- 判定攻擊是否命中完整輪廓 hitbox。
+- 在實際命中位置播放局部閃光、材質位移、回彈與粒子效果。
+- 提供 AoE 的 target quota；同一個輪廓 Cell 在一次攻擊中只計算一次。
+
+`HUSK` 可以接受上述受擊表現，但其 Current Durability 必須維持為零。
+
+### Damage Targets
+
+Damage Targets 是本次實際降低 Current Durability 的 `HEALTHY` 或 `DAMAGED` Glyph Cell。對每個被 Damage Shape 命中的生命體，選擇規則為：
+
+1. 單體／Point 攻擊的 `targetQuota = 1`；AoE 的 `targetQuota = Damage Shape 內命中的不同輪廓 Cell 數量`。
+2. 優先選擇 Damage Shape 內的 `HEALTHY`／`DAMAGED` Cells。
+3. 若仍未補足 quota，從被命中的壞死區沿同一 body 的 canonical Glyph topology，依拓撲距離選擇最近的 `HEALTHY`／`DAMAGED` 邊界 Cells。即使剩餘存活 Cell 已位於怪物另一端，只要攻擊命中輪廓 hitbox，仍要正常扣除其 Durability。
+4. 每個 `HEALTHY`／`DAMAGED` Cell 在同一次攻擊中最多成為一次 Damage Target；若整個 body 的存活 Cells 少於 quota，就只傷害仍存活的不同 Cells，不把剩餘次數重複疊到最後一格。
+5. 等距候選使用穩定的 Glyph ID 次序裁決，確保結果可重現，不得隨機把傷害轉移到無關位置。
+
+Damage Shape 外因 quota 補位而受傷的遠端 Damage Targets 只改變 Durability 與生命狀態；受擊閃光、材質位移、粒子及其他命中特效仍只作用於 Damage Shape 內的 Impact Cells，無論那些 Impact Cells 是存活還是 `HUSK`。
 
 ---
 
 # Local Damage
 
-Glyph Damage 永遠必須是局部的。例如：
+Glyph Damage 必須從命中的局部區域開始，並沿著壞死邊界逐步擴張。例如：
 
 玩家一直攻擊 Boss 左肩。只有左肩開始：
 
-- 字母變淡
-- 字母消失
-- 被轟出洞
+- 存活字母逐步變淡並成為 `HUSK`
+- `HUSK` 以極低亮度保留局部壞死痕跡
+- 壞死區沿 canonical topology 向最近的存活邊界蠶食
 
-而不是整隻 Boss 一起變透明。
+而不是整隻 Boss 一起變透明，也不是在未命中的隨機位置產生傷害。若命中範圍已全部壞死，傷害仍依上述 quota 與 topology 規則傳到同一 body 最近的存活邊界，直到必要時蠶食到怪物另一端；但所有受擊特效仍留在實際 Damage Shape 內。
 
-玩家需要感受到："我正在把這裡打穿。"
+玩家需要感受到："我正在從這裡把它逐步蠶食。"
 
 ---
 
 # Material System
 
-每個 Glyph Cell 都具有 Material。生命體可以提供預設 Material，但實際受擊反應屬於 Glyph Cell；Material 決定 Durability、擊退、飛散、回彈、聚合、破壞與恢復行為。
+每個 Glyph Cell 都具有 Material。生命體可以提供預設 Material，但實際受擊反應屬於 Glyph Cell；Material 決定 Durability、擊退、飛散、回彈、聚合、壞死與恢復行為，也必須定義 `HUSK` 的低亮度表現。`HUSK` 不再承受 Durability 傷害，但仍可依其 Material 對局部命中產生位移、回彈與視覺反應。
 
 例如：
 
@@ -237,7 +273,7 @@ Boss 必須具有重量感。不是單純 HP 減少。
 World Glyph Position = Creature Root Position + Layout Anchor + Deformation Offset
 ```
 
-碰撞與後續攻擊必須使用包含 Deformation Offset 的實際位置。Alive Glyph 在受力結束後回到當前 Layout Anchor；Creature 移動或形變時 Anchor 可以持續更新。Destroyed Glyph 不會因回彈而自動復活或補洞。Renderer 可以疊加不影響主要 Glyph 位置的微小閃光或震動，但不能用它取代權威擊退。
+碰撞與後續攻擊必須使用包含 Deformation Offset 的實際位置。`HEALTHY`、`DAMAGED` 與 `HUSK` Glyph 在受力結束後都回到當前 Layout Anchor；Creature 移動或形變時 Anchor 可以持續更新。`HUSK` 不會因回彈而自動復活，也不會因此恢復 Durability。Renderer 可以疊加不影響主要 Glyph 位置的微小閃光或震動，但不能用它取代權威擊退。
 
 ---
 
@@ -293,7 +329,7 @@ SNAKE
 
 SLIME
 
-史萊姆不是依 Entity HP 門檻憑空分裂成兩隻。局部破壞切斷 canonical Glyph topology 後，足夠大的 Alive connected components 才能成為新的 Entity；未達內容門檻的小塊仍保留 Gameplay Glyph 身分，並重新聚合到某個 qualifying／最終 body。暫時擊退或形變不會單獨觸發分裂。
+史萊姆不是依 Entity HP 門檻憑空分裂成兩隻。局部壞死切斷 canonical Glyph topology 後，足夠大的 `HEALTHY`／`DAMAGED` connected components 才能成為新的 Entity；`HUSK` 保留 Gameplay Glyph 身分與完整輪廓，但不連接存活 topology。未達內容門檻的存活小塊與所有 `HUSK` 仍必須依明確內容規則唯一歸屬並重新聚合到某個 qualifying／最終 body。暫時擊退或形變不會單獨觸發分裂。
 
 注意：不是生成新 HP。
 只是：原本所有 Glyph Cell 重新分配到新的 Entity。分裂必須同時滿足：
@@ -301,7 +337,7 @@ SLIME
 - Total Glyph Count 不變。
 - Total Current Durability 不變。
 - Total Max Durability 不變。
-- 每個原始 Glyph ID 恰好屬於一個分裂後的 Entity，不得複製或遺失。
+- 每個原始 Glyph ID（包含 `HUSK`）恰好屬於一個分裂後的 Entity，不得複製或遺失。
 
 因此玩家不會因為 Boss 分裂而需要重新造成更多傷害。
 
@@ -325,7 +361,7 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 散彈 ：打一大片。
 
-爆炸：炸出大洞。
+爆炸：在命中範圍留下大片低亮 `HUSK`，並沿壞死邊界持續蠶食。
 
 雷電：跳躍破壞。
 
@@ -496,7 +532,7 @@ GOLEM
    - 雷電：沿鄰接關係同時傷害多個 Glyph Cell。
    - 黑洞：吸引、位移並扭曲 Glyph Cell。
 
-8. 血量來自 Glyph Cell，傷害作用於 Glyph Cell，武器摧毀 Glyph Cell，Boss 分裂只重新分配 Glyph Cell；生命體死亡就是其 Glyph Cell 全部被摧毀。
+8. 血量來自 Glyph Cell，傷害作用於 Glyph Cell，武器使 Glyph Cell 逐步劣化為 `HUSK`，Boss 分裂只重新分配 Glyph Cell；生命體在全部 Glyph Cell 成為 `HUSK` 後進入整體崩解，崩解完成才死亡與清理。
 
 # 企劃補充案：代碼概念升級與視覺可讀性優化
 
@@ -547,8 +583,8 @@ GOLEM
 
 ### 3. 動態動能與粒子淡出 (Velocity-Based Alpha fading)
 
-- **非 Gameplay 粒子不擋視線：** 只有已進入 Destroyed 狀態且不再參與重組的 Boss 字母碎片，才可在飛散時移除傷害判定並轉為純視覺粒子。仍存活、可受傷或可重新聚合的 Glyph Cell 必須保留 Gameplay 身分，不得因渲染效果而提前失去權威狀態。
-- **快速淡出：** 這些飛散的碎片在離開 Boss 核心主體後，其透明度（Alpha）應在 0.2 至 0.5 秒內呈指數型（Ease-out）變淡並消失，避免碎裂的英文字母長時間堆積在畫面上干擾走位判斷。
+- **非 Gameplay 粒子不擋視線：** `HEALTHY`、`DAMAGED` 與 `HUSK` Glyph 在生命體仍處於戰鬥狀態時都必須保留 Gameplay 身分；`HUSK` 不得因為 Durability 為零而提前移除 hitbox 或轉為純視覺粒子。只有生命體的全部 Glyph 都成為 `HUSK`、Runtime 明確進入 `COLLAPSING` 並移除該生命體的戰鬥碰撞後，崩解中的 Glyph 才可依死亡規則轉為 rendering-only fragments。
+- **快速淡出：** `COLLAPSING` 產生的飛散碎片在離開生命體核心主體後，其透明度（Alpha）應在 0.2 至 0.5 秒內呈指數型（Ease-out）變淡並消失，避免碎裂的英文字母長時間堆積在畫面上干擾走位判斷。崩解演出完成後才執行正式死亡獎勵與清理。
 
 ### 4. 相對靜止與動態對比 (Motion Contrast)
 

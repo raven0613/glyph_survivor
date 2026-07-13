@@ -15,6 +15,7 @@ import {
 import { GAME_CONFIG } from './gameConfig.ts'
 import type { ProjectileTrackingProfile } from '../content/weapons/projectileTracking.ts'
 import type {
+  BossEncounterState,
   EnemyState,
   ExperienceDropState,
   InputState,
@@ -32,6 +33,9 @@ export interface WorldDiagnostics {
   targetSearchCount: number
   targetReacquireCount: number
   glyphPoolMisses: number
+  healthyGlyphCount: number
+  damagedGlyphCount: number
+  huskGlyphCount: number
 }
 
 export interface WorldState {
@@ -45,6 +49,8 @@ export interface WorldState {
   readonly enemies: EnemyState[]
   readonly enemyPool: EnemyState[]
   readonly enemyById: Map<number, EnemyState>
+  readonly bossEncounters: Map<number, BossEncounterState>
+  readonly topologyDirtyOwnerIds: Set<number>
   readonly projectiles: ProjectileState[]
   readonly projectilePool: ProjectileState[]
   readonly drops: ExperienceDropState[]
@@ -63,6 +69,7 @@ export interface WorldState {
   nextEntityId: number
   targetSearchCursor: number
   activeEnemyCount: number
+  maximumEnemyQueryRadius: number
   firstWaveStarted: boolean
   pendingBossSpawnSide: SpawnSide | null
   slimeBossSpawned: boolean
@@ -101,6 +108,9 @@ export function createWorldState(
     targetSearchCount: 0,
     targetReacquireCount: 0,
     glyphPoolMisses: 0,
+    healthyGlyphCount: 0,
+    damagedGlyphCount: 0,
+    huskGlyphCount: 0,
   }
 
   return {
@@ -125,6 +135,8 @@ export function createWorldState(
     enemies: [],
     enemyPool: [],
     enemyById: new Map(),
+    bossEncounters: new Map(),
+    topologyDirtyOwnerIds: new Set(),
     projectiles: [],
     projectilePool: [],
     drops: [],
@@ -143,6 +155,7 @@ export function createWorldState(
     nextEntityId: 1,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
+    maximumEnemyQueryRadius: content.maximumEnemyBroadPhaseRadius,
     firstWaveStarted: false,
     pendingBossSpawnSide: null,
     slimeBossSpawned: false,
@@ -178,13 +191,22 @@ export function spawnEnemy(
       bodySlotId: slot.slotId,
       character: slot.character,
       glyphFrame: slot.glyphFrame,
+      baseCharacter: slot.baseCharacter,
+      baseGlyphFrame: slot.baseGlyphFrame,
+      role: slot.role,
+      topologyX: slot.topologyX,
+      topologyY: slot.topologyY,
       localX: slot.localX,
       localY: slot.localY,
       maxDurability: slot.maxDurability,
       collisionRadius: slot.collisionRadius,
       scale: slot.scale,
       material: slot.material,
-      baseTint: getGlyphDurabilityTint(material, slot.maxDurability),
+      baseTint: getGlyphDurabilityTint(
+        material,
+        slot.maxDurability,
+        slot.role,
+      ),
     })
   }
   Object.assign(activeEnemy, {
@@ -199,15 +221,79 @@ export function spawnEnemy(
     velocityX: 0,
     velocityY: 0,
     behaviorElapsedMs: 0,
+    layoutMode: 'AUTHORED' as const,
     phase: 'MATERIALIZING' as const,
     materializeRemainingMs: materializeDurationMs,
     materializeDurationMs,
+    collapseRemainingMs: definition.collapseDurationMs,
+    collapseDurationMs: definition.collapseDurationMs,
     rewardCommitted: false,
+    rewardEligible: true,
+    encounterId: definition.category === 'BOSS' ? enemyId : null,
+    rootBossId: definition.category === 'BOSS' ? enemyId : null,
+    splitReferenceCellCount:
+      definition.category === 'BOSS' ? definition.body.slots.length : 0,
     trackingLoad: 0,
   })
   world.enemies.push(activeEnemy)
   world.enemyById.set(activeEnemy.id, activeEnemy)
+  if (definition.category === 'BOSS') {
+    world.bossEncounters.set(enemyId, {
+      id: enemyId,
+      rootBossId: enemyId,
+      phase: 'ACTIVE',
+      collapseRemainingMs: definition.collapseDurationMs,
+      collapseDurationMs: definition.collapseDurationMs,
+    })
+  }
   return activeEnemy
+}
+
+/** Creates a new Creature owner for existing Glyphs without creating life. */
+export function spawnSplitEnemy(
+  world: WorldState,
+  source: EnemyState,
+  x: number,
+  y: number,
+): EnemyState {
+  if (source.encounterId === null || source.rootBossId === null) {
+    throw new Error(`Enemy ${source.id} does not belong to a Boss encounter.`)
+  }
+
+  const pooledEnemy = world.enemyPool.pop()
+  if (!pooledEnemy) {
+    world.diagnostics.enemyPoolMisses += 1
+  }
+  const enemy = pooledEnemy ?? ({} as EnemyState)
+  const id = getNextEntityId(world)
+  Object.assign(enemy, {
+    id,
+    definitionId: source.definitionId,
+    x,
+    y,
+    previousX: x,
+    previousY: y,
+    radius: source.radius,
+    speed: source.speed,
+    velocityX: 0,
+    velocityY: 0,
+    behaviorElapsedMs: 0,
+    layoutMode: 'COMPILED' as const,
+    phase: 'REASSEMBLING' as const,
+    materializeRemainingMs: 0,
+    materializeDurationMs: 0,
+    collapseRemainingMs: source.collapseDurationMs,
+    collapseDurationMs: source.collapseDurationMs,
+    rewardCommitted: true,
+    rewardEligible: false,
+    encounterId: source.encounterId,
+    rootBossId: source.rootBossId,
+    splitReferenceCellCount: source.splitReferenceCellCount,
+    trackingLoad: 0,
+  })
+  world.enemies.push(enemy)
+  world.enemyById.set(id, enemy)
+  return enemy
 }
 
 export function spawnProjectile(

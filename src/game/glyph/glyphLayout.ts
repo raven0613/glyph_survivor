@@ -7,6 +7,9 @@ export interface GlyphBodySlotInput {
   readonly slotId: number
   readonly role: GlyphBodySlotRole
   readonly character: string
+  readonly baseCharacter?: string
+  readonly topologyX: number
+  readonly topologyY: number
   readonly localX: number
   readonly localY: number
   readonly maxDurability: number
@@ -35,6 +38,8 @@ export interface GlyphBodyInput {
 
 export interface GlyphBodySlotDefinition extends GlyphBodySlotInput {
   readonly glyphFrame: number
+  readonly baseCharacter: string
+  readonly baseGlyphFrame: number
 }
 
 export type GlyphPoseAnchor = Readonly<GlyphPoseAnchorInput>
@@ -124,6 +129,7 @@ export function defineGlyphBody(input: GlyphBodyInput): GlyphBodyDefinition {
   }
 
   const occupiedCoordinates = new Set<string>()
+  const occupiedTopologyCoordinates = new Set<string>()
   const slotIds = new Set<number>()
   let broadPhaseRadius = 0
   const slots = input.slots.map((slot) => {
@@ -135,6 +141,15 @@ export function defineGlyphBody(input: GlyphBodyInput): GlyphBodyDefinition {
 
     requireFiniteNumber(slot.localX, 'localX')
     requireFiniteNumber(slot.localY, 'localY')
+    requireFiniteNumber(slot.topologyX, 'topologyX')
+    requireFiniteNumber(slot.topologyY, 'topologyY')
+    const topologyCoordinateKey = `${slot.topologyX},${slot.topologyY}`
+    if (occupiedTopologyCoordinates.has(topologyCoordinateKey)) {
+      throw new Error(
+        `Glyph body ${input.id} has duplicate topology coordinate ${topologyCoordinateKey}.`,
+      )
+    }
+    occupiedTopologyCoordinates.add(topologyCoordinateKey)
     const coordinateKey = `${slot.localX},${slot.localY}`
     if (occupiedCoordinates.has(coordinateKey)) {
       throw new Error(
@@ -153,9 +168,12 @@ export function defineGlyphBody(input: GlyphBodyInput): GlyphBodyDefinition {
       Math.hypot(slot.localX, slot.localY) + slot.collisionRadius,
     )
 
+    const baseCharacter = slot.baseCharacter ?? slot.character
     return Object.freeze({
       ...slot,
       glyphFrame: getPrintableAsciiGlyphFrame(slot.character),
+      baseCharacter,
+      baseGlyphFrame: getPrintableAsciiGlyphFrame(baseCharacter),
     })
   })
 

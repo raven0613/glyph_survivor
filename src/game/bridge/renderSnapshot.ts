@@ -1,8 +1,19 @@
 import { calculateCameraView } from '../runtime/cameraTransform.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
-import { GLYPH_CELL_STATE } from '../glyph/glyphStore.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
+import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
+import {
+  getGlyphMaterialDefinition,
+  type GlyphMaterialDefinition,
+} from '../glyph/glyphMaterial.ts'
+import { calculateGlyphHitPresentation } from './glyphHitPresentation.ts'
+
+const COLLAPSE_SCATTER_DISTANCE = 42
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+const MAX_BURST_PARTICLES_PER_GLYPH = 8
+const MAX_ACTIVE_IMPACT_PARTICLES = 192
+const HIT_BURST_SPREAD_RADIANS = 1.4
 
 export interface RenderGlyph {
   id: number
@@ -22,6 +33,7 @@ export interface RenderSnapshot {
   playerX: number
   playerY: number
   readonly enemies: RenderGlyph[]
+  readonly effects: RenderGlyph[]
   readonly projectiles: RenderGlyph[]
   readonly drops: RenderGlyph[]
 }
@@ -74,9 +86,68 @@ export function createRenderSnapshot(): RenderSnapshot {
     playerX: GAME_CONFIG.worldWidth / 2,
     playerY: GAME_CONFIG.worldHeight / 2,
     enemies: [],
+    effects: [],
     projectiles: [],
     drops: [],
   }
+}
+
+function writeImpactEffects(
+  snapshot: RenderSnapshot,
+  startIndex: number,
+  glyphId: number,
+  x: number,
+  y: number,
+  velocityX: number,
+  velocityY: number,
+  material: GlyphMaterialDefinition,
+  intensity: number,
+): number {
+  if (intensity <= 0 || startIndex >= MAX_ACTIVE_IMPACT_PARTICLES) {
+    return startIndex
+  }
+
+  const speed = Math.hypot(velocityX, velocityY)
+  const baseAngle =
+    speed > 0.001
+      ? Math.atan2(velocityY, velocityX)
+      : glyphId * GOLDEN_ANGLE
+  const elapsedProgress = 1 - intensity ** 2
+  const particleCount = Math.min(
+    material.hitBurstParticleCount,
+    MAX_BURST_PARTICLES_PER_GLYPH,
+    MAX_ACTIVE_IMPACT_PARTICLES - startIndex,
+  )
+
+  for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+    const spreadRatio =
+      particleCount === 1 ? 0 : particleIndex / (particleCount - 1) - 0.5
+    const angle = baseAngle + spreadRatio * HIT_BURST_SPREAD_RADIANS
+    const distanceScale = 0.8 + (particleIndex % 3) * 0.1
+    const distance =
+      material.hitBurstDistance *
+      (0.12 + elapsedProgress * 0.88) *
+      distanceScale
+    const character =
+      material.hitBurstCharacters[
+        particleIndex % material.hitBurstCharacters.length
+      ]
+
+    writeGlyph(
+      snapshot.effects,
+      startIndex,
+      glyphId * MAX_BURST_PARTICLES_PER_GLYPH + particleIndex,
+      getPrintableAsciiGlyphFrame(character),
+      x + Math.cos(angle) * distance,
+      y + Math.sin(angle) * distance,
+      material.hitBurstScale * (0.75 + intensity * 0.25),
+      intensity,
+      material.hitBurstTint,
+    )
+    startIndex += 1
+  }
+
+  return startIndex
 }
 
 export function writeRenderSnapshot(
@@ -108,6 +179,7 @@ export function writeRenderSnapshot(
   snapshot.playerY = playerY
 
   let enemyCount = 0
+  let effectCount = 0
   for (const enemy of world.enemies) {
     if (enemy.phase === 'DEAD') {
       continue
@@ -115,18 +187,33 @@ export function writeRenderSnapshot(
 
     const rootX = interpolate(enemy.previousX, enemy.x, interpolationAlpha)
     const rootY = interpolate(enemy.previousY, enemy.y, interpolationAlpha)
-    const progress =
+    const materializeProgress =
       enemy.phase === 'MATERIALIZING'
         ? 1 - enemy.materializeRemainingMs / enemy.materializeDurationMs
         : 1
+    const collapseProgress =
+      enemy.phase === 'COLLAPSING'
+        ? 1 - enemy.collapseRemainingMs / enemy.collapseDurationMs
+        : 0
 
     for (const glyph of world.glyphStore.getOwnerGlyphs(enemy.id)) {
-      if (glyph.state !== GLYPH_CELL_STATE.ALIVE) {
-        continue
-      }
-
-      const x = getGlyphWorldX(rootX, glyph)
-      const y = getGlyphWorldY(rootY, glyph)
+      const material = getGlyphMaterialDefinition(glyph.material)
+      const hitPresentation = calculateGlyphHitPresentation({
+        baseAlpha: glyph.alpha,
+        baseScale: glyph.scale,
+        baseTint: glyph.baseTint,
+        hitTint: material.hitTint,
+        hitFlashRemainingMs: glyph.hitFlashRemainingMs,
+        hitFlashDurationMs: material.hitFlashDurationMs,
+        hitPulseScale: material.hitPulseScale,
+        hitAlphaFloor: material.hitAlphaFloor,
+      })
+      const collapseAngle = glyph.id * GOLDEN_ANGLE
+      const collapseDistance = collapseProgress * COLLAPSE_SCATTER_DISTANCE
+      const x =
+        getGlyphWorldX(rootX, glyph) + Math.cos(collapseAngle) * collapseDistance
+      const y =
+        getGlyphWorldY(rootY, glyph) + Math.sin(collapseAngle) * collapseDistance
       if (!isVisible(x, y, camera)) {
         continue
       }
@@ -138,14 +225,31 @@ export function writeRenderSnapshot(
         glyph.glyphFrame,
         x,
         y,
-        progress * glyph.scale,
-        progress * glyph.alpha,
-        glyph.tint,
+        materializeProgress *
+          hitPresentation.scale *
+          (1 - collapseProgress * 0.7),
+        materializeProgress *
+          hitPresentation.alpha *
+          (1 - collapseProgress),
+        hitPresentation.tint,
       )
       enemyCount += 1
+
+      effectCount = writeImpactEffects(
+        snapshot,
+        effectCount,
+        glyph.id,
+        x,
+        y,
+        glyph.velocityX,
+        glyph.velocityY,
+        material,
+        hitPresentation.intensity,
+      )
     }
   }
   snapshot.enemies.length = enemyCount
+  snapshot.effects.length = effectCount
 
   let projectileCount = 0
   for (const projectile of world.projectiles) {

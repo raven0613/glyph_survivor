@@ -54,4 +54,10 @@ test('composes Slime movement and layout behavior without species switches', () 
     slime.layoutBehaviorId,
     CREATURE_LAYOUT_BEHAVIOR.SLIME_MORPH,
   )
+  assert.equal(
+    Math.ceil(slime.body.slots.length * slime.minimumIndependentCellRatio),
+    15,
+  )
+  assert.equal(slime.authoredMorphStrength, 0.75)
+  assert.equal(slime.compiledMorphStrength, 1.4)
 })

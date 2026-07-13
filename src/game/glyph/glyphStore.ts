@@ -1,91 +1,32 @@
-import type { GlyphMaterialDefinition, GlyphMaterialId } from './glyphMaterial.ts'
-
-export const GLYPH_CELL_STATE = Object.freeze({
-  ALIVE: 'ALIVE',
-  DESTROYED: 'DESTROYED',
-} as const)
-
-export type GlyphCellState =
-  (typeof GLYPH_CELL_STATE)[keyof typeof GLYPH_CELL_STATE]
+import { getPrintableAsciiGlyphFrame } from './glyphFrame.ts'
+import type { GlyphBodySlotRole } from './glyphLayout.ts'
+import {
+  getGlyphDurabilityTint,
+  getGlyphMaterialDefinition,
+  type GlyphMaterialDefinition,
+} from './glyphMaterial.ts'
+import {
+  GLYPH_CELL_STATE,
+  isGlyphLivingState,
+  type CreateGlyphInput,
+  type CreateGlyphStoreOptions,
+  type GlyphCell,
+  type GlyphStore,
+  type OwnerDurability,
+} from './glyphCell.ts'
 
 export { GLYPH_MATERIAL } from './glyphMaterial.ts'
 export type { GlyphMaterialId } from './glyphMaterial.ts'
-
-export interface GlyphCell {
-  readonly id: number
-  readonly ownerId: number
-  readonly bodySlotId: number
-  readonly character: string
-  readonly glyphFrame: number
-  readonly localX: number
-  readonly localY: number
-  readonly currentDurability: number
-  readonly maxDurability: number
-  readonly collisionRadius: number
-  readonly alpha: number
-  readonly baseTint: number
-  readonly tint: number
-  readonly hitFlashRemainingMs: number
-  readonly material: GlyphMaterialId
-  readonly state: GlyphCellState
-  readonly rotation: number
-  readonly offsetX: number
-  readonly offsetY: number
-  readonly velocityX: number
-  readonly velocityY: number
-  readonly scale: number
-  readonly flags: number
-}
-
-export interface OwnerDurability {
-  readonly currentDurability: number
-  readonly maxDurability: number
-  readonly aliveGlyphCount: number
-  readonly glyphCount: number
-}
-
-export interface CreateGlyphInput {
-  readonly ownerId: number
-  readonly bodySlotId: number
-  readonly character: string
-  readonly glyphFrame: number
-  readonly maxDurability: number
-  readonly collisionRadius: number
-  readonly scale: number
-  readonly material: GlyphMaterialId
-  readonly baseTint: number
-  readonly localX?: number
-  readonly localY?: number
-}
-
-export interface GlyphStore {
-  readonly cells: readonly GlyphCell[]
-  readonly poolMisses: number
-  createGlyph(input: CreateGlyphInput): GlyphCell
-  getById(glyphId: number): GlyphCell | undefined
-  getOwnerGlyphs(ownerId: number): readonly GlyphCell[]
-  getOwnerDurability(ownerId: number): Readonly<OwnerDurability> | undefined
-  isOwnerDestroyed(ownerId: number): boolean
-  applyDamage(glyphId: number, amount: number): number
-  applyMaterialHit(
-    glyphId: number,
-    directionX: number,
-    directionY: number,
-    material: GlyphMaterialDefinition,
-    baseTint: number,
-  ): void
-  stepMaterial(
-    glyphId: number,
-    deltaMs: number,
-    material: GlyphMaterialDefinition,
-  ): void
-  setGlyphLocalPosition(glyphId: number, localX: number, localY: number): void
-  removeOwner(ownerId: number): void
-}
-
-export interface CreateGlyphStoreOptions {
-  readonly onPoolMiss?: () => void
-}
+export { GLYPH_CELL_STATE } from './glyphCell.ts'
+export { isGlyphLivingState } from './glyphCell.ts'
+export type {
+  CreateGlyphInput,
+  CreateGlyphStoreOptions,
+  GlyphCell,
+  GlyphCellState,
+  GlyphStore,
+  OwnerDurability,
+} from './glyphCell.ts'
 
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] }
 type MutableGlyphCell = Mutable<GlyphCell>
@@ -168,6 +109,13 @@ export function createGlyphStore({
       bodySlotId: input.bodySlotId,
       character: input.character,
       glyphFrame,
+      baseCharacter: input.baseCharacter,
+      baseGlyphFrame: input.baseGlyphFrame,
+      role: input.role,
+      topologyX: input.topologyX,
+      topologyY: input.topologyY,
+      layoutBaseX: localX,
+      layoutBaseY: localY,
       localX,
       localY,
       currentDurability: input.maxDurability,
@@ -178,7 +126,7 @@ export function createGlyphStore({
       tint: input.baseTint,
       hitFlashRemainingMs: 0,
       material: input.material,
-      state: GLYPH_CELL_STATE.ALIVE,
+      state: GLYPH_CELL_STATE.HEALTHY,
       rotation: 0,
       offsetX: 0,
       offsetY: 0,
@@ -204,13 +152,13 @@ export function createGlyphStore({
     if (ownerDurability) {
       ownerDurability.currentDurability += input.maxDurability
       ownerDurability.maxDurability += input.maxDurability
-      ownerDurability.aliveGlyphCount += 1
+      ownerDurability.livingGlyphCount += 1
       ownerDurability.glyphCount += 1
     } else {
       durabilityByOwner.set(input.ownerId, {
         currentDurability: input.maxDurability,
         maxDurability: input.maxDurability,
-        aliveGlyphCount: 1,
+        livingGlyphCount: 1,
         glyphCount: 1,
       })
     }
@@ -232,7 +180,7 @@ export function createGlyphStore({
       return 0
     }
 
-    if (cell.state === GLYPH_CELL_STATE.DESTROYED) {
+    if (cell.state === GLYPH_CELL_STATE.HUSK) {
       return 0
     }
 
@@ -243,13 +191,24 @@ export function createGlyphStore({
 
     const appliedDamage = Math.min(amount, cell.currentDurability)
     cell.currentDurability -= appliedDamage
-    cell.alpha = cell.currentDurability / cell.maxDurability
     ownerDurability.currentDurability -= appliedDamage
-    const destroyed = cell.currentDurability === 0
+    const material = getGlyphMaterialDefinition(cell.material)
 
-    if (destroyed) {
-      cell.state = GLYPH_CELL_STATE.DESTROYED
-      ownerDurability.aliveGlyphCount -= 1
+    if (cell.currentDurability === 0) {
+      cell.state = GLYPH_CELL_STATE.HUSK
+      cell.alpha = material.huskAlpha
+      ownerDurability.livingGlyphCount -= 1
+    } else {
+      cell.state = GLYPH_CELL_STATE.DAMAGED
+      cell.alpha = cell.currentDurability / cell.maxDurability
+    }
+    cell.baseTint = getGlyphDurabilityTint(
+      material,
+      cell.currentDurability,
+      cell.role,
+    )
+    if (cell.hitFlashRemainingMs === 0) {
+      cell.tint = cell.baseTint
     }
 
     return appliedDamage
@@ -293,16 +252,14 @@ export function createGlyphStore({
     directionX: number,
     directionY: number,
     material: GlyphMaterialDefinition,
-    baseTint: number,
   ): void {
     const cell = cellById.get(glyphId)
-    if (!cell || cell.state === GLYPH_CELL_STATE.DESTROYED) {
+    if (!cell) {
       return
     }
 
     cell.velocityX += directionX * material.knockbackImpulse
     cell.velocityY += directionY * material.knockbackImpulse
-    cell.baseTint = baseTint
     cell.tint = material.hitTint
     cell.hitFlashRemainingMs = material.hitFlashDurationMs
   }
@@ -311,9 +268,10 @@ export function createGlyphStore({
     glyphId: number,
     deltaMs: number,
     material: GlyphMaterialDefinition,
+    allowUnboundedOffset = false,
   ): void {
     const cell = cellById.get(glyphId)
-    if (!cell || cell.state === GLYPH_CELL_STATE.DESTROYED) {
+    if (!cell) {
       return
     }
 
@@ -327,7 +285,7 @@ export function createGlyphStore({
     cell.offsetY += cell.velocityY * deltaSeconds
 
     const offsetLength = Math.hypot(cell.offsetX, cell.offsetY)
-    if (offsetLength > material.maximumOffset) {
+    if (!allowUnboundedOffset && offsetLength > material.maximumOffset) {
       const scale = material.maximumOffset / offsetLength
       cell.offsetX *= scale
       cell.offsetY *= scale
@@ -368,6 +326,122 @@ export function createGlyphStore({
     cell.localY = localY
   }
 
+  function transferGlyph(glyphId: number, newOwnerId: number): void {
+    requirePositiveSafeInteger(newOwnerId, 'newOwnerId')
+    const cell = cellById.get(glyphId)
+    if (!cell || cell.ownerId === newOwnerId) {
+      return
+    }
+
+    const oldOwnerId = cell.ownerId
+    const oldOwnerCells = cellsByOwner.get(oldOwnerId)
+    const oldDurability = durabilityByOwner.get(oldOwnerId)
+    if (!oldOwnerCells || !oldDurability) {
+      throw new Error(`Glyph ${glyphId} has an incomplete owner index.`)
+    }
+
+    const oldIndex = oldOwnerCells.indexOf(cell)
+    if (oldIndex < 0) {
+      throw new Error(`Glyph ${glyphId} is missing from owner ${oldOwnerId}.`)
+    }
+    const lastOldCell = oldOwnerCells.pop()
+    if (lastOldCell && oldIndex < oldOwnerCells.length) {
+      oldOwnerCells[oldIndex] = lastOldCell
+    }
+    oldDurability.currentDurability -= cell.currentDurability
+    oldDurability.maxDurability -= cell.maxDurability
+    oldDurability.glyphCount -= 1
+    if (isGlyphLivingState(cell.state)) {
+      oldDurability.livingGlyphCount -= 1
+    }
+
+    if (oldDurability.glyphCount === 0) {
+      cellsByOwner.delete(oldOwnerId)
+      durabilityByOwner.delete(oldOwnerId)
+      recycledOwnerCells.push(oldOwnerCells)
+    }
+
+    const newOwnerCells = cellsByOwner.get(newOwnerId)
+    if (newOwnerCells) {
+      newOwnerCells.push(cell)
+    } else {
+      const createdOwnerCells = recycledOwnerCells.pop() ?? []
+      createdOwnerCells.push(cell)
+      cellsByOwner.set(newOwnerId, createdOwnerCells)
+    }
+
+    const newDurability = durabilityByOwner.get(newOwnerId)
+    if (newDurability) {
+      newDurability.currentDurability += cell.currentDurability
+      newDurability.maxDurability += cell.maxDurability
+      newDurability.glyphCount += 1
+      if (isGlyphLivingState(cell.state)) {
+        newDurability.livingGlyphCount += 1
+      }
+    } else {
+      durabilityByOwner.set(newOwnerId, {
+        currentDurability: cell.currentDurability,
+        maxDurability: cell.maxDurability,
+        glyphCount: 1,
+        livingGlyphCount: isGlyphLivingState(cell.state) ? 1 : 0,
+      })
+    }
+    cell.ownerId = newOwnerId
+  }
+
+  function setGlyphCompiledLayout(
+    glyphId: number,
+    topologyX: number,
+    topologyY: number,
+    localX: number,
+    localY: number,
+    offsetX: number,
+    offsetY: number,
+  ): void {
+    const values = { topologyX, topologyY, localX, localY, offsetX, offsetY }
+    for (const [name, value] of Object.entries(values)) {
+      requireFiniteNumber(value, name)
+    }
+    const cell = cellById.get(glyphId)
+    if (!cell) {
+      return
+    }
+    Object.assign(cell, {
+      topologyX,
+      topologyY,
+      layoutBaseX: localX,
+      layoutBaseY: localY,
+      localX,
+      localY,
+      offsetX,
+      offsetY,
+    })
+  }
+
+  function setGlyphPresentation(
+    glyphId: number,
+    role: GlyphBodySlotRole,
+  ): void {
+    const cell = cellById.get(glyphId)
+    if (!cell) {
+      return
+    }
+    cell.role = role
+    cell.character = role === 'EYE' ? 'O' : cell.baseCharacter
+    cell.glyphFrame =
+      role === 'EYE'
+        ? getPrintableAsciiGlyphFrame('O')
+        : cell.baseGlyphFrame
+    cell.baseTint = getGlyphDurabilityTint(
+      getGlyphMaterialDefinition(cell.material),
+      cell.currentDurability,
+      role,
+    )
+    if (cell.hitFlashRemainingMs === 0) {
+      cell.tint = cell.baseTint
+    }
+  }
+
   return Object.freeze({
     get cells() {
       return cells
@@ -385,18 +459,21 @@ export function createGlyphStore({
     getOwnerDurability(ownerId: number) {
       return durabilityByOwner.get(ownerId)
     },
-    isOwnerDestroyed(ownerId: number) {
+    isOwnerDepleted(ownerId: number) {
       const ownerDurability = durabilityByOwner.get(ownerId)
       return (
         ownerDurability !== undefined &&
         ownerDurability.glyphCount > 0 &&
-        ownerDurability.aliveGlyphCount === 0
+        ownerDurability.livingGlyphCount === 0
       )
     },
     applyDamage,
     applyMaterialHit,
     stepMaterial,
     setGlyphLocalPosition,
+    transferGlyph,
+    setGlyphCompiledLayout,
+    setGlyphPresentation,
     removeOwner,
   })
 }

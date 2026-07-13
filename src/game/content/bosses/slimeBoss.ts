@@ -1,6 +1,7 @@
 import {
   CREATURE_LAYOUT_BEHAVIOR,
   CREATURE_MOVEMENT_BEHAVIOR,
+  CREATURE_SPLIT_BEHAVIOR,
   defineCreature,
   type CreatureDefinition,
 } from '../creatures/creatureDefinition.ts'
@@ -49,6 +50,9 @@ function createNeutralSlots(): GlyphBodySlotInput[] {
         character: isEye
           ? 'O'
           : SLIME_SEQUENCE[slotId % SLIME_SEQUENCE.length],
+        baseCharacter: SLIME_SEQUENCE[slotId % SLIME_SEQUENCE.length],
+        topologyX: column,
+        topologyY: row,
         localX: (column - (SLIME_MASK[row].length - 1) / 2) * SLIME_GRID_SPACING,
         localY: (row - (SLIME_MASK.length - 1) / 2) * SLIME_GRID_SPACING,
         maxDurability: Number(SLIME_DURABILITY[row][column]),
@@ -120,6 +124,11 @@ export function prepareSlimeBossDefinition(): CreatureDefinition {
     movementResponsiveness: 4,
     layoutBehaviorId: CREATURE_LAYOUT_BEHAVIOR.SLIME_MORPH,
     layoutCycleDurationMs: 2_400,
+    authoredMorphStrength: 0.75,
+    compiledMorphStrength: 1.4,
+    splitBehaviorId: CREATURE_SPLIT_BEHAVIOR.SLIME_TOPOLOGY,
+    minimumIndependentCellRatio: 0.3,
     contactDamage: 1,
+    collapseDurationMs: 500,
   })
 }

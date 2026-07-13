@@ -28,6 +28,9 @@ export function runCleanupSystem(world: WorldState): void {
     const enemy = world.enemies[index]
 
     if (enemy.phase === 'DEAD' && enemy.rewardCommitted) {
+      if (enemy.rootBossId === enemy.id && enemy.encounterId !== null) {
+        world.bossEncounters.delete(enemy.encounterId)
+      }
       world.enemyById.delete(enemy.id)
       world.glyphStore.removeOwner(enemy.id)
       world.enemyPool.push(removeAtSwap(world.enemies, index))

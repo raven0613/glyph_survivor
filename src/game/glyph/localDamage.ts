@@ -1,5 +1,17 @@
+export const DAMAGE_TARGET_MODE = Object.freeze({
+  SINGLE: 'SINGLE',
+  AREA: 'AREA',
+} as const)
+
+export type DamageTargetMode =
+  (typeof DAMAGE_TARGET_MODE)[keyof typeof DAMAGE_TARGET_MODE]
+
 export interface GlyphDamageEvent {
-  readonly glyphId: number
+  readonly ownerId: number
+  readonly shapeX: number
+  readonly shapeY: number
+  readonly shapeRadius: number
+  readonly targetMode: DamageTargetMode
   readonly amount: number
   readonly impactDirectionX: number
   readonly impactDirectionY: number
@@ -7,17 +19,16 @@ export interface GlyphDamageEvent {
 
 export interface GlyphDamageQueue {
   readonly count: number
-  enqueue(
-    glyphId: number,
-    amount: number,
-    impactDirectionX: number,
-    impactDirectionY: number,
-  ): void
+  enqueue(event: Readonly<GlyphDamageEvent>): void
   drain(consumer: (event: Readonly<GlyphDamageEvent>) => void): void
 }
 
 type MutableGlyphDamageEvent = {
-  glyphId: number
+  ownerId: number
+  shapeX: number
+  shapeY: number
+  shapeRadius: number
+  targetMode: DamageTargetMode
   amount: number
   impactDirectionX: number
   impactDirectionY: number
@@ -33,35 +44,32 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
       return eventCount
     },
 
-    enqueue(
-      glyphId: number,
-      amount: number,
-      impactDirectionX: number,
-      impactDirectionY: number,
-    ) {
-      if (!Number.isSafeInteger(glyphId) || glyphId <= 0) {
-        throw new RangeError('glyphId must be a positive safe integer.')
+    enqueue(input: Readonly<GlyphDamageEvent>) {
+      if (!Number.isSafeInteger(input.ownerId) || input.ownerId <= 0) {
+        throw new RangeError('ownerId must be a positive safe integer.')
       }
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (!Number.isFinite(input.amount) || input.amount <= 0) {
         throw new RangeError('damage amount must be finite and greater than zero.')
       }
       if (
-        !Number.isFinite(impactDirectionX) ||
-        !Number.isFinite(impactDirectionY)
+        !Number.isFinite(input.shapeX) ||
+        !Number.isFinite(input.shapeY) ||
+        !Number.isFinite(input.shapeRadius) ||
+        input.shapeRadius < 0
+      ) {
+        throw new RangeError('damage shape must contain finite circle values.')
+      }
+      if (
+        !Number.isFinite(input.impactDirectionX) ||
+        !Number.isFinite(input.impactDirectionY)
       ) {
         throw new RangeError('impact direction must be finite.')
       }
 
       const event = events[eventCount] ?? {
-        glyphId,
-        amount,
-        impactDirectionX,
-        impactDirectionY,
+        ...input,
       }
-      event.glyphId = glyphId
-      event.amount = amount
-      event.impactDirectionX = impactDirectionX
-      event.impactDirectionY = impactDirectionY
+      Object.assign(event, input)
       events[eventCount] = event
       eventCount += 1
     },

@@ -25,6 +25,10 @@ export async function createRenderAdapter(
     scene.projectileLayer,
     [atlas.frames.projectile],
   )
+  const effectViews = createParticleLayerPool(
+    scene.effectLayer,
+    atlas.printableFrames,
+  )
   const dropViews = createParticleLayerPool(
     scene.dropLayer,
     [atlas.frames.experience],
@@ -50,6 +54,7 @@ export async function createRenderAdapter(
       )
       scene.player.position.set(snapshot.playerX, snapshot.playerY)
       enemyViews.sync(snapshot.enemies)
+      effectViews.sync(snapshot.effects)
       projectileViews.sync(snapshot.projectiles)
       dropViews.sync(snapshot.drops)
       application.render()
@@ -62,6 +67,7 @@ export async function createRenderAdapter(
 
       isDisposed = true
       enemyViews.clear()
+      effectViews.clear()
       projectileViews.clear()
       dropViews.clear()
       application.destroy(

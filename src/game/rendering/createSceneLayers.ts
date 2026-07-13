@@ -11,6 +11,7 @@ import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 export interface SceneLayers {
   readonly worldRoot: Container
   readonly enemyLayer: ParticleContainer<Particle>
+  readonly effectLayer: ParticleContainer<Particle>
   readonly projectileLayer: ParticleContainer<Particle>
   readonly dropLayer: ParticleContainer<Particle>
   readonly player: Sprite
@@ -87,6 +88,17 @@ export function createSceneLayers(
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
   })
+  const effectLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    dynamicProperties: {
+      position: true,
+      rotation: false,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
   const player = new Sprite({
     texture: atlas.frames.player,
     anchor: 0.5,
@@ -100,6 +112,7 @@ export function createSceneLayers(
     backgroundLayer,
     dropLayer,
     enemyLayer,
+    effectLayer,
     projectileLayer,
     player,
   )
@@ -108,6 +121,7 @@ export function createSceneLayers(
   return Object.freeze({
     worldRoot,
     enemyLayer,
+    effectLayer,
     projectileLayer,
     dropLayer,
     player,

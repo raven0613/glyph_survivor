@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import { createRenderSnapshot, writeRenderSnapshot } from '../../src/game/bridge/renderSnapshot.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import { GLYPH_CELL_STATE } from '../../src/game/glyph/glyphStore.ts'
+import { getGlyphMaterialDefinition } from '../../src/game/glyph/glyphMaterial.ts'
+import { DAMAGE_TARGET_MODE } from '../../src/game/glyph/localDamage.ts'
 import {
   createWorldState,
   spawnEnemy,
@@ -39,6 +42,56 @@ test('moves and morphs Slime through composed runtime strategies', () => {
   assert.notEqual(trackedGlyph.localX, initialLocalX)
 })
 
+test('reduces the initial authored Slime morph to seventy-five percent', () => {
+  const content = prepareGameContent()
+  const world = createWorldState('slime-authored-morph', 800, 600, content)
+  const slime = spawnEnemy(world, 1_800, 2_000, 0, content.slimeBossDefinition)
+  slime.phase = 'ACTIVE'
+  const glyph = world.glyphStore.getOwnerGlyphs(slime.id)[0]
+  const neutral = content.slimeBossDefinition.body.poses.neutral
+    .anchorsBySlotId[glyph.bodySlotId]
+  const wide = content.slimeBossDefinition.body.poses.wide
+    .anchorsBySlotId[glyph.bodySlotId]
+
+  runMovementSystem(world, 600)
+
+  assert.ok(
+    Math.abs(
+      glyph.localX -
+        (neutral.localX +
+          (wide.localX - neutral.localX) *
+            content.slimeBossDefinition.authoredMorphStrength),
+    ) < 0.0001,
+  )
+  assert.ok(
+    Math.abs(
+      glyph.localY -
+        (neutral.localY +
+          (wide.localY - neutral.localY) *
+            content.slimeBossDefinition.authoredMorphStrength),
+    ) < 0.0001,
+  )
+})
+
+test('increases the compiled Slime morph beyond its previous scale range', () => {
+  const content = prepareGameContent()
+  const world = createWorldState('slime-compiled-morph', 800, 600, content)
+  const slime = spawnEnemy(world, 1_800, 2_000, 0, content.slimeBossDefinition)
+  slime.phase = 'ACTIVE'
+  slime.layoutMode = 'COMPILED'
+  const glyph = world.glyphStore
+    .getOwnerGlyphs(slime.id)
+    .find((candidate) => candidate.layoutBaseY !== 0)
+  assert.ok(glyph)
+  const previousWideDisplacement = Math.abs(glyph.layoutBaseY) * 0.25
+
+  runMovementSystem(world, 600)
+
+  assert.ok(
+    Math.abs(glyph.localY - glyph.layoutBaseY) > previousWideDisplacement,
+  )
+})
+
 test('applies real Slime displacement to a surviving hit glyph and springs it back', () => {
   const content = prepareGameContent()
   const world = createWorldState('slime-material', 800, 600, content)
@@ -69,8 +122,12 @@ test('applies real Slime displacement to a surviving hit glyph and springs it ba
   runDamageSystem(world)
 
   assert.equal(glyph.currentDurability, 1)
-  assert.equal(glyph.state, GLYPH_CELL_STATE.ALIVE)
+  assert.equal(glyph.state, GLYPH_CELL_STATE.DAMAGED)
   assert.ok(glyph.velocityX > 0)
+
+  const snapshot = createRenderSnapshot()
+  writeRenderSnapshot(world, snapshot, 1)
+  assert.equal(snapshot.effects.length, 5)
 
   runGlyphMaterialSystem(world, 100)
   const displacedOffsetX = glyph.offsetX
@@ -81,6 +138,61 @@ test('applies real Slime displacement to a surviving hit glyph and springs it ba
   }
 
   assert.ok(Math.abs(glyph.offsetX) < displacedOffsetX)
+  writeRenderSnapshot(world, snapshot, 1)
+  assert.equal(snapshot.effects.length, 0)
+})
+
+test('caps simultaneous ASCII impact particles under large area hits', () => {
+  const content = prepareGameContent()
+  const world = createWorldState('slime-impact-cap', 800, 600, content)
+  const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
+  slime.phase = 'ACTIVE'
+
+  for (const glyph of world.glyphStore.getOwnerGlyphs(slime.id)) {
+    world.glyphStore.applyMaterialHit(
+      glyph.id,
+      1,
+      0,
+      getGlyphMaterialDefinition(glyph.material),
+    )
+  }
+
+  const snapshot = createRenderSnapshot()
+  writeRenderSnapshot(world, snapshot, 1)
+
+  assert.equal(snapshot.effects.length, 192)
+})
+
+test('keeps Slime eyes yellow across durability damage and hit flash', () => {
+  const content = prepareGameContent()
+  const world = createWorldState('slime-yellow-eyes', 800, 600, content)
+  const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
+  slime.phase = 'ACTIVE'
+  const eye = world.glyphStore
+    .getOwnerGlyphs(slime.id)
+    .find((glyph) => glyph.role === 'EYE')
+  assert.ok(eye)
+  assert.equal(eye.baseTint, 0xf4d35e)
+
+  world.glyphDamageQueue.enqueue({
+    ownerId: slime.id,
+    shapeX: getGlyphWorldX(slime.x, eye),
+    shapeY: getGlyphWorldY(slime.y, eye),
+    shapeRadius: 0,
+    targetMode: DAMAGE_TARGET_MODE.SINGLE,
+    amount: 1,
+    impactDirectionX: 1,
+    impactDirectionY: 0,
+  })
+  runDamageSystem(world)
+
+  assert.equal(eye.tint, 0xb7e4c7)
+  runGlyphMaterialSystem(
+    world,
+    getGlyphMaterialDefinition(eye.material).hitFlashDurationMs,
+  )
+  assert.equal(eye.baseTint, 0xd4a72c)
+  assert.equal(eye.tint, 0xd4a72c)
 })
 
 test('spawns exactly one Slime boss from the first successful ordinary wave', () => {

@@ -17,6 +17,14 @@ export const CREATURE_LAYOUT_BEHAVIOR = Object.freeze({
 export type CreatureLayoutBehaviorId =
   (typeof CREATURE_LAYOUT_BEHAVIOR)[keyof typeof CREATURE_LAYOUT_BEHAVIOR]
 
+export const CREATURE_SPLIT_BEHAVIOR = Object.freeze({
+  NONE: 'NONE',
+  SLIME_TOPOLOGY: 'SLIME_TOPOLOGY',
+} as const)
+
+export type CreatureSplitBehaviorId =
+  (typeof CREATURE_SPLIT_BEHAVIOR)[keyof typeof CREATURE_SPLIT_BEHAVIOR]
+
 export type CreatureCategory = 'ORDINARY' | 'BOSS'
 
 export interface CreatureDefinitionInput {
@@ -28,7 +36,12 @@ export interface CreatureDefinitionInput {
   readonly movementResponsiveness: number
   readonly layoutBehaviorId: CreatureLayoutBehaviorId
   readonly layoutCycleDurationMs: number
+  readonly authoredMorphStrength: number
+  readonly compiledMorphStrength: number
+  readonly splitBehaviorId: CreatureSplitBehaviorId
+  readonly minimumIndependentCellRatio: number
   readonly contactDamage: number
+  readonly collapseDurationMs: number
 }
 
 export type CreatureDefinition = Readonly<CreatureDefinitionInput> & {
@@ -58,8 +71,31 @@ export function defineCreature(
   ) {
     throw new RangeError('layoutCycleDurationMs must be finite and non-negative.')
   }
+  for (const [name, strength] of [
+    ['authoredMorphStrength', input.authoredMorphStrength],
+    ['compiledMorphStrength', input.compiledMorphStrength],
+  ] as const) {
+    if (!Number.isFinite(strength) || strength < 0 || strength > 2) {
+      throw new RangeError(`${name} must be finite and between zero and two.`)
+    }
+  }
   if (!Number.isFinite(input.contactDamage) || input.contactDamage < 0) {
     throw new RangeError('contactDamage must be finite and non-negative.')
+  }
+  if (
+    !Number.isFinite(input.collapseDurationMs) ||
+    input.collapseDurationMs <= 0
+  ) {
+    throw new RangeError('collapseDurationMs must be finite and greater than zero.')
+  }
+  if (
+    !Number.isFinite(input.minimumIndependentCellRatio) ||
+    input.minimumIndependentCellRatio < 0 ||
+    input.minimumIndependentCellRatio > 1
+  ) {
+    throw new RangeError(
+      'minimumIndependentCellRatio must be finite and between zero and one.',
+    )
   }
 
   const maximumMaterialOffset = input.body.slots.reduce(

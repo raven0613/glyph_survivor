@@ -2,7 +2,10 @@ import type {
   ProjectileTrackingMode,
   ProjectileTrackingState,
 } from '../content/weapons/projectileTracking.ts'
-import type { EnemyPhase } from '../runtime/worldEntities.ts'
+import {
+  isEnemyCombatPhase,
+  type EnemyPhase,
+} from '../runtime/worldEntities.ts'
 
 export interface TrackingProjectile {
   readonly trackingMode: ProjectileTrackingMode
@@ -33,7 +36,7 @@ export function canMaintainTargetLock(
   projectile: TrackingProjectile,
   target: TrackingTarget,
 ): boolean {
-  if (target.phase !== 'ACTIVE') {
+  if (!isEnemyCombatPhase(target.phase)) {
     return false
   }
 

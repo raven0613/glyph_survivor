@@ -1,10 +1,12 @@
-import type { EnemyState, ProjectileState } from '../runtime/worldEntities.ts'
+import {
+  isEnemyOutlineCollisionPhase,
+  type EnemyState,
+  type ProjectileState,
+} from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
-import {
-  GLYPH_CELL_STATE,
-  type GlyphCell,
-} from '../glyph/glyphStore.ts'
+import type { GlyphCell } from '../glyph/glyphStore.ts'
+import { DAMAGE_TARGET_MODE } from '../glyph/localDamage.ts'
 import { circlesIntersect } from './combatGeometry.ts'
 
 function findHitGlyph(
@@ -16,10 +18,6 @@ function findHitGlyph(
   let closestDistanceSquared = Number.POSITIVE_INFINITY
 
   for (const glyph of world.glyphStore.getOwnerGlyphs(enemy.id)) {
-    if (glyph.state !== GLYPH_CELL_STATE.ALIVE) {
-      continue
-    }
-
     const glyphX = getGlyphWorldX(enemy.x, glyph)
     const glyphY = getGlyphWorldY(enemy.y, glyph)
     if (
@@ -60,12 +58,12 @@ export function runCollisionSystem(world: WorldState): void {
     const candidates = world.enemySpatialHash.queryCircle(
       projectile.x,
       projectile.y,
-      projectile.radius + world.content.maximumEnemyBroadPhaseRadius,
+      projectile.radius + world.maximumEnemyQueryRadius,
       world.collisionCandidates,
     )
 
     for (const enemy of candidates) {
-      if (enemy.phase !== 'ACTIVE') {
+      if (!isEnemyOutlineCollisionPhase(enemy.phase)) {
         continue
       }
 
@@ -87,12 +85,16 @@ export function runCollisionSystem(world: WorldState): void {
         velocityLength > 0
           ? projectile.velocityY / velocityLength
           : projectile.launchDirectionY
-      world.glyphDamageQueue.enqueue(
-        glyph.id,
-        projectile.damage,
-        directionX,
-        directionY,
-      )
+      world.glyphDamageQueue.enqueue({
+        ownerId: glyph.ownerId,
+        shapeX: projectile.x,
+        shapeY: projectile.y,
+        shapeRadius: projectile.radius,
+        targetMode: DAMAGE_TARGET_MODE.SINGLE,
+        amount: projectile.damage,
+        impactDirectionX: directionX,
+        impactDirectionY: directionY,
+      })
       break
     }
   }

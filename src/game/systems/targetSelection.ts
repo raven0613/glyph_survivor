@@ -1,4 +1,7 @@
-import type { EnemyPhase } from '../runtime/worldEntities.ts'
+import {
+  isEnemyCombatPhase,
+  type EnemyPhase,
+} from '../runtime/worldEntities.ts'
 
 export interface TargetCandidate {
   readonly id: number
@@ -24,7 +27,7 @@ export function selectBestProjectileTarget<T extends TargetCandidate>(
   let bestScore = Number.POSITIVE_INFINITY
 
   for (const candidate of candidates) {
-    if (candidate.phase !== 'ACTIVE') {
+    if (!isEnemyCombatPhase(candidate.phase)) {
       continue
     }
 
