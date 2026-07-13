@@ -1,5 +1,8 @@
 import type { Bounds } from './cameraTransform.ts'
-import type { PreparedGameContent } from '../content/gameContent.ts'
+import {
+  getWeaponDefinition,
+  type PreparedGameContent,
+} from '../content/gameContent.ts'
 import type { CreatureDefinition } from '../content/creatures/creatureDefinition.ts'
 import { createSeededRng, type SeededRng } from '../core/seededRng.ts'
 import { createSpatialHash, type SpatialHash } from '../core/spatialHash.ts'
@@ -13,7 +16,11 @@ import {
   type GlyphDamageQueue,
 } from '../glyph/localDamage.ts'
 import { GAME_CONFIG } from './gameConfig.ts'
-import type { ProjectileTrackingProfile } from '../content/weapons/projectileTracking.ts'
+import {
+  createWeaponLoadout,
+  equipWeapon,
+  type WeaponLoadoutState,
+} from './weaponLoadout.ts'
 import type {
   BossEncounterState,
   EnemyState,
@@ -43,6 +50,7 @@ export interface WorldState {
   readonly content: PreparedGameContent
   readonly rng: SeededRng
   readonly player: PlayerState
+  readonly weaponLoadout: WeaponLoadoutState
   readonly input: InputState
   readonly glyphStore: GlyphStore
   readonly glyphDamageQueue: GlyphDamageQueue
@@ -65,7 +73,6 @@ export interface WorldState {
   viewportHeight: number
   runTimeMs: number
   spawnCooldownMs: number
-  weaponCooldownMs: number
   nextEntityId: number
   targetSearchCursor: number
   activeEnemyCount: number
@@ -99,6 +106,7 @@ export function createWorldState(
   viewportWidth: number,
   viewportHeight: number,
   content: PreparedGameContent,
+  initialWeaponDefinitionId: string,
 ): WorldState {
   const diagnostics: WorldDiagnostics = {
     droppedSimulationTimeMs: 0,
@@ -113,12 +121,18 @@ export function createWorldState(
     damagedGlyphCount: 0,
     huskGlyphCount: 0,
   }
+  const weaponLoadout = createWeaponLoadout(content.maximumEquippedWeapons)
+  equipWeapon(
+    weaponLoadout,
+    getWeaponDefinition(content, initialWeaponDefinitionId),
+  )
 
   return {
     seed,
     content,
     rng: createSeededRng(seed),
     player: createPlayer(),
+    weaponLoadout,
     input: {
       horizontal: 0,
       vertical: 0,
@@ -152,7 +166,6 @@ export function createWorldState(
     viewportHeight,
     runTimeMs: 0,
     spawnCooldownMs: 350,
-    weaponCooldownMs: 0,
     nextEntityId: 1,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
@@ -164,7 +177,7 @@ export function createWorldState(
   }
 }
 
-function getNextEntityId(world: WorldState): number {
+export function getNextEntityId(world: WorldState): number {
   const id = world.nextEntityId
   world.nextEntityId += 1
   return id
@@ -302,54 +315,6 @@ export function spawnSplitEnemy(
   world.enemies.push(enemy)
   world.enemyById.set(id, enemy)
   return enemy
-}
-
-export function spawnProjectile(
-  world: WorldState,
-  x: number,
-  y: number,
-  directionX: number,
-  directionY: number,
-  trackingProfile: ProjectileTrackingProfile,
-  targetEnemyId: number | null,
-): ProjectileState {
-  const projectile = world.projectilePool.pop()
-
-  if (!projectile) {
-    world.diagnostics.projectilePoolMisses += 1
-  }
-
-  const activeProjectile = projectile ?? ({} as ProjectileState)
-  Object.assign(activeProjectile, {
-    id: getNextEntityId(world),
-    x,
-    y,
-    previousX: x,
-    previousY: y,
-    velocityX: directionX * GAME_CONFIG.projectileSpeed,
-    velocityY: directionY * GAME_CONFIG.projectileSpeed,
-    radius: GAME_CONFIG.projectileRadius,
-    damage: 1,
-    lifetimeMs: GAME_CONFIG.projectileLifetimeMs,
-    isAlive: true,
-    trackingMode: trackingProfile.mode,
-    trackingState:
-      targetEnemyId !== null
-        ? ('LOCKED' as const)
-        : trackingProfile.mode === 'ASSISTED'
-          ? ('BALLISTIC' as const)
-          : ('SEEKING' as const),
-    targetEnemyId,
-    launchDirectionX: directionX,
-    launchDirectionY: directionY,
-    trackingRange: trackingProfile.range,
-    homingResponsiveness: trackingProfile.responsiveness,
-    maximumCorrectionCos: trackingProfile.maximumCorrectionCos,
-    retargetIntervalMs: trackingProfile.retargetIntervalMs,
-    nextTargetSearchTimeMs: world.runTimeMs,
-  })
-  world.projectiles.push(activeProjectile)
-  return activeProjectile
 }
 
 export function spawnExperienceDrop(

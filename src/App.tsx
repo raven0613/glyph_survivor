@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import { InitialWeaponScreen } from './app/screens/InitialWeaponScreen.tsx'
 import { INITIAL_UI_SNAPSHOT } from './game/bridge/uiSnapshot.ts'
 import {
   createGameHost,
   type GameHost,
 } from './game/host/createGameHost.ts'
+import { WEAPON_DEFINITION_ID } from './shared/weaponIds.ts'
 import './App.scss'
+
+// Persistence will provide this snapshot when permanent unlocks are added.
+const PROTOTYPE_UNLOCKED_WEAPON_DEFINITION_IDS = Object.freeze([
+  WEAPON_DEFINITION_ID.ASSISTED_O,
+])
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -37,6 +44,8 @@ function App() {
       try {
         const gameHost = await createGameHost({
           canvas,
+          unlockedWeaponDefinitionIds:
+            PROTOTYPE_UNLOCKED_WEAPON_DEFINITION_IDS,
           signal: abortController.signal,
         })
 
@@ -66,8 +75,11 @@ function App() {
     }
   }, [])
 
-  function handlePlay() {
-    gameHostRef.current?.startRun({ seed: Date.now() })
+  function handleStartRun(initialWeaponDefinitionId: string): void {
+    gameHostRef.current?.startRun({
+      seed: Date.now(),
+      initialWeaponDefinitionId,
+    })
   }
 
   return (
@@ -78,15 +90,9 @@ function App() {
           <span>Glyph Survivor</span>
         </div>
 
-        <button
-          className="play-button"
-          type="button"
-          disabled={!isReady}
-          onClick={handlePlay}
-        >
-          {isReady ? 'Play' : uiSnapshot.phase}{' '}
-          <span aria-hidden="true">↗</span>
-        </button>
+        <span className="run-state">
+          {isReady ? 'Select weapon' : uiSnapshot.phase}
+        </span>
       </header>
 
       <main className="game-stage" aria-label="Glyph Survivor game">
@@ -98,7 +104,7 @@ function App() {
           aria-label="Game canvas"
         />
 
-        {!hasStarted && (
+        {!hasStarted && !isReady && (
           <div className="canvas-status" aria-hidden="true">
             <span>Everything is text.</span>
             <span className="canvas-status__state">
@@ -110,6 +116,13 @@ function App() {
               )}
             </span>
           </div>
+        )}
+
+        {isReady && (
+          <InitialWeaponScreen
+            choices={uiSnapshot.initialWeaponChoices}
+            onConfirm={handleStartRun}
+          />
         )}
 
         {hasStarted && (

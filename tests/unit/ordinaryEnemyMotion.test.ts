@@ -8,6 +8,7 @@ import {
   getCreatureDefinition,
   prepareGameContent,
 } from '../../src/game/content/gameContent.ts'
+import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import { GLYPH_CELL_STATE } from '../../src/game/glyph/glyphStore.ts'
 import { createWorldState, spawnEnemy } from '../../src/game/runtime/worldState.ts'
@@ -16,7 +17,13 @@ import { runMovementSystem } from '../../src/game/systems/movementSystem.ts'
 
 function spawnActiveOrdinaryEnemy(definitionId: string) {
   const content = prepareGameContent()
-  const world = createWorldState(`motion-${definitionId}`, 800, 600, content)
+  const world = createWorldState(
+    `motion-${definitionId}`,
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const definition = getCreatureDefinition(content, definitionId)
   const enemy = spawnEnemy(world, 1_800, 2_000, 0, definition)
   enemy.phase = 'ACTIVE'

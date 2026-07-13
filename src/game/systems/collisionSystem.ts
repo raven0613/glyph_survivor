@@ -6,7 +6,6 @@ import {
 import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import type { GlyphCell } from '../glyph/glyphStore.ts'
-import { DAMAGE_TARGET_MODE } from '../glyph/localDamage.ts'
 import { circlesIntersect } from './combatGeometry.ts'
 
 function findHitGlyph(
@@ -90,7 +89,7 @@ export function runCollisionSystem(world: WorldState): void {
         shapeX: projectile.x,
         shapeY: projectile.y,
         shapeRadius: projectile.radius,
-        targetMode: DAMAGE_TARGET_MODE.SINGLE,
+        targetMode: projectile.damageTargetMode,
         amount: projectile.damage,
         impactDirectionX: directionX,
         impactDirectionY: directionY,

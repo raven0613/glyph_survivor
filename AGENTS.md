@@ -4,6 +4,8 @@ This file is the implementation contract for AI coding agents working in this re
 
 Read `spec.md` before designing or changing gameplay. `spec.md` is the product source of truth; this file is the architecture and engineering source of truth. If the two conflict, preserve the product intent in `spec.md` and update this file explicitly instead of silently inventing a third direction.
 
+Before designing or changing weapons, run loadouts, upgrade cards, Module Slots, Module Rank, weapon replacement, or the related UI flow, also read [`docs/content/weapon-system.md`](docs/content/weapon-system.md). That file is the detailed weapon-system content and transaction contract; `spec.md` still wins on product intent, and this file still wins on cross-layer architecture.
+
 ## 1. Project status
 
 - The repository currently contains the default Vite/React starter UI.
@@ -28,7 +30,11 @@ These rules come directly from `spec.md` and must survive refactors:
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
 - Weapon identity comes from target logic, attack shape, and destruction shape—not only numeric damage.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
-- Opening the upgrade screen completely pauses gameplay simulation.
+- Permanent weapon unlocks happen outside a run. A run receives a frozen set of unlocked weapon definitions, starts with exactly one selected weapon, and may acquire only those unlocked weapons through level-up cards.
+- Level-up offers mix weapon cards and universal Module cards. The first upgrade must contain at least one eligible weapon card.
+- Module investments belong to ordered Slots on one Weapon Instance. A matching Module raises that Slot's Rank; a different Module may overwrite and destroy the selected Slot, but no Module may be moved, refunded, or reassigned to another weapon.
+- Replacing a weapon destroys that Weapon Instance's Module Slots and runtime state. It must not mutate the other equipped Weapon Instances.
+- Opening the upgrade screen completely pauses gameplay simulation through card, weapon, Module Slot, and weapon-replacement selection until an authoritative commit succeeds.
 - Boss splitting redistributes existing Glyphs and durability. It must not increase total Glyph count, current durability, or maximum durability.
 
 ## 3. Non-negotiable architecture
@@ -197,6 +203,7 @@ Recommended responsibilities:
 <App>
   <GameCanvas />       mounts/disposes GameHost
   <Hud />              reads UiSnapshot
+  <InitialWeaponScreen /> visible in READY before startRun
   <UpgradeScreen />    visible only in PAUSED_UPGRADE
   <PauseMenu />
   <GameOverScreen />
@@ -207,10 +214,20 @@ The bridge API should remain small and explicit. A representative shape is:
 ```ts
 const gameHost = await createGameHost({ canvas, config })
 
-gameHost.startRun({ seed })
+gameHost.startRun({ seed, initialWeaponDefinitionId })
 gameHost.pause()
 gameHost.resume()
-gameHost.selectUpgrade({ choiceId })
+gameHost.installModule({
+  offerId,
+  choiceId,
+  weaponInstanceId,
+  replacedSlotIndex,
+})
+gameHost.acquireWeapon({
+  offerId,
+  choiceId,
+  replacedWeaponInstanceId,
+})
 gameHost.updateSettings(settings)
 gameHost.restart()
 gameHost.dispose()
@@ -220,11 +237,12 @@ const unsubscribe = gameHost.subscribeUi((uiSnapshot) => {})
 
 Rules:
 
-- `subscribeUi` publishes only UI-sized data: phase, HP, max HP, XP, level, timer, upgrade choices, boss summary, and recoverable errors.
+- `subscribeUi` publishes only UI-sized data: phase, HP, max HP, XP, level, timer, initial weapon choices, upgrade choices, equipped-weapon and Module-Slot summaries, target eligibility, boss summary, and recoverable errors.
 - Do not include entity arrays, Glyph arrays, projectiles, particles, Pixi objects, or mutable WorldState references.
 - Publish when relevant UI values change or on a low-frequency throttle. Do not publish at display refresh rate by default.
 - React StrictMode may mount, clean up, and mount again. GameHost initialization and disposal must not leak a ticker, RAF, event listener, canvas, or asset subscription.
-- React controls the upgrade DOM/UI. Runtime controls whether simulation is paused and whether a choice is valid.
+- React controls the initial-weapon and upgrade DOM/UI, including card, target, replacement previews, focus, and animation. Runtime controls whether simulation is paused, which choices and targets are legal, and whether a transaction commits.
+- UI preview state may remain local to React, but the final command must include the active offer ID and every authoritative target ID needed for one atomic Runtime validation and commit.
 
 ## 7. Game phases and lifecycle
 
@@ -245,8 +263,8 @@ BOOT
 Required behavior:
 
 - Asset/config failure stays in `LOADING` or transitions to a documented error state; it must not start a partial simulation.
-- `READY` means initialization succeeded and the runtime is waiting for an explicit `startRun` command; fixed simulation steps have not started.
-- `PAUSED_UPGRADE` stops fixed simulation steps completely.
+- `READY` means initialization succeeded and the runtime is waiting for an explicit `startRun` command with a valid initial weapon from the frozen unlock set; fixed simulation steps have not started.
+- `PAUSED_UPGRADE` stops fixed simulation steps completely for the whole decision chain: card preview, weapon target, optional Module-Slot or weapon replacement, authoritative commit, and any next queued offer.
 - Menu pause stops gameplay time. Rendering may remain static or run at a deliberately reduced rate.
 - Repeated `start`, `pause`, `resume`, and `dispose` calls must have defined idempotent behavior.
 - Disposal removes DOM listeners, input listeners, ticker/RAF callbacks, subscriptions, scene nodes, and owned GPU resources.
@@ -282,6 +300,8 @@ Frame algorithm:
 
 Do not feed arbitrary render-frame delta directly into collision, damage, cooldown, spawn, or AI rules.
 
+Re-check whether simulation may continue before every catch-up step, not only once at the start of an RAF callback. If an upgrade trigger leaves `RUNNING`, stop the remaining steps immediately and clear the accumulator state that must not cross the pause boundary. This is required for a genuinely complete upgrade pause.
+
 Each fixed step runs systems in a stable order:
 
 ```text
@@ -308,6 +328,8 @@ Use stable IDs for entities, Glyphs, events, and commands when they cross module
 Mutation is allowed inside tightly owned, performance-critical stores. Keep it local and explicit. Outside those stores, prefer immutable snapshots and command/event payloads.
 
 Random behavior must use an injected seeded RNG. Do not call `Math.random()` inside gameplay systems. Record the run seed and content version so failing scenarios can be reproduced.
+
+Derive an independent upgrade-offer RNG stream from the run seed. Enemy spawning, AI, combat, and rendering randomness must not change the sequence of weapon／Module offers for the same upgrade state.
 
 ### World and camera
 
@@ -473,6 +495,8 @@ no new combat durability is created
 
 ## 12. Weapon and upgrade rules
 
+Read [`docs/content/weapon-system.md`](docs/content/weapon-system.md) before changing this area. It defines the detailed permanent-unlock boundary, run acquisition, mixed three-card offers, ordered Module Slots, Rank upgrades, overwrite behavior, atomic commands, replacement semantics, UI flow, and prototype defaults. Do not duplicate a conflicting version of those rules in code comments or another document.
+
 Separate weapon concerns:
 
 ```text
@@ -484,6 +508,29 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 
 Content definitions may select strategies and parameters. They must not contain hidden mutable runtime state.
 
+Weapon content and runtime state must remain separate:
+
+- A prepared Weapon Definition is immutable content: stable ID, UI metadata, Module Slot count, strategy selections, base combat parameters, and explicit tracking profile where applicable.
+- A Weapon Instance is authoritative run state: stable instance ID, equipment position, independent cooldown／attack sequence, ordered Module Slots, and a revision for derived combat data.
+- A Module Definition is immutable content with a stable ID, content-defined maximum Rank, and explicit effects for each Rank.
+- A Module Slot is authoritative run state containing either nothing or one module definition ID plus Rank. Slot usage is not a second independently mutable capacity total.
+- `ResolvedWeaponProfile` is disposable derived data compiled from the Weapon Definition plus ordered Slots. Rebuild it only when Slots or Ranks change; never treat it as the investment source of truth.
+
+The first-pass `maximumEquippedWeapons` default is `3`, but it must live in validated run／content configuration rather than repeated literals. The exact Module Slot count belongs to each Weapon Definition. First-pass Modules occupy one Slot, and one Weapon Instance cannot hold the same Module in multiple Slots.
+
+Module placement follows one deterministic transaction rule:
+
+1. If the same Module exists below maximum Rank, increase that Slot by one Rank.
+2. Otherwise, if an empty Slot exists, install Rank I into the first empty Slot.
+3. Otherwise require an explicit Slot index, destroy only that Slot's previous Module, and install the new Module at Rank I.
+4. A Weapon Instance whose matching Module is already at maximum Rank is not an eligible target for that card.
+
+Weapon replacement is also atomic. Below the equipment limit, create a new empty Weapon Instance. At the limit, require an explicit replacement instance, preserve its equipment position, discard all of its Modules and instance-owned runtime state, and leave every other Weapon Instance unchanged. Independent in-flight attacks use their spawn-time resolved snapshot; instance-attached attacks need an explicit termination rule.
+
+Every level-up offer contains exactly three unique choice references and a stable offer ID. Choices may be `WEAPON` or `MODULE`; weapon choices come only from the run's frozen unlock set. The first offer guarantees at least one eligible, unlocked, unequipped weapon. Use a dedicated seeded upgrade RNG and stable content ordering. Exact later weights are content parameters, not system constants.
+
+React selection previews do not mutate the run. Final install／acquire commands must revalidate the active offer, choice kind, instance IDs, Rank, empty/full Slot state, and replacement target. Invalid or stale commands consume nothing, change nothing, and keep gameplay paused. Successful validation commits all changes atomically before consuming the offer or resuming.
+
 Every damaging attack defines a `DamageShape`, its geometric dimensions such as radius/length/angle, and a damage amount. A shape intersects the full authoritative creature outline, including Husks. A point-like attack selects one living Damage Target from the struck body; area shapes derive each struck body's quota from the number of its distinct intersected outline Cells. In-shape living Cells are selected first, and deterministic topology-frontier selection fills any remaining quota. DamageShape intersection and durability-target selection are separate from local visual effects: only the actual in-shape Impact Cells receive those effects. Entity-level collision may be used only as a broad phase before Glyph-level queries and precise shape tests.
 
 Gameplay projectiles are the only projectile-like objects that participate in damage/collision. Visual particles are rendering-only and never cause damage.
@@ -494,6 +541,8 @@ Gameplay projectiles are the only projectile-like objects that participate in da
 - Target IDs, target validity, steering, and reacquisition are authoritative runtime concerns. The renderer only visualizes projectile positions.
 
 Upgrade effects should produce explicit modifiers or strategy changes. Avoid scattered checks such as `if (hasUpgradeX)` across unrelated systems.
+
+A universal Module must have a meaningful, validated interpretation for every weapon allowed to receive it. Attack area, targeting／travel range, duration, projectile count, pierce, knockback, and element are separate capability axes; do not collapse them into ambiguous fields or silently offer no-op cards. Compose Rank effects in a stable order and keep the fixed-step firing path free of per-step modifier allocations.
 
 New combat features must first define their Glyph interaction instead of modifying creature HP. For example, fire applies durability damage over time, freezing changes Glyph displacement/material response, corrosion damages and fades Glyphs, lightning selects adjacent Glyphs, and black holes attract and deform Glyphs.
 
@@ -624,7 +673,7 @@ Testing is selective and risk-driven, not coverage-driven:
 - Do not use line, branch, function, or statement coverage percentages as delivery KPIs.
 - Do not add tests solely to increase coverage or mirror implementation details.
 - Integration, bridge, lifecycle, performance, and E2E tests are not required by default. Add them only when the user explicitly requests them.
-- Prefer pure tests for geometry, coordinate conversion, fixed-step calculations, seeded selection, collision and damage shapes, Impact Cell/Damage Target separation, topology-frontier target selection, Glyph material and Husk rules, and Boss split invariants.
+- Prefer pure tests for geometry, coordinate conversion, fixed-step calculations, seeded selection, weapon／Module offer eligibility, Module-Slot transactions, replacement invariants, collision and damage shapes, Impact Cell/Damage Target separation, topology-frontier target selection, Glyph material and Husk rules, and Boss split invariants.
 - Rendering and orchestration code may remain without automated tests when extracting a pure function would make the design less clear.
 
 Use behavior-focused names, for example:
@@ -644,6 +693,13 @@ preserves the first-appearance progression from Z to BO to BAT
 returns body motion to the same pose without accumulating drift
 keeps active husks on the same body-motion track as living glyphs
 keeps the zombie bottom pivot stable while its glyph center moves
+guarantees an eligible weapon card in the first upgrade offer
+upgrades a matching module in place without consuming another slot
+replaces only the selected full module slot and resets it to rank one
+rejects a stale upgrade offer without consuming it or resuming gameplay
+replaces one weapon and discards only that weapon's module slots
+keeps gameplay paused through card, weapon, and replacement selection
+keeps in-flight attack values unchanged after replacing their source weapon
 ```
 
 ## 18. AI implementation workflow
@@ -651,10 +707,11 @@ keeps the zombie bottom pivot stable while its glyph center moves
 Before changing code:
 
 1. Read the relevant section of `spec.md`.
-2. Inspect nearby code and the current repository structure.
-3. Identify the owning layer and verify dependency direction.
-4. State assumptions only when the spec is silent.
-5. Prefer the smallest vertical slice that proves the architecture.
+2. For weapon, loadout, Module, upgrade-card, or replacement work, read `docs/content/weapon-system.md` completely.
+3. Inspect nearby code and the current repository structure.
+4. Identify the owning layer and verify dependency direction.
+5. State assumptions only when the spec and relevant content document are silent.
+6. Prefer the smallest vertical slice that proves the architecture.
 
 When adding a feature:
 
@@ -685,6 +742,7 @@ Do not silently hard-code these product decisions when they materially affect im
 - expanding the first-release Printable ASCII atlas requirement to CJK or emoji;
 - save/replay requirements across content versions;
 - analytics/telemetry collection;
-- the testing stack to add when tests are first implemented.
+- the testing stack to add when tests are first implemented;
+- exact first-release weapon roster, permanent unlock conditions, per-weapon Module Slot counts, Module Rank tables, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
 
 Use a conservative temporary default only when it is easy to reverse, and record it next to the relevant contract.

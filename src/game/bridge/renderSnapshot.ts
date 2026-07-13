@@ -282,12 +282,12 @@ export function writeRenderSnapshot(
         snapshot.projectiles,
         projectileCount,
         projectile.id,
-        0,
+        projectile.glyphFrame,
         x,
         y,
-        0.55,
-        1,
-        0x66ddff,
+        projectile.visualScale,
+        projectile.visualAlpha,
+        projectile.visualTint,
       )
       projectileCount += 1
     }

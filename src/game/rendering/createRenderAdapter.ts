@@ -23,7 +23,7 @@ export async function createRenderAdapter(
   )
   const projectileViews = createParticleLayerPool(
     scene.projectileLayer,
-    [atlas.frames.projectile],
+    atlas.printableFrames,
   )
   const effectViews = createParticleLayerPool(
     scene.effectLayer,

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { GLYPH_CELL_STATE } from '../../src/game/glyph/glyphStore.ts'
 import {
   createWorldState,
   spawnEnemy,
-  spawnProjectile,
 } from '../../src/game/runtime/worldState.ts'
+import { spawnProjectile } from '../../src/game/runtime/spawnProjectile.ts'
 import {
   compileSlimeBodyLayout,
   findLivingConnectedComponents,
@@ -14,7 +15,6 @@ import {
 import { runSlimeSplitSystem } from '../../src/game/systems/slimeSplitSystem.ts'
 import { runGlyphMaterialSystem } from '../../src/game/systems/glyphMaterialSystem.ts'
 import { runMovementSystem } from '../../src/game/systems/movementSystem.ts'
-import { ASSISTED_PROJECTILE_TRACKING } from '../../src/game/content/weapons/projectileTracking.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
 import { runCollisionSystem } from '../../src/game/systems/collisionSystem.ts'
 import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
@@ -121,7 +121,13 @@ test('selects reassembly eyes only from the primary component', () => {
 
 test('splits two qualifying components while preserving every glyph and durability', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-split', 800, 600, content)
+  const world = createWorldState(
+    'slime-split',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const root = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   root.phase = 'ACTIVE'
   assert.ok(root.encounterId)
@@ -176,7 +182,13 @@ test('splits two qualifying components while preserving every glyph and durabili
 
 test('keeps a single body when disconnected components are below the fixed threshold', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-reassemble', 800, 600, content)
+  const world = createWorldState(
+    'slime-reassemble',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
 
@@ -205,7 +217,13 @@ test('keeps a single body when disconnected components are below the fixed thres
 
 test('reassembles an original three-cell edge fragment into its primary body', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-three-cell-fragment', 800, 600, content)
+  const world = createWorldState(
+    'slime-three-cell-fragment',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
   const fragmentGlyphIds = new Set(
@@ -267,7 +285,13 @@ test('reassembles an original three-cell edge fragment into its primary body', (
 
 test('does not merge an established child owner after it falls below fifteen cells', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-independent-child', 800, 600, content)
+  const world = createWorldState(
+    'slime-independent-child',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const root = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   root.phase = 'ACTIVE'
   for (const glyph of world.glyphStore.getOwnerGlyphs(root.id)) {
@@ -323,7 +347,13 @@ test('does not merge an established child owner after it falls below fifteen cel
 
 test('pauses root movement while reassembling and resumes after cells settle', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-phase', 800, 600, content)
+  const world = createWorldState(
+    'slime-phase',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
   for (const glyph of world.glyphStore.getOwnerGlyphs(slime.id)) {
@@ -354,7 +384,13 @@ test('pauses root movement while reassembling and resumes after cells settle', (
 
 test('keeps a far reassembling glyph inside authoritative broad-phase collision', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-reassembly-collision', 800, 600, content)
+  const world = createWorldState(
+    'slime-reassembly-collision',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
   for (const glyph of world.glyphStore.getOwnerGlyphs(slime.id)) {
@@ -375,15 +411,16 @@ test('keeps a far reassembling glyph inside authoritative broad-phase collision'
   const owner = world.enemyById.get(glyph.ownerId)
   assert.ok(owner)
   const durabilityBefore = glyph.currentDurability
-  spawnProjectile(
-    world,
-    owner.x + glyph.localX + glyph.offsetX,
-    owner.y + glyph.localY + glyph.offsetY,
-    1,
-    0,
-    ASSISTED_PROJECTILE_TRACKING,
-    owner.id,
-  )
+  const weapon = world.weaponLoadout.equipped[0]
+  spawnProjectile(world, {
+    sourceWeaponInstanceId: weapon.id,
+    x: owner.x + glyph.localX + glyph.offsetX,
+    y: owner.y + glyph.localY + glyph.offsetY,
+    directionX: 1,
+    directionY: 0,
+    profile: weapon.resolvedProfile,
+    targetEnemyId: owner.id,
+  })
 
   runEnemySpatialIndexSystem(world)
   runCollisionSystem(world)

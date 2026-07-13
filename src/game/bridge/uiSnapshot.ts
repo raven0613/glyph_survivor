@@ -4,6 +4,14 @@ export interface UiUpgradeChoice {
   readonly description?: string
 }
 
+export interface UiInitialWeaponChoice {
+  readonly definitionId: string
+  readonly title: string
+  readonly description: string
+  readonly identityGlyph: string
+  readonly moduleSlotCount: number
+}
+
 export interface UiSnapshot {
   readonly phase: string
   readonly seed: string | number | null
@@ -11,6 +19,7 @@ export interface UiSnapshot {
   readonly level: number
   readonly runTimeMs: number
   readonly enemyCount: number
+  readonly initialWeaponChoices: readonly Readonly<UiInitialWeaponChoice>[]
   readonly upgradeChoices: readonly Readonly<UiUpgradeChoice>[]
   readonly pendingUpgradeCount: number
   readonly recoverableError: string | null
@@ -30,6 +39,9 @@ const EMPTY_GAMEPLAY_UI: Readonly<GameplayUiData> = Object.freeze({
   enemyCount: 0,
 })
 
+const EMPTY_INITIAL_WEAPON_CHOICES: readonly Readonly<UiInitialWeaponChoice>[] =
+  Object.freeze([])
+
 interface MachineSnapshotForUi {
   readonly value: unknown
   readonly context: {
@@ -47,6 +59,7 @@ export const INITIAL_UI_SNAPSHOT: Readonly<UiSnapshot> = Object.freeze({
   level: 1,
   runTimeMs: 0,
   enemyCount: 0,
+  initialWeaponChoices: EMPTY_INITIAL_WEAPON_CHOICES,
   upgradeChoices: Object.freeze([]),
   pendingUpgradeCount: 0,
   recoverableError: null,
@@ -56,6 +69,8 @@ export const INITIAL_UI_SNAPSHOT: Readonly<UiSnapshot> = Object.freeze({
 export function createUiSnapshot(
   machineSnapshot: MachineSnapshotForUi,
   gameplayUi: Readonly<GameplayUiData> = EMPTY_GAMEPLAY_UI,
+  initialWeaponChoices: readonly Readonly<UiInitialWeaponChoice>[] =
+    EMPTY_INITIAL_WEAPON_CHOICES,
 ): Readonly<UiSnapshot> {
   if (typeof machineSnapshot.value !== 'string') {
     throw new TypeError('Game phase must be a string state value.')
@@ -66,6 +81,9 @@ export function createUiSnapshot(
       Object.freeze({ ...choice }),
     ),
   )
+  const copiedInitialWeaponChoices = Object.freeze(
+    initialWeaponChoices.map((choice) => Object.freeze({ ...choice })),
+  )
 
   return Object.freeze({
     phase: machineSnapshot.value,
@@ -74,6 +92,7 @@ export function createUiSnapshot(
     level: gameplayUi.level,
     runTimeMs: gameplayUi.runTimeMs,
     enemyCount: gameplayUi.enemyCount,
+    initialWeaponChoices: copiedInitialWeaponChoices,
     upgradeChoices,
     pendingUpgradeCount: machineSnapshot.context.pendingUpgradeCount,
     recoverableError: machineSnapshot.context.recoverableError,

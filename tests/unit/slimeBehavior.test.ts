@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { createRenderSnapshot, writeRenderSnapshot } from '../../src/game/bridge/renderSnapshot.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import { GLYPH_CELL_STATE } from '../../src/game/glyph/glyphStore.ts'
@@ -9,9 +10,8 @@ import { DAMAGE_TARGET_MODE } from '../../src/game/glyph/localDamage.ts'
 import {
   createWorldState,
   spawnEnemy,
-  spawnProjectile,
 } from '../../src/game/runtime/worldState.ts'
-import { ASSISTED_PROJECTILE_TRACKING } from '../../src/game/content/weapons/projectileTracking.ts'
+import { spawnProjectile } from '../../src/game/runtime/spawnProjectile.ts'
 import { runBossSpawnSystem } from '../../src/game/systems/bossSpawnSystem.ts'
 import { runCollisionSystem } from '../../src/game/systems/collisionSystem.ts'
 import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
@@ -22,7 +22,13 @@ import { runMovementSystem } from '../../src/game/systems/movementSystem.ts'
 
 test('moves and morphs Slime through composed runtime strategies', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-movement', 800, 600, content)
+  const world = createWorldState(
+    'slime-movement',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(
     world,
     1_800,
@@ -44,7 +50,13 @@ test('moves and morphs Slime through composed runtime strategies', () => {
 
 test('reduces the initial authored Slime morph to seventy-five percent', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-authored-morph', 800, 600, content)
+  const world = createWorldState(
+    'slime-authored-morph',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 1_800, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
   const glyph = world.glyphStore.getOwnerGlyphs(slime.id)[0]
@@ -75,7 +87,13 @@ test('reduces the initial authored Slime morph to seventy-five percent', () => {
 
 test('increases the compiled Slime morph beyond its previous scale range', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-compiled-morph', 800, 600, content)
+  const world = createWorldState(
+    'slime-compiled-morph',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 1_800, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
   slime.layoutMode = 'COMPILED'
@@ -94,7 +112,13 @@ test('increases the compiled Slime morph beyond its previous scale range', () =>
 
 test('applies real Slime displacement to a surviving hit glyph and springs it back', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-material', 800, 600, content)
+  const world = createWorldState(
+    'slime-material',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(
     world,
     2_000,
@@ -108,15 +132,16 @@ test('applies real Slime displacement to a surviving hit glyph and springs it ba
     .find((candidate) => candidate.maxDurability === 2)
 
   assert.ok(glyph)
-  spawnProjectile(
-    world,
-    getGlyphWorldX(slime.x, glyph),
-    getGlyphWorldY(slime.y, glyph),
-    1,
-    0,
-    ASSISTED_PROJECTILE_TRACKING,
-    slime.id,
-  )
+  const weapon = world.weaponLoadout.equipped[0]
+  spawnProjectile(world, {
+    sourceWeaponInstanceId: weapon.id,
+    x: getGlyphWorldX(slime.x, glyph),
+    y: getGlyphWorldY(slime.y, glyph),
+    directionX: 1,
+    directionY: 0,
+    profile: weapon.resolvedProfile,
+    targetEnemyId: slime.id,
+  })
   runEnemySpatialIndexSystem(world)
   runCollisionSystem(world)
   runDamageSystem(world)
@@ -144,7 +169,13 @@ test('applies real Slime displacement to a surviving hit glyph and springs it ba
 
 test('caps simultaneous ASCII impact particles under large area hits', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-impact-cap', 800, 600, content)
+  const world = createWorldState(
+    'slime-impact-cap',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
 
@@ -165,7 +196,13 @@ test('caps simultaneous ASCII impact particles under large area hits', () => {
 
 test('keeps Slime eyes yellow across durability damage and hit flash', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-yellow-eyes', 800, 600, content)
+  const world = createWorldState(
+    'slime-yellow-eyes',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   slime.phase = 'ACTIVE'
   const eye = world.glyphStore
@@ -197,7 +234,13 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
 
 test('spawns exactly one Slime boss from the first successful Z wave', () => {
   const content = prepareGameContent()
-  const world = createWorldState('slime-first-wave', 800, 600, content)
+  const world = createWorldState(
+    'slime-first-wave',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   world.spawnCooldownMs = 0
   runEnemySpatialIndexSystem(world)
 

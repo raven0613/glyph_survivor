@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { createWorldState, spawnEnemy } from '../../src/game/runtime/worldState.ts'
 import { runDeathSystem } from '../../src/game/systems/deathSystem.ts'
 import { runDropSystem } from '../../src/game/systems/dropSystem.ts'
@@ -8,7 +9,13 @@ import { runSlimeSplitSystem } from '../../src/game/systems/slimeSplitSystem.ts'
 
 function createSplitEncounter() {
   const content = prepareGameContent()
-  const world = createWorldState('slime-encounter-death', 800, 600, content)
+  const world = createWorldState(
+    'slime-encounter-death',
+    800,
+    600,
+    content,
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
   const root = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
   root.phase = 'ACTIVE'
 

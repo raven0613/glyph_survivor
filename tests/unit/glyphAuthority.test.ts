@@ -5,17 +5,17 @@ import {
   getCreatureDefinition,
   prepareGameContent,
 } from '../../src/game/content/gameContent.ts'
-import { ASSISTED_PROJECTILE_TRACKING } from '../../src/game/content/weapons/projectileTracking.ts'
+import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import {
   GLYPH_CELL_STATE,
   type GlyphCell,
 } from '../../src/game/glyph/glyphStore.ts'
 import type { EnemyState } from '../../src/game/runtime/worldEntities.ts'
+import { spawnProjectile } from '../../src/game/runtime/spawnProjectile.ts'
 import {
   createWorldState,
   spawnEnemy,
-  spawnProjectile,
   type WorldState,
 } from '../../src/game/runtime/worldState.ts'
 import { runCleanupSystem } from '../../src/game/systems/cleanupSystem.ts'
@@ -26,7 +26,13 @@ import { runDropSystem } from '../../src/game/systems/dropSystem.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
 
 function createTestWorld(seed: string): WorldState {
-  return createWorldState(seed, 800, 600, prepareGameContent())
+  return createWorldState(
+    seed,
+    800,
+    600,
+    prepareGameContent(),
+    BASIC_PROJECTILE_WEAPON_ID,
+  )
 }
 
 function spawnBat(world: WorldState): EnemyState {
@@ -39,18 +45,33 @@ function spawnBat(world: WorldState): EnemyState {
   )
 }
 
+function spawnBasicProjectile(
+  world: WorldState,
+  x: number,
+  y: number,
+  targetEnemyId: number,
+) {
+  const weapon = world.weaponLoadout.equipped[0]
+  return spawnProjectile(world, {
+    sourceWeaponInstanceId: weapon.id,
+    x,
+    y,
+    directionX: 1,
+    directionY: 0,
+    profile: weapon.resolvedProfile,
+    targetEnemyId,
+  })
+}
+
 function fireAtGlyph(
   world: WorldState,
   enemy: EnemyState,
   glyph: GlyphCell,
 ): void {
-  spawnProjectile(
+  spawnBasicProjectile(
     world,
     getGlyphWorldX(enemy.x, glyph),
     getGlyphWorldY(enemy.y, glyph),
-    1,
-    0,
-    ASSISTED_PROJECTILE_TRACKING,
     enemy.id,
   )
   runCollisionSystem(world)
@@ -64,13 +85,10 @@ test('keeps a depleted BAT glyph as a dim authoritative husk', () => {
   enemy.phase = 'ACTIVE'
   const glyphs = world.glyphStore.getOwnerGlyphs(enemy.id)
   const [bGlyph, aGlyph, tGlyph] = glyphs
-  const projectile = spawnProjectile(
+  const projectile = spawnBasicProjectile(
     world,
     getGlyphWorldX(enemy.x, bGlyph),
     getGlyphWorldY(enemy.y, bGlyph),
-    1,
-    0,
-    ASSISTED_PROJECTILE_TRACKING,
     enemy.id,
   )
   runEnemySpatialIndexSystem(world)
@@ -156,13 +174,10 @@ test('collapses and cleans up a fixed body only after every glyph is a husk', ()
   assert.equal(enemy.phase, 'COLLAPSING')
   assert.equal(world.glyphStore.isOwnerDepleted(enemy.id), true)
 
-  const ignoredProjectile = spawnProjectile(
+  const ignoredProjectile = spawnBasicProjectile(
     world,
     getGlyphWorldX(enemy.x, glyphs[0]),
     getGlyphWorldY(enemy.y, glyphs[0]),
-    1,
-    0,
-    ASSISTED_PROJECTILE_TRACKING,
     enemy.id,
   )
   runCollisionSystem(world)

@@ -19,9 +19,15 @@ import { GAME_PHASE, gameMachine } from '../runtime/gameMachine.ts'
 import { runSimulationStep } from '../runtime/runSimulationStep.ts'
 import { createWorldState, type WorldState } from '../runtime/worldState.ts'
 import { createInputAdapter } from './createInputAdapter.ts'
+import {
+  getUnlockedInitialWeaponDefinition,
+  prepareRunWeaponUnlocks,
+  type RunWeaponUnlocks,
+} from './runWeaponUnlocks.ts'
 
 export interface StartRunOptions {
   readonly seed: string | number
+  readonly initialWeaponDefinitionId: string
 }
 
 export type UiSnapshotListener = (snapshot: Readonly<UiSnapshot>) => void
@@ -35,6 +41,7 @@ export interface GameHost {
 
 export interface CreateGameHostOptions {
   readonly canvas: HTMLCanvasElement
+  readonly unlockedWeaponDefinitionIds: readonly string[]
   readonly signal?: AbortSignal
 }
 
@@ -61,6 +68,7 @@ function getGameplayUi(world: WorldState | null): GameplayUiData {
 /** Owns browser adapters, authoritative runtime state, and lifecycle commands. */
 export async function createGameHost({
   canvas,
+  unlockedWeaponDefinitionIds,
   signal,
 }: CreateGameHostOptions): Promise<GameHost> {
   if (!canvas || typeof canvas.getContext !== 'function') {
@@ -74,11 +82,16 @@ export async function createGameHost({
   let currentUiSnapshot = INITIAL_UI_SNAPSHOT
   let isDisposed = false
   let lastUiPublishTimeMs = 0
+  let runWeaponUnlocks: Readonly<RunWeaponUnlocks> | null = null
 
   function publishUi(): void {
+    const machineSnapshot = gameActor.getSnapshot()
     currentUiSnapshot = createUiSnapshot(
-      gameActor.getSnapshot(),
+      machineSnapshot,
       getGameplayUi(world),
+      machineSnapshot.value === GAME_PHASE.READY
+        ? runWeaponUnlocks?.initialWeaponChoices
+        : undefined,
     )
     uiListeners.forEach((listener) => listener(currentUiSnapshot))
   }
@@ -91,6 +104,10 @@ export async function createGameHost({
   let renderAdapter
   try {
     gameContent = prepareGameContent()
+    runWeaponUnlocks = prepareRunWeaponUnlocks(
+      gameContent,
+      unlockedWeaponDefinitionIds,
+    )
     renderAdapter = await createRenderAdapter(canvas, signal)
   } catch (error) {
     gameActor.send({ type: 'LOAD_FAILED', error })
@@ -141,7 +158,7 @@ export async function createGameHost({
   gameLoop.start()
 
   return Object.freeze({
-    startRun({ seed }: StartRunOptions) {
+    startRun({ seed, initialWeaponDefinitionId }: StartRunOptions) {
       if (isDisposed) {
         return
       }
@@ -151,6 +168,12 @@ export async function createGameHost({
           'startRun requires a non-empty string or finite number seed.',
         )
       }
+
+      const initialWeaponDefinition = getUnlockedInitialWeaponDefinition(
+        gameContent,
+        runWeaponUnlocks,
+        initialWeaponDefinitionId,
+      )
 
       if (gameActor.getSnapshot().value !== GAME_PHASE.READY) {
         return
@@ -162,6 +185,7 @@ export async function createGameHost({
         viewport.width,
         viewport.height,
         gameContent,
+        initialWeaponDefinition.id,
       )
       gameActor.send({ type: 'START_RUN', seed })
     },

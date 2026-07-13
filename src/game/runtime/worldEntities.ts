@@ -2,6 +2,11 @@ import type {
   ProjectileTrackingMode,
   ProjectileTrackingState,
 } from '../content/weapons/projectileTracking.ts'
+import type {
+  DamageShapeId,
+  DestructionProfileId,
+} from '../content/weapons/weaponDefinition.ts'
+import type { DamageTargetMode } from '../glyph/localDamage.ts'
 
 export type EnemyPhase =
   | 'MATERIALIZING'
@@ -65,6 +70,7 @@ export interface EnemyState {
 
 export interface ProjectileState {
   id: number
+  sourceWeaponInstanceId: number
   x: number
   y: number
   previousX: number
@@ -73,6 +79,9 @@ export interface ProjectileState {
   velocityY: number
   radius: number
   damage: number
+  damageShapeKind: DamageShapeId
+  damageTargetMode: DamageTargetMode
+  destructionProfileId: DestructionProfileId
   lifetimeMs: number
   isAlive: boolean
   trackingMode: ProjectileTrackingMode
@@ -85,6 +94,10 @@ export interface ProjectileState {
   maximumCorrectionCos: number
   retargetIntervalMs: number
   nextTargetSearchTimeMs: number
+  glyphFrame: number
+  visualScale: number
+  visualAlpha: number
+  visualTint: number
 }
 
 export interface ExperienceDropState {

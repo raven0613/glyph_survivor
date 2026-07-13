@@ -395,6 +395,16 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 玩家能從 Boss 身上的破壞痕跡，看出自己是哪種 Build。
 
+武器的永久解鎖與單局取得是不同流程：
+
+- 新武器在一場遊戲結束後，回到主選單透過 Meta Progression 永久解鎖。
+- 玩家開始一局時，先從已永久解鎖的武器中選擇一把初始武器；選定前不開始 fixed simulation。
+- 單局內的新武器只會從本局升級三選一的武器卡取得，且不得出現尚未永久解鎖的武器。
+- 首版一局最多裝備三把武器；`3` 是可驗證、可調整的 run/content default，不是散落在各系統的 magic number。
+- 裝備已滿時選擇武器卡，玩家可以指定要替換的武器；被替換武器在本局的全部 Module 投資會消失。
+
+武器、單局裝備、混合卡池、Module Slot、覆蓋與升階的詳細產品／工程契約記錄在 [`docs/content/weapon-system.md`](docs/content/weapon-system.md)。
+
 ---
 
 # Build
@@ -424,6 +434,15 @@ Damage +10%
 
 每局都應能形成完全不同玩法。
 
+通用升級以武器自己的 Module Slots 為投資單位：
+
+- 升級卡可以投資到任何具有明確對應語意的已裝備武器。
+- 每把武器有 content-defined 的固定 Module Slot 數量；首版每個 Module 佔一格。
+- 相同 Module 再次投資到同一把武器時，在原 Slot 由 Rank I 升為 Rank II，依此類推至該 Module 的 content-defined 最大 Rank。
+- 不同 Module 可以覆蓋指定 Slot；被覆蓋的投資消失，新 Module 從 Rank I 開始。
+- Module 不能卸下、退款、搬到另一把武器或重新分配；玩家只能保留、升階或覆蓋摧毀它。
+- 覆蓋能力讓後期 Build 可以調整方向，但不能繞過 Weapon Instance、Slot、Rank 或卡片選擇規則。
+
 ---
 
 # Upgrade
@@ -433,11 +452,16 @@ Damage +10%
 遊戲完全暫停。
 畫面稍微變暗。
 中央跳出三張卡片。
-玩家點擊選擇。
+三張卡片混合包含已解鎖的新武器與通用 Module；第一次升級保證至少出現一張 eligible 武器卡。
+玩家先選卡片，再完成該卡片需要的 target decision：
 
-選擇後：
+- Module 卡：選擇投資哪把武器；若沒有相同 Module 且 Slots 已滿，再選擇覆蓋哪個 Slot。
+- 武器卡：裝備未滿時取得新武器；裝備已滿時選擇要替換哪把武器。
 
-角色恢復戰鬥。
+從選卡、選武器、必要的 Slot／武器 replacement，到 Runtime 驗證並 commit 為止，遊戲都保持完全暫停。只有完整決策成功後，角色才恢復戰鬥或進入下一個 queued upgrade。
+
+卡片、武器與 Slot 選擇使用 Canvas 上方的 React DOM overlay。React 可以使用 CSS、SVG 或 Web Animations 呈現文字聚合、3D tilt、glitch、neon、code diff 與 Rank compile 動畫；PixiJS 只顯示暫停中的戰場，不決定卡片結果。
+
 升級是整個遊戲最重要的節奏點之一。
 
 ---
@@ -567,11 +591,11 @@ GOLEM
 
 為了深化「Everything is Text」的核心理念，三選一的卡片升級與 Build 系統除了功能性的數值改變（如：子彈 +1）之外，在**視覺名稱與升級概念**上，將直接採用工程師熟悉的**代碼語意與字型屬性**。
 
-雖然遊戲底層由 Canvas/PixiJS 系統渲染（不使用實際的網頁 CSS），但借用這些命名能強化遊戲的獨特風格（Indie Flair），讓玩家一目了然，同時提供極具直覺的視覺回饋。
+戰場中的 Gameplay 物件由 Canvas/PixiJS 系統渲染；升級卡片本身則是 React DOM overlay，可以使用實際的 CSS／SVG 動畫。借用代碼語意與字型屬性命名能強化遊戲的獨特風格（Indie Flair），讓玩家一目了然，同時提供極具直覺的視覺回饋。
 
 ### 核心字型與渲染屬性升級卡片設計範例
 
-| 卡片名稱 (Concept)      | 遊戲內實際機制效果 (Gameplay Effect)                                                | Canvas/PixiJS 實際渲染與視覺表現 (Visual Feedback)                                                |
+| 卡片名稱 (Concept)      | 遊戲內實際機制效果 (Gameplay Effect)                                                | 戰場中的 PixiJS 視覺回饋 (Visual Feedback)                                                        |
 | :---------------------- | :---------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------ |
 | **【Color: Fire Red】** | **屬性賦予：** 武器獲得「燃燒/熔岩」屬性，攻擊時對 Glyph 造成持續性傷害。           | 子彈與被擊中的敵方文字區塊轉變為熾熱的螢光紅（`#FF3366`），並帶有微弱的灰燼粒子。                 |
 | **【Size: 200%】**      | **體積倍增：** 子彈或武器的判定範圍、體積大幅度增加，傷害等比例提升。               | 調高字型大小（`fontSize`），子彈字母（如 `o` 變成 `O`，甚至巨大的 `0`）體積膨脹，視覺震撼感極強。 |
