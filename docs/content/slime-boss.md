@@ -116,12 +116,12 @@ Marker 定義：
 
 ## 6. 移動與蠕動
 
-- 首版最大移動速度為 60 world units/s，比目前普通怪物的 72 world units/s 慢。
+- 首版最大移動速度為 60 world units/s。普通怪物現在具有獨立內容定義與 `Z → BO → BAT` progression，不再假設所有普通怪共用 72 world units/s；各普通怪速度以 [`ordinary-enemies.md`](ordinary-enemies.md) 的後續調校為準。
 - 移動採平滑、具阻尼的追蹤，不允許瞬間改變 world position。
 - 蠕動是 layout anchor 在中性、寬扁、直立形狀間的連續變形；不是 renderer 私自移動 Glyph。
 - 同一個 Glyph ID 在所有 morph layouts 中都存在。形狀改變造成文字重新排成不同列，但不交換生命、不重新分配耐久。
 - 眼睛使用同一批眼睛 Cells 跟隨 face targets 移動；一般 morph 不反覆挑選新眼睛。
-- `worldGlyphPosition = creatureRootPosition + layoutAnchor + deformationOffset`。移動更新 root，蠕動更新 anchor，受擊更新 offset／velocity，三者不可互相覆寫。
+- `worldGlyphPosition = creatureRootPosition + layoutAnchor + bodyMotionOffset + deformationOffset`。移動更新 root，蠕動更新 anchor，專屬 Body Motion 更新獨立 pose offset，受擊更新 deformation offset／velocity，各來源不可互相覆寫。首版 SLIME 的獨立 `bodyMotionOffset = 0`，其動態身分由蠕動 layout 提供；保留此層是為了與跨怪物共用座標契約一致。
 
 首版三組 50-slot anchors 固定如下：
 
@@ -179,8 +179,8 @@ Husk 色彩沿用 `SLIME` 的 `#4C956C`／`0x4C956C`，alpha `0.12` 是首版可
 ## 9. 出現時機與接觸傷害
 
 - 根史萊姆與第一波怪一起出現。
-- 正式觸發語意是：第一隻普通怪成功 commit spawn 時，Runtime 發出一次性的 `FIRST_WAVE_STARTED`；Boss 專用 spawn request 在下一個允許消費 structural events 的明確 boundary 排入，不能在仍迭代 spawn collection 時直接改動它。這仍屬於同一波生成。
-- 普通怪 spawn 候選失敗時不算第一波開始，也不得因此生成史萊姆。
+- 正式觸發語意是：依普通怪 progression 生成的第一隻 `Z` 成功 commit spawn 時，Runtime 發出一次性的 `FIRST_WAVE_STARTED`；Boss 專用 spawn request 在下一個允許消費 structural events 的明確 boundary 排入，不能在仍迭代 spawn collection 時直接改動它。這仍屬於同一波生成。
+- 初始 `Z` spawn 候選失敗時不算第一波開始，也不得因此生成史萊姆；不得跳過 `Z` 改用尚未解鎖的 `BO` 或 `BAT` 觸發 Boss。
 - 史萊姆不走普通怪 director 的一般生成路徑。首版在第一波同側、鏡頭外的合法位置生成；找不到合法位置時延後 Boss request，不得強塞進視野或障礙物。
 - 史萊姆使用 seeded 0.3–0.5 秒文字聚合生成階段；Runtime 決定何時轉為 Active，renderer 只顯示狀態。
 

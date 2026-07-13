@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import {
+  getCreatureDefinition,
+  prepareGameContent,
+} from '../../src/game/content/gameContent.ts'
 import {
   getPrintableAsciiCharacter,
   getPrintableAsciiGlyphFrame,
@@ -10,7 +13,7 @@ import { GLYPH_MATERIAL } from '../../src/game/glyph/glyphStore.ts'
 
 test('compiles the fixed BAT body into three stable gameplay slots', () => {
   const content = prepareGameContent()
-  const body = content.ordinaryEnemyDefinition.body
+  const body = getCreatureDefinition(content, 'enemy.bat').body
 
   assert.equal(body.id, 'enemy.bat.body')
   assert.equal(body.slots.length, 3)

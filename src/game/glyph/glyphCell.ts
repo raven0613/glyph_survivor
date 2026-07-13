@@ -29,6 +29,8 @@ export interface GlyphCell {
   readonly layoutBaseY: number
   readonly localX: number
   readonly localY: number
+  readonly bodyMotionOffsetX: number
+  readonly bodyMotionOffsetY: number
   readonly currentDurability: number
   readonly maxDurability: number
   readonly collisionRadius: number
@@ -95,6 +97,12 @@ export interface GlyphStore {
     allowUnboundedOffset?: boolean,
   ): void
   setGlyphLocalPosition(glyphId: number, localX: number, localY: number): void
+  setGlyphBodyMotion(
+    glyphId: number,
+    offsetX: number,
+    offsetY: number,
+    rotation: number,
+  ): void
   transferGlyph(glyphId: number, newOwnerId: number): void
   setGlyphCompiledLayout(
     glyphId: number,

@@ -102,6 +102,24 @@ SLIMESLIMESLIME...
 
 玩家是在破壞文字本身。不是打圖片。
 
+## 普通敵人的動態身分與出場順序
+
+普通敵人不應只靠移動速度或數值區分。每種敵人都應有可辨識、具節奏且克制的 Glyph Body Motion；動作語彙以短促點動、錯拍、停頓與收勢為主，不使用每幀隨機抖動，也不讓所有敵人共用軟綿綿的連續擺動。
+
+首批普通敵人的文字與動態身分為：
+
+- `Z` 代表 `ZOMBIE`：移動時以字形底部為軸心做小幅、不對稱的蹣跚；停止移動時回到中性姿態。
+- `BO` 代表 `BONE`：移動時 `B`、`O` 以錯開節拍分別顫動，形成短促的骨頭碰撞感；停止移動時回到中性姿態。
+- `BAT`：`A`、`T` 以近乎同拍的上下點動表現拍翼，`T` 稍晚，`B` 只做很小的反向補償，避免整個單字像柔軟布條一起晃動。
+
+一局開始後，普通敵人的首次出場順序固定為：
+
+```text
+Z → BO → BAT
+```
+
+Director 必須先依內容定義的 progression 判定目前可出現的種類，再使用 seeded、可重現的選擇規則產生敵人。`BO` 不得早於 `Z` 的初始階段出現，`BAT` 不得早於 `BO`。各階段的精確時間門檻、解鎖後的混合權重與移動速度屬內容調校值，在確認前不得寫死成產品不變量。普通敵人的詳細內容契約記錄在 [`docs/content/ordinary-enemies.md`](docs/content/ordinary-enemies.md)。
+
 ---
 
 # Glyph System
@@ -267,13 +285,18 @@ Material 不能只改整個 Entity 的透明度或播放一個無關 Gameplay �
 形成：果凍/磁力/材質的感覺。
 Boss 必須具有重量感。不是單純 HP 減少。
 
-只要主要 Glyph 的畫面位移被表現為擊退，不論幅度大小，都必須是 Runtime 的權威 deformation，而不是 renderer-only 假位移：
+只要主要 Glyph 的畫面位移會改變生命體的實際姿態或被表現為擊退，不論幅度大小，都必須由 Runtime 擁有，而不是 renderer-only 假位移。結構形變、專屬 Body Motion 與受擊 deformation 是不同來源，不得互相覆寫：
 
 ```text
-World Glyph Position = Creature Root Position + Layout Anchor + Deformation Offset
+World Glyph Position = Creature Root Position
+                     + Layout Anchor
+                     + Body Motion Offset
+                     + Deformation Offset
 ```
 
-碰撞與後續攻擊必須使用包含 Deformation Offset 的實際位置。`HEALTHY`、`DAMAGED` 與 `HUSK` Glyph 在受力結束後都回到當前 Layout Anchor；Creature 移動或形變時 Anchor 可以持續更新。`HUSK` 不會因回彈而自動復活，也不會因此恢復 Durability。Renderer 可以疊加不影響主要 Glyph 位置的微小閃光或震動，但不能用它取代權威擊退。
+碰撞與後續攻擊必須使用包含 Body Motion Offset 與 Deformation Offset 的實際位置。Runtime 先更新 Creature Root，再更新結構 Layout Anchor，接著由專屬動態求出當步 Body Motion，最後疊加受擊 deformation。Body Motion 必須從穩定基準與當前節拍重新求值，不得把上一幀結果反覆累加。
+
+`HEALTHY`、`DAMAGED` 與 `HUSK` 在生命體仍處於戰鬥狀態時都跟隨同一套 Body Motion，因此輪廓與 hitbox 不會因 Cell 壞死而脫節；進入 `COLLAPSING` 後才停止戰鬥姿態。受力結束後，Deformation Offset 回到零，但 Cell 仍回到包含當前 Body Motion 的姿態位置。`HUSK` 不會因回彈或姿態動畫而自動復活，也不會因此恢復 Durability。Renderer 可以疊加不影響主要 Glyph 位置的微小閃光或震動，但不能用它取代權威姿態或擊退。
 
 ---
 
@@ -445,6 +468,10 @@ React 僅負責：
 真正造成傷害的：只有 Gameplay Projectile。
 
 Glyph 儘量使用：Texture Atlas，而不是每幀建立 Text。
+
+Creature Body Motion 必須能隨大量 Glyph 擴張：每個 active creature 每個 fixed step 只計算一次節拍、移動強度與必要的 motion-group transforms，再把結果寫入既有 Glyph storage。不得在熱路徑建立暫時物件、陣列或 closure，不得逐 Cell 取亂數，也不得為了動畫做 topology／鄰居搜尋。成本上限應與 active creatures 加實際參與動畫的 Glyph 數線性相關，不得形成 creatures × all Glyphs 的巢狀掃描。
+
+Body Motion 造成的最大位移必須納入 broad-phase footprint；Render Snapshot 與 PixiJS Adapter 只同步必要的 position／rotation 數值，沿用 Glyph Atlas、batch 與 view pool，不為每隻怪或每個動作建立額外 Text、Container 或一次性 display objects。壓力驗證沿用 `AGENTS.md` 的普通戰鬥與 Boss stress populations，且不得為了效能把權威動態降級成與碰撞不一致的 renderer-only 位移。
 
 ---
 

@@ -78,7 +78,7 @@ export function createSceneLayers(
     boundsArea: createWorldBounds(),
     dynamicProperties: {
       position: true,
-      rotation: false,
+      rotation: true,
       vertex: true,
       uvs: false,
       color: true,

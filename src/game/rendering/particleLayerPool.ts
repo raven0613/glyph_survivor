@@ -71,6 +71,7 @@ export function createParticleLayerPool(
         view.seenFrame = frameNumber
         view.particle.x = glyph.x
         view.particle.y = glyph.y
+        view.particle.rotation = glyph.rotation
         view.particle.scaleX = glyph.scale
         view.particle.scaleY = glyph.scale
         view.particle.alpha = glyph.alpha

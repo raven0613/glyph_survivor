@@ -20,6 +20,7 @@ export interface RenderGlyph {
   glyphFrame: number
   x: number
   y: number
+  rotation: number
   scale: number
   alpha: number
   tint: number
@@ -52,12 +53,23 @@ function writeGlyph(
   scale: number,
   alpha: number,
   tint: number,
+  rotation = 0,
 ): void {
-  const glyph = buffer[index] ?? { id, glyphFrame, x, y, scale, alpha, tint }
+  const glyph = buffer[index] ?? {
+    id,
+    glyphFrame,
+    x,
+    y,
+    rotation,
+    scale,
+    alpha,
+    tint,
+  }
   glyph.id = id
   glyph.glyphFrame = glyphFrame
   glyph.x = x
   glyph.y = y
+  glyph.rotation = rotation
   glyph.scale = scale
   glyph.alpha = alpha
   glyph.tint = tint
@@ -232,6 +244,7 @@ export function writeRenderSnapshot(
           hitPresentation.alpha *
           (1 - collapseProgress),
         hitPresentation.tint,
+        glyph.rotation,
       )
       enemyCount += 1
 

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRenderSnapshot, writeRenderSnapshot } from '../../src/game/bridge/renderSnapshot.ts'
-import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import {
+  getCreatureDefinition,
+  prepareGameContent,
+} from '../../src/game/content/gameContent.ts'
 import { ASSISTED_PROJECTILE_TRACKING } from '../../src/game/content/weapons/projectileTracking.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import {
@@ -26,6 +29,16 @@ function createTestWorld(seed: string): WorldState {
   return createWorldState(seed, 800, 600, prepareGameContent())
 }
 
+function spawnBat(world: WorldState): EnemyState {
+  return spawnEnemy(
+    world,
+    2_000,
+    2_000,
+    300,
+    getCreatureDefinition(world.content, 'enemy.bat'),
+  )
+}
+
 function fireAtGlyph(
   world: WorldState,
   enemy: EnemyState,
@@ -47,7 +60,7 @@ function fireAtGlyph(
 
 test('keeps a depleted BAT glyph as a dim authoritative husk', () => {
   const world = createTestWorld('local-glyph-damage')
-  const enemy = spawnEnemy(world, 2_000, 2_000, 300)
+  const enemy = spawnBat(world)
   enemy.phase = 'ACTIVE'
   const glyphs = world.glyphStore.getOwnerGlyphs(enemy.id)
   const [bGlyph, aGlyph, tGlyph] = glyphs
@@ -99,7 +112,7 @@ test('keeps a depleted BAT glyph as a dim authoritative husk', () => {
 
 test('applies impact response to a husk while damaging a remote living frontier', () => {
   const world = createTestWorld('husk-frontier-impact')
-  const enemy = spawnEnemy(world, 2_000, 2_000, 300)
+  const enemy = spawnBat(world)
   enemy.phase = 'ACTIVE'
   const [bGlyph, aGlyph] = world.glyphStore.getOwnerGlyphs(enemy.id)
   runEnemySpatialIndexSystem(world)
@@ -129,7 +142,7 @@ test('applies impact response to a husk while damaging a remote living frontier'
 
 test('collapses and cleans up a fixed body only after every glyph is a husk', () => {
   const world = createTestWorld('multi-glyph-death')
-  const enemy = spawnEnemy(world, 2_000, 2_000, 300)
+  const enemy = spawnBat(world)
   enemy.phase = 'ACTIVE'
   const glyphs = [...world.glyphStore.getOwnerGlyphs(enemy.id)]
   runEnemySpatialIndexSystem(world)

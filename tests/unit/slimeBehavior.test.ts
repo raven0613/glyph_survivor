@@ -195,7 +195,7 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
   assert.equal(eye.tint, 0xd4a72c)
 })
 
-test('spawns exactly one Slime boss from the first successful ordinary wave', () => {
+test('spawns exactly one Slime boss from the first successful Z wave', () => {
   const content = prepareGameContent()
   const world = createWorldState('slime-first-wave', 800, 600, content)
   world.spawnCooldownMs = 0
@@ -207,7 +207,7 @@ test('spawns exactly one Slime boss from the first successful ordinary wave', ()
 
   assert.equal(
     world.enemies.filter(
-      (enemy) => enemy.definitionId === content.ordinaryEnemyDefinition.id,
+      (enemy) => enemy.definitionId === 'enemy.zombie',
     ).length,
     1,
   )

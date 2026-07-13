@@ -69,6 +69,7 @@ export interface WorldState {
   nextEntityId: number
   targetSearchCursor: number
   activeEnemyCount: number
+  ordinaryEnemySpawnCount: number
   maximumEnemyQueryRadius: number
   firstWaveStarted: boolean
   pendingBossSpawnSide: SpawnSide | null
@@ -155,6 +156,7 @@ export function createWorldState(
     nextEntityId: 1,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
+    ordinaryEnemySpawnCount: 0,
     maximumEnemyQueryRadius: content.maximumEnemyBroadPhaseRadius,
     firstWaveStarted: false,
     pendingBossSpawnSide: null,
@@ -168,12 +170,16 @@ function getNextEntityId(world: WorldState): number {
   return id
 }
 
+function getBodyMotionPhaseOffset(entityId: number): number {
+  return (Math.imul(entityId, 0x9e3779b1) >>> 0) / 0x1_0000_0000
+}
+
 export function spawnEnemy(
   world: WorldState,
   x: number,
   y: number,
   materializeDurationMs: number,
-  definition: CreatureDefinition = world.content.ordinaryEnemyDefinition,
+  definition: CreatureDefinition = world.content.ordinaryEnemyDefinitions[0],
 ): EnemyState {
   const enemy = world.enemyPool.pop()
 
@@ -221,6 +227,7 @@ export function spawnEnemy(
     velocityX: 0,
     velocityY: 0,
     behaviorElapsedMs: 0,
+    bodyMotionPhaseOffset: getBodyMotionPhaseOffset(enemyId),
     layoutMode: 'AUTHORED' as const,
     phase: 'MATERIALIZING' as const,
     materializeRemainingMs: materializeDurationMs,
@@ -278,6 +285,7 @@ export function spawnSplitEnemy(
     velocityX: 0,
     velocityY: 0,
     behaviorElapsedMs: 0,
+    bodyMotionPhaseOffset: getBodyMotionPhaseOffset(id),
     layoutMode: 'COMPILED' as const,
     phase: 'REASSEMBLING' as const,
     materializeRemainingMs: 0,

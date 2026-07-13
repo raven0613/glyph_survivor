@@ -118,6 +118,8 @@ export function createGlyphStore({
       layoutBaseY: localY,
       localX,
       localY,
+      bodyMotionOffsetX: 0,
+      bodyMotionOffsetY: 0,
       currentDurability: input.maxDurability,
       maxDurability: input.maxDurability,
       collisionRadius: input.collisionRadius,
@@ -326,6 +328,24 @@ export function createGlyphStore({
     cell.localY = localY
   }
 
+  function setGlyphBodyMotion(
+    glyphId: number,
+    offsetX: number,
+    offsetY: number,
+    rotation: number,
+  ): void {
+    requireFiniteNumber(offsetX, 'bodyMotionOffsetX')
+    requireFiniteNumber(offsetY, 'bodyMotionOffsetY')
+    requireFiniteNumber(rotation, 'rotation')
+    const cell = cellById.get(glyphId)
+    if (!cell) {
+      return
+    }
+    cell.bodyMotionOffsetX = offsetX
+    cell.bodyMotionOffsetY = offsetY
+    cell.rotation = rotation
+  }
+
   function transferGlyph(glyphId: number, newOwnerId: number): void {
     requirePositiveSafeInteger(newOwnerId, 'newOwnerId')
     const cell = cellById.get(glyphId)
@@ -471,6 +491,7 @@ export function createGlyphStore({
     applyMaterialHit,
     stepMaterial,
     setGlyphLocalPosition,
+    setGlyphBodyMotion,
     transferGlyph,
     setGlyphCompiledLayout,
     setGlyphPresentation,

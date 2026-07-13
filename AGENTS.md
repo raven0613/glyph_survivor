@@ -23,6 +23,8 @@ These rules come directly from `spec.md` and must survive refactors:
 - Every Enemy, Elite, and Boss Glyph follows the same `HEALTHY → DAMAGED → HUSK` life cycle. A Husk has zero current durability and cannot take further durability damage, but remains an authoritative, dimly rendered Cell in the creature's full gameplay outline and hitbox.
 - A creature starts `COLLAPSING` only when all of its Glyph Cells are Husks. Rewards and cleanup happen only after that whole-body collapse resolves.
 - Hit effects must remain local to the DamageShape's actual Impact Cells, including Husks. Durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk.
+- Creature-specific Body Motion is a deterministic Runtime-owned pose, not renderer-only decoration. Any positional pose offset participates in the authoritative Glyph hitbox, and active Husks follow the same slot motion as living Cells until collapse takes over.
+- The first ordinary-enemy appearances progress in the fixed order `ZOMBIE (Z) → BONE (BO) → BAT`; exact stage thresholds, post-unlock mixing, weights, and speeds remain validated content parameters.
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
 - Weapon identity comes from target logic, attack shape, and destruction shape—not only numeric damage.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
@@ -324,6 +326,8 @@ Random behavior must use an injected seeded RNG. Do not call `Math.random()` ins
 - Reject candidates that intersect an obstacle or overlap another enemy's gameplay footprint. Use a spatial query suitable for the active population; do not scan every enemy for every spawn attempt once counts are high.
 - Limit spawn attempts per request. If no valid candidate is found, defer or skip that spawn instead of forcing an invalid position.
 - Bias ordinary enemy spawning toward the player's movement direction: approximately `60%` of spawn selections should come from the forward side or forward region. Use the injected seeded RNG so the result is reproducible.
+- Determine the eligible ordinary-enemy definitions from content-defined progression before selecting a spawn definition. First appearances must preserve `Z → BO → BAT`; `BO` cannot appear during the initial `Z` stage and `BAT` cannot appear before the `BO` stage. Do not hard-code unconfirmed thresholds, weights, or speeds into the director.
+- Select the ordinary-enemy definition before validating a spawn candidate, because its full broad-phase footprint includes its body, maximum material deformation, and maximum authoritative Body Motion offset.
 - Elite enemies may use validated, content-defined fixed spawn points instead of the ordinary camera ring.
 - Bosses spawn only from explicit gameplay events or content-defined scene locations. Do not route Boss spawning through the ordinary enemy director.
 - Every enemy enters through a `0.3` to `0.5` second text-aggregation spawn phase so it does not pop into view instantly. The runtime owns the seeded duration, spawn phase, and transition to active gameplay; the renderer only visualizes that state and must not decide when the enemy becomes active.
@@ -340,6 +344,8 @@ interface GlyphCell {
   glyphFrame: number
   localX: number
   localY: number
+  bodyMotionOffsetX: number
+  bodyMotionOffsetY: number
   currentDurability: number
   maxDurability: number
   alpha: number
@@ -360,6 +366,7 @@ This is a conceptual contract; `GlyphMaterialId` and `GlyphCellState` are domain
 Preserve the distinction between:
 
 - anchor/local position: the body's intended shape;
+- Body Motion offset/rotation: the deterministic, species-specific pose layered over the current anchor;
 - offset/velocity: temporary deformation, knockback, scattering, and recovery;
 - current/max durability: authoritative local life and its initial capacity;
 - material: local hit response, displacement, recovery, and destruction rules;
@@ -375,6 +382,29 @@ HUSK: currentDurability === 0
 ```
 
 A Glyph with `maxDurability === 1` may transition directly from `HEALTHY` to `HUSK`; do not create hidden durability merely to force a visible `DAMAGED` step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at deliberately low alpha/tint so the creature silhouette does not shrink as it is consumed.
+
+The authoritative pose composition is:
+
+```text
+worldGlyphPosition = creatureRootPosition
+                   + layoutAnchor
+                   + bodyMotionOffset
+                   + deformationOffset
+```
+
+Root movement, structural layout/morph, Body Motion, and hit/material deformation are separate responsibilities and must not overwrite one another. Body Motion position affects precise collision and DamageShape queries. Rotation must be included in render snapshots; it affects gameplay geometry only when that geometry is orientation-dependent. A circular Glyph hitbox follows the authoritative translated center but does not change shape merely because its rendered Glyph rotates.
+
+### Creature Body Motion
+
+- Creature content selects a validated Body Motion strategy/profile; do not grow a central species `switch` in `movementSystem`.
+- Evaluate Body Motion during fixed simulation steps after root movement and structural layout. Ordinary `Z`, `BO`, and `BAT` motion runs only while the owner is `ACTIVE`; other lifecycle phases require an explicit content rule.
+- All active outline Cells assigned to a motion slot participate regardless of `HEALTHY`, `DAMAGED`, or `HUSK` state. Collapse presentation is a separate lifecycle behavior.
+- Derive every step from the stable current layout anchor plus normalized phase. Never accumulate the previous step's pose offset or rotation.
+- Instance desynchronization must be stable and reproducible, using a stable ID-derived phase or seeded spawn state. Do not consume per-frame randomness.
+- Prepare slot-to-motion-group bindings during content loading. The hot path computes phase and movement intensity once per owner, samples each motion channel once, and applies the result without allocating temporary objects, arrays, closures, or maps.
+- Reuse a sampled group transform for every Cell assigned to that group. Do not repeat identical easing, keyframe searches, or trigonometric work per Cell.
+- Per-step complexity must remain `O(active animated creatures + animated outline Glyphs)`. Never scan unrelated owners or run topology searches for pose animation.
+- Validate and compile a maximum Body Motion positional offset into each creature's broad-phase radius.
 
 Do not use one state check to answer unrelated questions. Define explicit Glyph predicates or queries for at least:
 
@@ -414,6 +444,7 @@ A Boss definition should separate:
 
 - layout/body generation;
 - movement/AI;
+- rhythmic Body Motion or an explicit `NONE` profile when structural morph already provides its motion identity;
 - Glyph material response;
 - phase transitions;
 - split behavior;
@@ -492,6 +523,7 @@ Rendering rules:
 - For high-volume independent Glyph views, use atlas frames with pooled `Particle`/`Sprite` views according to required features.
 - `ParticleContainer` is appropriate only when particles share a base texture and do not require per-particle filters, masks, events, or blend modes.
 - Set only actually animated `dynamicProperties` on `ParticleContainer`.
+- Synchronize authoritative Glyph rotation through the render snapshot when a motion profile uses it. Before enabling rotation uploads on a shared high-population layer, measure the cost; if it is material, partition rotating and non-rotating Glyph batches without creating per-creature containers or display objects.
 - Set `boundsArea` when using `ParticleContainer`, especially with culling.
 - Group similar object types, base textures, and blend modes to preserve batching.
 - Use object pools for projectiles, Glyph fragments, damage particles, and short-lived effects.
@@ -538,6 +570,7 @@ Regular play targets 60 FPS. Reduced quality may target 30 FPS in the Boss stres
 Track at minimum:
 
 - frame time and simulation time;
+- Body Motion simulation time, animated creature count, and animated outline-Glyph count when profiling this feature;
 - active entity/projectile/effect counts and Glyph counts split by `HEALTHY`, `DAMAGED`, and `HUSK`;
 - pool capacity and pool misses;
 - draw calls when practical;
@@ -553,6 +586,15 @@ Quality degradation order should be deliberate, for example:
 4. cap rendering at 30 FPS while preserving fixed simulation semantics.
 
 Do not degrade gameplay projectile accuracy, local damage correctness, or Boss HP invariants to improve visuals.
+
+Creature Body Motion hot paths must satisfy the following before visual tuning is accepted:
+
+- normalized phase and movement intensity are computed once per active owner per fixed step;
+- motion-channel transforms are sampled once and reused across their compiled slots;
+- no per-step allocations, string/character dispatch, topology searches, or per-Cell RNG occur;
+- repeated trigonometric or keyframe work is not performed independently for every Cell;
+- active Husks remain included in authoritative motion and retained-Glyph counts;
+- broad-phase and precise Glyph collision continue to use the same animated world positions as rendering.
 
 ## 16. TypeScript standards for `src/game/**`
 
@@ -598,6 +640,10 @@ preserves total glyph hp when slime splits
 rejects spawn positions inside the camera viewport
 converts pointer coordinates through the inverse camera transform
 selects the same spawn region with the same seed and movement vector
+preserves the first-appearance progression from Z to BO to BAT
+returns body motion to the same pose without accumulating drift
+keeps active husks on the same body-motion track as living glyphs
+keeps the zombie bottom pivot stable while its glyph center moves
 ```
 
 ## 18. AI implementation workflow

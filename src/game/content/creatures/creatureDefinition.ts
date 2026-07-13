@@ -17,6 +17,16 @@ export const CREATURE_LAYOUT_BEHAVIOR = Object.freeze({
 export type CreatureLayoutBehaviorId =
   (typeof CREATURE_LAYOUT_BEHAVIOR)[keyof typeof CREATURE_LAYOUT_BEHAVIOR]
 
+export const CREATURE_BODY_MOTION_BEHAVIOR = Object.freeze({
+  NONE: 'NONE',
+  BAT_FLAP: 'BAT_FLAP',
+  BONE_RATTLE: 'BONE_RATTLE',
+  ZOMBIE_STAGGER: 'ZOMBIE_STAGGER',
+} as const)
+
+export type CreatureBodyMotionBehaviorId =
+  (typeof CREATURE_BODY_MOTION_BEHAVIOR)[keyof typeof CREATURE_BODY_MOTION_BEHAVIOR]
+
 export const CREATURE_SPLIT_BEHAVIOR = Object.freeze({
   NONE: 'NONE',
   SLIME_TOPOLOGY: 'SLIME_TOPOLOGY',
@@ -38,6 +48,10 @@ export interface CreatureDefinitionInput {
   readonly layoutCycleDurationMs: number
   readonly authoredMorphStrength: number
   readonly compiledMorphStrength: number
+  readonly bodyMotionBehaviorId: CreatureBodyMotionBehaviorId
+  readonly bodyMotionCycleDurationMs: number
+  readonly maximumBodyMotionOffset: number
+  readonly bodyMotionGroupBySlotId: Readonly<Record<number, number>>
   readonly splitBehaviorId: CreatureSplitBehaviorId
   readonly minimumIndependentCellRatio: number
   readonly contactDamage: number
@@ -70,6 +84,22 @@ export function defineCreature(
     input.layoutCycleDurationMs < 0
   ) {
     throw new RangeError('layoutCycleDurationMs must be finite and non-negative.')
+  }
+  if (
+    !Number.isFinite(input.bodyMotionCycleDurationMs) ||
+    input.bodyMotionCycleDurationMs < 0
+  ) {
+    throw new RangeError(
+      'bodyMotionCycleDurationMs must be finite and non-negative.',
+    )
+  }
+  if (
+    !Number.isFinite(input.maximumBodyMotionOffset) ||
+    input.maximumBodyMotionOffset < 0
+  ) {
+    throw new RangeError(
+      'maximumBodyMotionOffset must be finite and non-negative.',
+    )
   }
   for (const [name, strength] of [
     ['authoredMorphStrength', input.authoredMorphStrength],
@@ -106,9 +136,35 @@ export function defineCreature(
       ),
     0,
   )
+  const bodySlotIds = new Set(input.body.slots.map((slot) => slot.slotId))
+  const bodyMotionGroupBySlotId: Record<number, number> = {}
+  for (const [slotIdText, groupId] of Object.entries(
+    input.bodyMotionGroupBySlotId,
+  )) {
+    const slotId = Number(slotIdText)
+    if (!bodySlotIds.has(slotId)) {
+      throw new Error(`Body Motion references unknown slotId ${slotIdText}.`)
+    }
+    if (!Number.isSafeInteger(groupId) || groupId < 0) {
+      throw new RangeError(
+        `Body Motion group for slotId ${slotIdText} must be a non-negative safe integer.`,
+      )
+    }
+    bodyMotionGroupBySlotId[slotId] = groupId
+  }
+  if (
+    input.bodyMotionBehaviorId !== CREATURE_BODY_MOTION_BEHAVIOR.NONE &&
+    Object.keys(bodyMotionGroupBySlotId).length !== input.body.slots.length
+  ) {
+    throw new Error('Animated creatures must map every body slot to a motion group.')
+  }
 
   return Object.freeze({
     ...input,
-    broadPhaseRadius: input.body.broadPhaseRadius + maximumMaterialOffset,
+    bodyMotionGroupBySlotId: Object.freeze(bodyMotionGroupBySlotId),
+    broadPhaseRadius:
+      input.body.broadPhaseRadius +
+      maximumMaterialOffset +
+      input.maximumBodyMotionOffset,
   })
 }

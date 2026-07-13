@@ -48,6 +48,7 @@ export interface EnemyState {
   velocityX: number
   velocityY: number
   behaviorElapsedMs: number
+  bodyMotionPhaseOffset: number
   layoutMode: EnemyLayoutMode
   phase: EnemyPhase
   materializeRemainingMs: number

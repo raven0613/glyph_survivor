@@ -4,6 +4,7 @@ import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { normalizeMovement } from './movementVector.ts'
 import { runCreatureLayoutBehavior } from './creatureLayoutStrategies.ts'
+import { runCreatureBodyMotionBehavior } from './creatureBodyMotionStrategies.ts'
 import { runCreatureMovementBehavior } from './creatureMovementStrategies.ts'
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -83,5 +84,6 @@ export function runMovementSystem(world: WorldState, deltaMs: number): void {
     enemy.behaviorElapsedMs += deltaMs
     runCreatureMovementBehavior(world, enemy, definition, deltaMs)
     runCreatureLayoutBehavior(world, enemy, definition)
+    runCreatureBodyMotionBehavior(world, enemy, definition)
   }
 }

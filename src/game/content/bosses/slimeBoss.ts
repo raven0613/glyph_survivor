@@ -1,4 +1,5 @@
 import {
+  CREATURE_BODY_MOTION_BEHAVIOR,
   CREATURE_LAYOUT_BEHAVIOR,
   CREATURE_MOVEMENT_BEHAVIOR,
   CREATURE_SPLIT_BEHAVIOR,
@@ -126,6 +127,10 @@ export function prepareSlimeBossDefinition(): CreatureDefinition {
     layoutCycleDurationMs: 2_400,
     authoredMorphStrength: 0.75,
     compiledMorphStrength: 1.4,
+    bodyMotionBehaviorId: CREATURE_BODY_MOTION_BEHAVIOR.NONE,
+    bodyMotionCycleDurationMs: 0,
+    maximumBodyMotionOffset: 0,
+    bodyMotionGroupBySlotId: Object.freeze({}),
     splitBehaviorId: CREATURE_SPLIT_BEHAVIOR.SLIME_TOPOLOGY,
     minimumIndependentCellRatio: 0.3,
     contactDamage: 1,
