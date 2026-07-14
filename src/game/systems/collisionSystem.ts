@@ -7,7 +7,11 @@ import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import type { GlyphCell } from '../glyph/glyphStore.ts'
 import { circlesIntersect } from './combatGeometry.ts'
-import { LOCAL_DAMAGE_SHAPE } from '../glyph/localDamage.ts'
+import {
+  DAMAGE_PRIMARY_SCOPE,
+  LOCAL_DAMAGE_SHAPE,
+} from '../glyph/localDamage.ts'
+import { getNextDamageEventId } from '../runtime/worldState.ts'
 
 function findHitGlyph(
   world: WorldState,
@@ -86,6 +90,8 @@ export function runCollisionSystem(world: WorldState): void {
           ? projectile.velocityY / velocityLength
           : projectile.launchDirectionY
       world.glyphDamageQueue.enqueue({
+        attackEventId: getNextDamageEventId(world),
+        primaryScope: DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER,
         ownerId: glyph.ownerId,
         shapeKind: LOCAL_DAMAGE_SHAPE.CIRCLE,
         shapeX: projectile.x,
@@ -97,11 +103,17 @@ export function runCollisionSystem(world: WorldState): void {
         shapeHalfAngleRadians: 0,
         targetMode: projectile.damageTargetMode,
         amount: projectile.damage,
+        damageSpreadProfile: projectile.damageSpreadProfile,
         impactStrengthMultiplier: projectile.impactStrengthMultiplier,
         impactDirectionX: directionX,
         impactDirectionY: directionY,
       })
       break
+    }
+
+    if (projectile.isAlive && projectile.rangeExhausted) {
+      projectile.isAlive = false
+      world.diagnostics.rangeExpiredProjectileCount += 1
     }
   }
 }

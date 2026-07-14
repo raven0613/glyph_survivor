@@ -24,7 +24,7 @@ These rules come directly from `spec.md` and must survive refactors:
 - Damage always changes Glyph Cell durability. Creature HP and max HP are read-only aggregates derived from Glyph durability, never independent mutable combat state.
 - Every Enemy, Elite, and Boss Glyph follows the same `HEALTHY → DAMAGED → HUSK` life cycle. A Husk has zero current durability and cannot take further durability damage, but remains an authoritative, dimly rendered Cell in the creature's full gameplay outline and hitbox.
 - A creature starts `COLLAPSING` only when all of its Glyph Cells are Husks. Rewards and cleanup happen only after that whole-body collapse resolves.
-- Hit effects must remain local to the DamageShape's actual Impact Cells, including Husks. Durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk.
+- Primary hit effects remain local to the DamageShape's actual Impact Cells, including Husks. Direct durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk. An explicit Damage Spread profile may additionally damage living Cells in exterior spatial bands and give those Cells spread-specific feedback; a frontier-only direct target may receive a faint rendering-only transfer link, but neither case inherits the primary Material impulse implicitly.
 - Creature-specific Body Motion is a deterministic Runtime-owned pose, not renderer-only decoration. Any positional pose offset participates in the authoritative Glyph hitbox, and active Husks follow the same slot motion as living Cells until collapse takes over.
 - The first ordinary-enemy appearances progress in the fixed order `ZOMBIE (Z) → BONE (BO) → BAT`; exact stage thresholds, post-unlock mixing, weights, and speeds remain validated content parameters.
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
@@ -32,6 +32,8 @@ These rules come directly from `spec.md` and must survive refactors:
 - The confirmed first three weapon identities are the assisted single-target `o`, a short-range approximately 90-degree aimed flamethrower Cone, and a Runtime-owned orbiting `O` with whole-body outward knockback. Their tunable prototype values live in `docs/content/weapon-system.md`.
 - Flamethrower sparks are rendering-only particles and never deal damage. The orbiting ball's phase, position, collision, re-hit gating, and knockback are authoritative Runtime state.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
+- Projectile Count is a prepared total-count effect: the confirmed prototype Ranks are `2／3／4`. One assisted volley shares one initial target query and uses centered `8°` spacing; Cone streams use centered `10°` spacing and independent attack-event IDs; orbit balls share one base phase and divide the full orbit evenly.
+- Range is the next confirmed Module contract, with complete Rank multipliers `×1.15／×1.30／×1.50`; it is not implemented yet. It increases assisted acquisition／lock／path-distance reach, authoritative Cone length, or an orbit's maximum radial-sweep radius while preserving that orbit's base radius and contact-circle size. It never enlarges Damage Spread bands or silently changes projectile speed, Cone angle, cadence, or re-hit cooldown.
 - Permanent weapon unlocks happen outside a run. A run receives a frozen set of unlocked weapon definitions, starts with exactly one selected weapon, and may acquire only those unlocked weapons through level-up cards.
 - Level-up offers mix weapon cards and universal Module cards. The first upgrade must contain at least one eligible weapon card.
 - XP overflow is never discarded. Crossing multiple level thresholds queues the same number of upgrade decisions, and gameplay remains paused between those decisions.
@@ -406,7 +408,7 @@ DAMAGED: 0 < currentDurability < maxDurability
 HUSK: currentDurability === 0
 ```
 
-A Glyph with `maxDurability === 1` may transition directly from `HEALTHY` to `HUSK`; do not create hidden durability merely to force a visible `DAMAGED` step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at deliberately low alpha/tint so the creature silhouette does not shrink as it is consumed.
+`currentDurability`, `maxDurability`, and damage amounts are finite non-negative gameplay numbers; current durability and damage may be fractional. Do not round damage to integers or impose a hidden minimum damage of `1`. Clamp subtraction to zero and use one documented precision normalization so tiny floating-point residues cannot prevent `HUSK` or collapse transitions. A Glyph with `maxDurability === 1` transitions directly from `HEALTHY` to `HUSK` only when an effective hit is at least its remaining durability; a smaller hit produces fractional `DAMAGED` durability. Do not create hidden durability merely to force a visible state step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at deliberately low alpha/tint so the creature silhouette does not shrink as it is consumed.
 
 The authoritative pose composition is:
 
@@ -449,17 +451,20 @@ Any cached aggregate is disposable derived data and must never diverge into a se
 
 Local damage flow separates impact visualization from durability targets:
 
-1. Weapon emits a `DamageShape`, damage amount, and impact parameters.
+1. Weapon emits one stable attack event with an ID, primary `DamageShape`, damage amount, impact parameters, and an optional prepared `DamageSpreadProfile`.
 2. Spatial index returns candidate outline Glyphs; entity-level collision may be used only as a broad phase.
 3. A precise shape test produces the **Impact Cells**: every distinct `HEALTHY`, `DAMAGED`, or `HUSK` Cell intersecting the DamageShape.
 4. If there are no Impact Cells, the attack misses. If there are Impact Cells, local hit flash, particles, material displacement, and other impact effects apply only to those Cells, regardless of their life state.
 5. For each struck creature/body, select **Damage Targets** only from its living/damageable Cells. Prefer living Impact Cells first, then use a deterministic multi-source topology-frontier search outward from the struck region to fill the attack's target quota. The frontier may eventually reach a living Cell at the other end of the body; do not make an attack ineffective merely because its local Impact Cells are already Husks.
 6. A single-target/point attack has a quota of `1`. An area attack's per-body `targetQuota` equals the number of distinct outline Cells of that body in its Impact Cells. Each living Cell may be selected at most once by that attack; an unfilled quota is discarded rather than stacked repeatedly onto a surviving Cell.
-7. Apply durability damage only to the selected Damage Targets. A remote frontier target receives no local hit flash, particle, impulse, or other impact effect unless it was also an Impact Cell.
-8. A Glyph whose durability reaches zero enters `HUSK`, keeps its gameplay outline footprint, and becomes immune to further durability damage.
-9. When the owner has no living Glyphs, transition the creature to `COLLAPSING`; only after collapse resolution may death rewards and cleanup occur.
+7. If a spread profile exists, query exterior bands around the original whole DamageShape. Band width is a centralized validated content value; classify positive distance `d` with `(n - 1)w < d <= nw`. A Cone uses the exterior of the whole Cone, never one band per particle, sample, or Impact Cell.
+8. Spread candidates may belong to any owner but must be living/damageable Cells. Never include a Husk, fill a spread quota through topology, or transfer spread damage to another Cell. Select every living Cell precisely intersecting a configured band.
+9. Consolidate primary Damage Targets and spread candidates by `attackEventId` and stable Glyph ID before mutation. Each Cell takes at most one durability change from that event, using the highest applicable amount; direct damage wins over lower spread damage. All internal samples of one Cone share an event, while Projectile Count creates separate Cone events that may each damage an overlapping Cell once.
+10. Apply primary local hit flash, particles, and Material response only to Impact Cells. A remote frontier-only direct target receives none of those, but Runtime may emit a short-lived source-to-target transfer-link summary for rendering. A spread target receives explicit spread feedback, not the primary impulse, local Material response, or whole-body knockback unless content defines such propagation separately.
+11. Clamp and normalize durability after subtraction. A Glyph whose durability reaches zero enters `HUSK`, keeps its gameplay outline footprint, and becomes immune to further durability damage.
+12. When an affected owner has no living Glyphs, transition the creature to `COLLAPSING`; only after collapse resolution may death rewards and cleanup occur.
 
-Damage selection must be local-first and topology-driven, never random or transferred to another owner. Never implement damage by subtracting creature HP first, damaging every Glyph uniformly, reducing a whole creature container's alpha, or using render state as the hitbox source of truth.
+Primary quota selection must be local-first and topology-driven, never random or transferred to another owner. Damage Spread is the only explicit cross-owner secondary phase described here and remains spatial rather than topology-driven. Never implement damage by subtracting creature HP first, damaging every Glyph uniformly, reducing a whole creature container's alpha, or using render state as the hitbox source of truth.
 
 ## 11. Boss and material rules
 
@@ -506,6 +511,7 @@ Separate weapon concerns:
 TargetStrategy       nearest, cone, random, chain candidate, manual aim
 AttackPattern        single, burst, spread, beam, orbit, chain
 DamageShape          point, circle, capsule, line, cone
+DamageSpreadProfile  disabled, exterior bands with per-band damage ratios
 DestructionProfile   knockback, pierce, explosion, split, erosion
 ```
 
@@ -538,11 +544,11 @@ Level progression uses validated content for `xpToNext(level)` and reward values
 
 React selection previews do not mutate the run. Final install／acquire commands must revalidate the active offer, choice kind, instance IDs, Rank, empty/full Slot state, and replacement target. Invalid or stale commands consume nothing, change nothing, and keep gameplay paused. Successful validation commits all changes atomically before consuming the offer or resuming.
 
-Every damaging attack defines a `DamageShape`, its geometric dimensions such as radius/length/angle, and a damage amount. A shape intersects the full authoritative creature outline, including Husks. A point-like attack selects one living Damage Target from the struck body; area shapes derive each struck body's quota from the number of its distinct intersected outline Cells. In-shape living Cells are selected first, and deterministic topology-frontier selection fills any remaining quota. DamageShape intersection and durability-target selection are separate from local visual effects: only the actual in-shape Impact Cells receive those effects. Entity-level collision may be used only as a broad phase before Glyph-level queries and precise shape tests.
+Every damaging attack defines a stable attack-event identity, a `DamageShape`, its geometric dimensions such as radius/length/angle, a damage amount, and an optional prepared `DamageSpreadProfile`. The primary shape intersects the full authoritative creature outline, including Husks. A point-like attack selects one living Damage Target from the struck body; area shapes derive each struck body's quota from the number of its distinct intersected outline Cells. In-shape living Cells are selected first, and deterministic topology-frontier selection fills any remaining primary quota. Primary DamageShape intersection and durability-target selection are separate from local visual effects: only actual in-shape Impact Cells receive primary effects. Spread then queries every living Glyph precisely within the configured exterior bands, including Cells owned by other creatures, and consolidates all direct／spread damage by event and Glyph ID before mutation. Entity-level collision may be used only as a broad phase before Glyph-level queries and precise shape or band tests.
 
 Gameplay projectiles are the only projectile-like objects that participate in damage/collision. Visual particles are rendering-only and never cause damage.
 
-- The flamethrower's authoritative damage comes from fixed-step Cone DamageShape pulses. Its orange／yellow `.`, `*`, and related sparks only visualize that shape; changing their density must not change gameplay.
+- The flamethrower's authoritative damage comes from fixed-step Cone DamageShape pulses. One Cone stream pulse is one attack event: all internal geometry samples share its deduplication scope, while additional Cone streams created by Projectile Count use independent event IDs. Its orange／yellow `.`, `*`, and related sparks only visualize that shape; changing their density must not change gameplay or spread.
 - An orbiting ball that damages enemies is an instance-attached authoritative attack. Runtime owns its deterministic orbit phase, world position, collision radius, per-owner re-hit gating, pause behavior, and cleanup when its Weapon Instance disappears. Renderer-owned halo and trail particles do not collide.
 - When a weapon explicitly applies whole-body knockback, Runtime displaces the creature root in an authoritative, bounded way so every active outline Glyph, including Husks, follows it. Local Material impulse and hit presentation remain restricted to actual Impact Cells; topology-frontier-only Damage Targets receive neither.
 
@@ -553,7 +559,15 @@ Gameplay projectiles are the only projectile-like objects that participate in da
 
 Upgrade effects should produce explicit modifiers or strategy changes. Avoid scattered checks such as `if (hasUpgradeX)` across unrelated systems.
 
-A universal Module must have a meaningful, validated interpretation for every weapon allowed to receive it. Attack area, targeting／travel range, duration, projectile count, pierce, knockback, and element are separate capability axes; do not collapse them into ambiguous fields or silently offer no-op cards. Compose Rank effects in a stable order and keep the fixed-step firing path free of per-step modifier allocations.
+A universal Module must have a meaningful, validated interpretation for every weapon allowed to receive it. Damage Spread, primary DamageShape geometry, targeting／travel range, duration, projectile count, pierce, knockback, and element are separate capability axes; do not collapse them into ambiguous fields or silently offer no-op cards. Damage Spread adds living-only exterior bands and does not enlarge the primary shape. Compose Rank effects in a stable order and keep the fixed-step firing path free of per-step modifier allocations.
+
+The confirmed Range Module follows pattern-specific contracts rather than mutating one shared `range` field:
+
+- Assisted projectiles increase initial acquisition range, lock-maintenance range, and a separately authored maximum path-distance budget by the same complete Rank multiplier. Consume that budget from actual travelled distance, snapshot it at emission, preserve the final partial segment for collision, and do not use projectile lifetime as a disguised Range value.
+- Pulsed Cone weapons multiply only the authoritative axial length from the muzzle origin. The damage event and rendering-only flame-emitter summary must receive the same resolved length; angle, muzzle distance, damage, cadence, particle count, and Damage Spread band data remain unchanged.
+- Persistent orbit weapons keep the base orbit radius and contact-circle radius unchanged, and use the Rank multiplier only for the maximum radius of a deterministic outward radial sweep. Angular spacing and radial phase offsets remain deterministic across multiple balls. Runtime must perform swept-circle collision from the previous authoritative ball position to the current one, place the DamageShape at the resolved contact point, and avoid treating a profile-revision position rebase as a long attack sweep.
+- Attack Speed may advance the orbit's shared angular／radial phase more quickly, but Range never shortens per-owner re-hit cooldown. Damage Spread continues to start at the actual resolved primary DamageShape exterior with unchanged band width and ratios.
+- Do not add Range to the eligible content pool until all confirmed first-three-weapon mappings, target-specific Runtime previews, and required collision behavior are implemented. React may display only immutable before／after summaries authored by Runtime; it must not calculate weapon-specific Range values.
 
 New combat features must first define their Glyph interaction instead of modifying creature HP. For example, fire applies durability damage over time, freezing changes Glyph displacement/material response, corrosion damages and fades Glyphs, lightning selects adjacent Glyphs, and black holes attract and deform Glyphs.
 
@@ -587,6 +601,8 @@ Rendering rules:
 - Set `boundsArea` when using `ParticleContainer`, especially with culling.
 - Group similar object types, base textures, and blend modes to preserve batching.
 - Use object pools for projectiles, Glyph fragments, damage particles, and short-lived effects.
+- Runtime chooses every topology-transfer link endpoint and spread-feedback target. Render snapshots may carry only short-lived immutable effect summaries; the renderer may interpolate／fade them but must never search Glyph topology, choose a damage target, or extend their gameplay lifetime.
+- Render faint transfer links with a bounded pool of small line views (for example pooled PixiJS `Graphics` or a batched line-sprite representation) and render spread feedback through the existing atlas／effect pools where practical. Do not create one `Text`, `Graphics`, or `Container` per active Glyph or per frame.
 - Disable interaction (`eventMode = 'none'`) on non-interactive world subtrees.
 - Use culling only after profiling; it trades CPU bounds checks for less rendering.
 - Do not enable high resolution or antialiasing without target-device profiling.
@@ -632,6 +648,7 @@ Track at minimum:
 - frame time and simulation time;
 - Body Motion simulation time, animated creature count, and animated outline-Glyph count when profiling this feature;
 - active entity/projectile/effect counts and Glyph counts split by `HEALTHY`, `DAMAGED`, and `HUSK`;
+- Range diagnostics when that Module is enabled: range-expired projectile count, active projectile path-distance budgets, orbit swept-collision candidates, and precise swept tests;
 - pool capacity and pool misses;
 - draw calls when practical;
 - capped/dropped simulation steps;
@@ -715,6 +732,22 @@ replaces one weapon and discards only that weapon's module slots
 keeps gameplay paused through card, weapon, and replacement selection
 keeps in-flight attack values unchanged after replacing their source weapon
 clears persistent orbit attacks when their weapon instance is replaced
+keeps fractional durability until accumulated damage reaches zero and normalizes floating-point residue
+classifies spread bands from the original whole damage-shape exterior
+damages every living glyph in a spread band across owners without damaging or traversing from husks
+applies at most the highest direct or spread amount once per glyph and attack event
+deduplicates all samples inside one cone but lets independent cone events overlap
+emits spread feedback without inheriting the primary material impulse
+emits only a rendering transfer link for a frontier-only direct target
+emits one centered assisted volley from one target query
+lets separate centered cone streams apply independent overlap damage
+keeps multiple orbit balls evenly phase-spaced after a Rank change
+extends assisted acquisition and travelled path distance without changing projectile speed or radius
+uses one resolved Cone length for authoritative damage and rendering-only flame presentation
+keeps Damage Spread band width unchanged after Range extends the primary attack reach
+sweeps an orbit ball between its base and maximum Range without enlarging its contact circle
+detects Glyph contacts across the complete previous-to-current orbit sweep
+publishes weapon-specific Range previews without letting React derive combat values
 ```
 
 ## 18. AI implementation workflow
@@ -758,6 +791,6 @@ Do not silently hard-code these product decisions when they materially affect im
 - save/replay requirements across content versions;
 - analytics/telemetry collection;
 - the testing stack to add when tests are first implemented;
-- weapons beyond the confirmed first three, permanent unlock conditions, Module Rank tables beyond the confirmed prototype set, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
+- weapons beyond the confirmed first three, permanent unlock conditions, Module Rank tables beyond the confirmed Attack Speed／Projectile Count／Damage Spread／Range／Knockback prototype tables, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
 
 Use a conservative temporary default only when it is easy to reverse, and record it next to the relevant contract.

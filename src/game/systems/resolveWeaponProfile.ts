@@ -1,26 +1,60 @@
 import type {
   ConeWeaponCombatProfile,
+  PersistentOrbitAttackPattern,
+  PulsedConeAttackPattern,
+  SingleProjectileAttackPattern,
   OrbitWeaponCombatProfile,
   ProjectileWeaponCombatProfile,
   WeaponDefinition,
 } from '../content/weapons/weaponDefinition.ts'
 import {
   MODULE_EFFECT_KIND,
+  type DamageSpreadModuleRankDefinition,
+  type MultiplierModuleRankDefinition,
+  type ProjectileCountModuleRankDefinition,
   type WeaponModuleDefinition,
 } from '../content/upgrades/moduleDefinition.ts'
+import type { DamageSpreadProfile } from '../glyph/localDamage.ts'
+
+export type ResolvedDamageSpreadProfile = DamageSpreadProfile
 
 interface ResolvedImpactProfile {
   readonly impactStrengthMultiplier: number
+  readonly damageSpreadProfile: Readonly<ResolvedDamageSpreadProfile> | null
+}
+
+interface ResolvedProjectileAttackPattern
+  extends SingleProjectileAttackPattern {
+  readonly emissionCount: number
+  readonly emissionAngleSpacingRadians: number
+}
+
+interface ResolvedConeAttackPattern extends PulsedConeAttackPattern {
+  readonly emissionCount: number
+  readonly emissionAngleSpacingRadians: number
+}
+
+interface ResolvedOrbitAttackPattern extends PersistentOrbitAttackPattern {
+  readonly maximumOrbitRadius: number
 }
 
 export type ResolvedProjectileWeaponProfile = Readonly<
-  ProjectileWeaponCombatProfile & ResolvedImpactProfile
+  Omit<ProjectileWeaponCombatProfile, 'attackPattern'> &
+    ResolvedImpactProfile & {
+      readonly attackPattern: Readonly<ResolvedProjectileAttackPattern>
+    }
 >
 export type ResolvedConeWeaponProfile = Readonly<
-  ConeWeaponCombatProfile & ResolvedImpactProfile
+  Omit<ConeWeaponCombatProfile, 'attackPattern'> &
+    ResolvedImpactProfile & {
+      readonly attackPattern: Readonly<ResolvedConeAttackPattern>
+    }
 >
 export type ResolvedOrbitWeaponProfile = Readonly<
-  OrbitWeaponCombatProfile & ResolvedImpactProfile
+  Omit<OrbitWeaponCombatProfile, 'attackPattern'> &
+    ResolvedImpactProfile & {
+      readonly attackPattern: Readonly<ResolvedOrbitAttackPattern>
+    }
 >
 export type ResolvedWeaponProfile =
   | ResolvedProjectileWeaponProfile
@@ -32,17 +66,55 @@ export interface ResolvedModuleSlot {
   readonly rank: number
 }
 
-function getRankMultiplier(
+function getMultiplierRank(
   definition: WeaponModuleDefinition,
   rank: number,
-): number {
+): Readonly<MultiplierModuleRankDefinition> {
   const rankDefinition = definition.ranks[rank - 1]
-  if (!rankDefinition || rankDefinition.rank !== rank) {
+  if (
+    !rankDefinition ||
+    rankDefinition.rank !== rank ||
+    !('totalMultiplier' in rankDefinition)
+  ) {
     throw new RangeError(
-      `Module ${definition.id} does not define Rank ${rank}.`,
+      `Module ${definition.id} does not define multiplier Rank ${rank}.`,
     )
   }
-  return rankDefinition.totalMultiplier
+  return rankDefinition
+}
+
+function getDamageSpreadRank(
+  definition: WeaponModuleDefinition,
+  rank: number,
+): Readonly<DamageSpreadModuleRankDefinition> {
+  const rankDefinition = definition.ranks[rank - 1]
+  if (
+    !rankDefinition ||
+    rankDefinition.rank !== rank ||
+    !('bandDamageRatios' in rankDefinition)
+  ) {
+    throw new RangeError(
+      `Module ${definition.id} does not define Damage Spread Rank ${rank}.`,
+    )
+  }
+  return rankDefinition
+}
+
+function getProjectileCountRank(
+  definition: WeaponModuleDefinition,
+  rank: number,
+): Readonly<ProjectileCountModuleRankDefinition> {
+  const rankDefinition = definition.ranks[rank - 1]
+  if (
+    !rankDefinition ||
+    rankDefinition.rank !== rank ||
+    !('totalCount' in rankDefinition)
+  ) {
+    throw new RangeError(
+      `Module ${definition.id} does not define Projectile Count Rank ${rank}.`,
+    )
+  }
+  return rankDefinition
 }
 
 /** Builds the disposable hot-path profile for a newly created Weapon Instance. */
@@ -54,8 +126,12 @@ export function resolveWeaponProfile(
   > = Object.freeze({}),
 ): ResolvedWeaponProfile {
   let attackSpeedMultiplier = 1
-  let areaMultiplier = 1
+  let rangeMultiplier = 1
   let impactStrengthMultiplier = 1
+  let projectileCountTotal: number | null = null
+  let projectileAngleSpacingRadians = 0
+  let coneAngleSpacingRadians = 0
+  let damageSpreadProfile: Readonly<ResolvedDamageSpreadProfile> | null = null
 
   for (const slot of moduleSlots) {
     if (!slot) {
@@ -67,16 +143,41 @@ export function resolveWeaponProfile(
         `Unknown installed module definition ${slot.moduleDefinitionId}.`,
       )
     }
-    const multiplier = getRankMultiplier(moduleDefinition, slot.rank)
     switch (moduleDefinition.effectKind) {
       case MODULE_EFFECT_KIND.ATTACK_SPEED:
-        attackSpeedMultiplier *= multiplier
+        attackSpeedMultiplier *= getMultiplierRank(
+          moduleDefinition,
+          slot.rank,
+        ).totalMultiplier
         break
-      case MODULE_EFFECT_KIND.ATTACK_AREA:
-        areaMultiplier *= multiplier
+      case MODULE_EFFECT_KIND.DAMAGE_SPREAD: {
+        const rank = getDamageSpreadRank(moduleDefinition, slot.rank)
+        damageSpreadProfile = Object.freeze({
+          bandWidth: moduleDefinition.bandWidth,
+          bandDamageRatios: Object.freeze([...rank.bandDamageRatios]),
+        })
+        break
+      }
+      case MODULE_EFFECT_KIND.PROJECTILE_COUNT:
+        projectileCountTotal = getProjectileCountRank(
+          moduleDefinition,
+          slot.rank,
+        ).totalCount
+        projectileAngleSpacingRadians =
+          moduleDefinition.projectileAngleSpacingRadians
+        coneAngleSpacingRadians = moduleDefinition.coneAngleSpacingRadians
+        break
+      case MODULE_EFFECT_KIND.RANGE:
+        rangeMultiplier *= getMultiplierRank(
+          moduleDefinition,
+          slot.rank,
+        ).totalMultiplier
         break
       case MODULE_EFFECT_KIND.KNOCKBACK:
-        impactStrengthMultiplier *= multiplier
+        impactStrengthMultiplier *= getMultiplierRank(
+          moduleDefinition,
+          slot.rank,
+        ).totalMultiplier
         break
     }
   }
@@ -87,12 +188,19 @@ export function resolveWeaponProfile(
       ...profile,
       fireIntervalMs: profile.fireIntervalMs / attackSpeedMultiplier,
       impactStrengthMultiplier,
-      attackPattern: Object.freeze({ ...profile.attackPattern }),
-      damageShape: Object.freeze({
-        ...profile.damageShape,
-        radius: profile.damageShape.radius * areaMultiplier,
+      damageSpreadProfile,
+      attackPattern: Object.freeze({
+        ...profile.attackPattern,
+        maximumTravelDistance:
+          profile.attackPattern.maximumTravelDistance * rangeMultiplier,
+        emissionCount: projectileCountTotal ?? 1,
+        emissionAngleSpacingRadians: projectileAngleSpacingRadians,
       }),
-      trackingProfile: Object.freeze({ ...profile.trackingProfile }),
+      damageShape: Object.freeze({ ...profile.damageShape }),
+      trackingProfile: Object.freeze({
+        ...profile.trackingProfile,
+        range: profile.trackingProfile.range * rangeMultiplier,
+      }),
       projectilePresentation: Object.freeze({
         ...profile.projectilePresentation,
       }),
@@ -102,15 +210,22 @@ export function resolveWeaponProfile(
   if (profile.targetStrategyId === 'OWNER_RELATIVE') {
     return Object.freeze({
       ...profile,
-      rehitCooldownMs: profile.rehitCooldownMs / attackSpeedMultiplier,
+      rehitCooldownMs: profile.rehitCooldownMs,
       rootKnockbackDistance:
         profile.rootKnockbackDistance * impactStrengthMultiplier,
       impactStrengthMultiplier,
-      attackPattern: Object.freeze({ ...profile.attackPattern }),
-      damageShape: Object.freeze({
-        ...profile.damageShape,
-        radius: profile.damageShape.radius * areaMultiplier,
+      damageSpreadProfile,
+      attackPattern: Object.freeze({
+        ...profile.attackPattern,
+        maximumOrbitRadius:
+          profile.attackPattern.orbitRadius * rangeMultiplier,
+        ballCount:
+          projectileCountTotal ?? profile.attackPattern.ballCount,
+        angularSpeedRevolutionsPerSecond:
+          profile.attackPattern.angularSpeedRevolutionsPerSecond *
+          attackSpeedMultiplier,
       }),
+      damageShape: Object.freeze({ ...profile.damageShape }),
       orbitPresentation: Object.freeze({ ...profile.orbitPresentation }),
     })
   }
@@ -119,13 +234,15 @@ export function resolveWeaponProfile(
     ...profile,
     fireIntervalMs: profile.fireIntervalMs / attackSpeedMultiplier,
     impactStrengthMultiplier,
-    attackPattern: Object.freeze({ ...profile.attackPattern }),
+    damageSpreadProfile,
+    attackPattern: Object.freeze({
+      ...profile.attackPattern,
+      emissionCount: projectileCountTotal ?? 1,
+      emissionAngleSpacingRadians: coneAngleSpacingRadians,
+    }),
     damageShape: Object.freeze({
       ...profile.damageShape,
-      fullAngleRadians: Math.min(
-        Math.PI * 2,
-        profile.damageShape.fullAngleRadians * areaMultiplier,
-      ),
+      range: profile.damageShape.range * rangeMultiplier,
     }),
     flamePresentation: Object.freeze({ ...profile.flamePresentation }),
   })

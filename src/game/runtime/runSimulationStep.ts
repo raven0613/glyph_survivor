@@ -3,6 +3,7 @@ import { runAimSystem } from '../systems/aimSystem.ts'
 import { runCollisionSystem } from '../systems/collisionSystem.ts'
 import { runDamageSystem } from '../systems/damageSystem.ts'
 import { runDeathSystem } from '../systems/deathSystem.ts'
+import { runDamagePresentationSystem } from '../systems/damagePresentationSystem.ts'
 import { runDirectorSystem } from '../systems/directorSystem.ts'
 import { runDropSystem } from '../systems/dropSystem.ts'
 import { runEnemySpatialIndexSystem } from '../systems/enemySpatialIndexSystem.ts'
@@ -28,6 +29,7 @@ export function runSimulationStep(world: WorldState, deltaMs: number): boolean {
   runAimSystem(world)
   runMovementSystem(world, deltaMs)
   runGlyphMaterialSystem(world, deltaMs)
+  runDamagePresentationSystem(world, deltaMs)
   runEnemySpatialIndexSystem(world)
   runDirectorSystem(world, deltaMs)
   runBossSpawnSystem(world)

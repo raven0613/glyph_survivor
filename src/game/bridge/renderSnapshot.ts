@@ -3,6 +3,7 @@ import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
+import { DAMAGE_SPREAD_FEEDBACK_DURATION_MS } from '../glyph/localDamage.ts'
 import {
   getGlyphMaterialDefinition,
   type GlyphMaterialDefinition,
@@ -14,6 +15,8 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const MAX_BURST_PARTICLES_PER_GLYPH = 8
 const MAX_ACTIVE_IMPACT_PARTICLES = 192
 const HIT_BURST_SPREAD_RADIANS = 1.4
+const SPREAD_FEEDBACK_TINT = 0x68e7ff
+const SPREAD_FEEDBACK_SCALE_BONUS = 0.08
 
 export interface RenderGlyph {
   id: number
@@ -41,6 +44,15 @@ export interface RenderFlameEmitter {
   seed: number
 }
 
+export interface RenderDamageTransferLink {
+  id: number
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  alpha: number
+}
+
 export interface RenderSnapshot {
   cameraX: number
   cameraY: number
@@ -54,6 +66,7 @@ export interface RenderSnapshot {
   readonly orbits: RenderGlyph[]
   readonly drops: RenderGlyph[]
   readonly flameEmitters: RenderFlameEmitter[]
+  readonly damageTransferLinks: RenderDamageTransferLink[]
 }
 
 function interpolate(previous: number, current: number, alpha: number): number {
@@ -120,7 +133,35 @@ export function createRenderSnapshot(): RenderSnapshot {
     orbits: [],
     drops: [],
     flameEmitters: [],
+    damageTransferLinks: [],
   }
+}
+
+function writeSpreadEffect(
+  snapshot: RenderSnapshot,
+  startIndex: number,
+  glyphId: number,
+  x: number,
+  y: number,
+  intensity: number,
+): number {
+  if (intensity <= 0 || startIndex >= MAX_ACTIVE_IMPACT_PARTICLES) {
+    return startIndex
+  }
+  const angle = glyphId * GOLDEN_ANGLE
+  const distance = 5 + (1 - intensity) * 8
+  writeGlyph(
+    snapshot.effects,
+    startIndex,
+    -glyphId,
+    getPrintableAsciiGlyphFrame('+'),
+    x + Math.cos(angle) * distance,
+    y + Math.sin(angle) * distance,
+    0.4 + intensity * 0.18,
+    intensity * 0.75,
+    SPREAD_FEEDBACK_TINT,
+  )
+  return startIndex + 1
 }
 
 function writeImpactEffects(
@@ -239,6 +280,14 @@ export function writeRenderSnapshot(
         hitPulseScale: material.hitPulseScale,
         hitAlphaFloor: material.hitAlphaFloor,
       })
+      const spreadIntensity =
+        glyph.hitFlashRemainingMs > 0
+          ? 0
+          : Math.min(
+              1,
+              glyph.spreadFlashRemainingMs /
+                DAMAGE_SPREAD_FEEDBACK_DURATION_MS,
+            )
       const collapseAngle = glyph.id * GOLDEN_ANGLE
       const collapseDistance = collapseProgress * COLLAPSE_SCATTER_DISTANCE
       const x =
@@ -258,11 +307,12 @@ export function writeRenderSnapshot(
         y,
         materializeProgress *
           hitPresentation.scale *
+          (1 + spreadIntensity * SPREAD_FEEDBACK_SCALE_BONUS) *
           (1 - collapseProgress * 0.7),
         materializeProgress *
-          hitPresentation.alpha *
+          Math.max(hitPresentation.alpha, spreadIntensity * 0.72) *
           (1 - collapseProgress),
-        hitPresentation.tint,
+        spreadIntensity > 0 ? SPREAD_FEEDBACK_TINT : hitPresentation.tint,
         glyph.rotation,
       )
       enemyCount += 1
@@ -277,6 +327,14 @@ export function writeRenderSnapshot(
         glyph.velocityY,
         material,
         hitPresentation.intensity,
+      )
+      effectCount = writeSpreadEffect(
+        snapshot,
+        effectCount,
+        glyph.id,
+        x,
+        y,
+        spreadIntensity,
       )
     }
   }
@@ -376,4 +434,26 @@ export function writeRenderSnapshot(
     flameEmitterCount += 1
   }
   snapshot.flameEmitters.length = flameEmitterCount
+
+  let damageTransferLinkCount = 0
+  for (const link of world.damageTransferLinks) {
+    if (
+      !isVisible(link.sourceX, link.sourceY, camera) &&
+      !isVisible(link.targetX, link.targetY, camera)
+    ) {
+      continue
+    }
+    const output =
+      snapshot.damageTransferLinks[damageTransferLinkCount] ??
+      ({} as RenderDamageTransferLink)
+    output.id = link.id
+    output.sourceX = link.sourceX
+    output.sourceY = link.sourceY
+    output.targetX = link.targetX
+    output.targetY = link.targetY
+    output.alpha = Math.max(0, link.remainingMs / link.durationMs) * 0.62
+    snapshot.damageTransferLinks[damageTransferLinkCount] = output
+    damageTransferLinkCount += 1
+  }
+  snapshot.damageTransferLinks.length = damageTransferLinkCount
 }

@@ -1,12 +1,33 @@
 import { spawnProjectile } from '../runtime/spawnProjectile.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { selectBestProjectileTarget } from './targetSelection.ts'
+import { TARGET_STRATEGY } from '../content/weapons/weaponDefinition.ts'
 import {
-  TARGET_STRATEGY,
-} from '../content/weapons/weaponDefinition.ts'
-import { LOCAL_DAMAGE_SHAPE } from '../glyph/localDamage.ts'
+  DAMAGE_PRIMARY_SCOPE,
+  LOCAL_DAMAGE_SHAPE,
+} from '../glyph/localDamage.ts'
 import { spawnFlameEmitter } from '../runtime/spawnFlameEmitter.ts'
 import type { ResolvedConeWeaponProfile } from './resolveWeaponProfile.ts'
+import { getNextDamageEventId } from '../runtime/worldState.ts'
+import { getCenteredEmissionAngleOffset } from './attackEmissionAngles.ts'
+
+function rotateDirectionX(
+  directionX: number,
+  directionY: number,
+  cosine: number,
+  sine: number,
+): number {
+  return directionX * cosine - directionY * sine
+}
+
+function rotateDirectionY(
+  directionX: number,
+  directionY: number,
+  cosine: number,
+  sine: number,
+): number {
+  return directionX * sine + directionY * cosine
+}
 
 function emitConeAttack(
   world: WorldState,
@@ -15,42 +36,65 @@ function emitConeAttack(
   profile: ResolvedConeWeaponProfile,
 ): void {
   const { player } = world
-  const originX = player.x + player.aimX * profile.attackPattern.muzzleDistance
-  const originY = player.y + player.aimY * profile.attackPattern.muzzleDistance
-  const candidates = world.enemySpatialHash.queryCircle(
-    originX,
-    originY,
-    profile.damageShape.range + world.maximumEnemyQueryRadius,
-    world.targetCandidates,
-  )
-  for (const enemy of candidates) {
+  for (
+    let streamIndex = 0;
+    streamIndex < profile.attackPattern.emissionCount;
+    streamIndex += 1
+  ) {
+    const angleOffset = getCenteredEmissionAngleOffset(
+      streamIndex,
+      profile.attackPattern.emissionCount,
+      profile.attackPattern.emissionAngleSpacingRadians,
+    )
+    const cosine = Math.cos(angleOffset)
+    const sine = Math.sin(angleOffset)
+    const directionX = rotateDirectionX(
+      player.aimX,
+      player.aimY,
+      cosine,
+      sine,
+    )
+    const directionY = rotateDirectionY(
+      player.aimX,
+      player.aimY,
+      cosine,
+      sine,
+    )
+    const originX =
+      player.x + directionX * profile.attackPattern.muzzleDistance
+    const originY =
+      player.y + directionY * profile.attackPattern.muzzleDistance
     world.glyphDamageQueue.enqueue({
-      ownerId: enemy.id,
+      attackEventId: getNextDamageEventId(world),
+      primaryScope: DAMAGE_PRIMARY_SCOPE.ALL_INTERSECTING_OWNERS,
       shapeKind: LOCAL_DAMAGE_SHAPE.CONE,
       shapeX: originX,
       shapeY: originY,
       shapeRadius: 0,
-      shapeDirectionX: player.aimX,
-      shapeDirectionY: player.aimY,
+      shapeDirectionX: directionX,
+      shapeDirectionY: directionY,
       shapeRange: profile.damageShape.range,
       shapeHalfAngleRadians: profile.damageShape.fullAngleRadians / 2,
       targetMode: profile.damageShape.targetMode,
       amount: profile.damageAmount,
+      damageSpreadProfile: profile.damageSpreadProfile,
       impactStrengthMultiplier: profile.impactStrengthMultiplier,
-      impactDirectionX: player.aimX,
-      impactDirectionY: player.aimY,
+      impactDirectionX: directionX,
+      impactDirectionY: directionY,
     })
+    world.diagnostics.attackEmissionCount += 1
+    spawnFlameEmitter(
+      world,
+      weaponId,
+      attackSequence,
+      streamIndex,
+      originX,
+      originY,
+      directionX,
+      directionY,
+      profile,
+    )
   }
-  spawnFlameEmitter(
-    world,
-    weaponId,
-    attackSequence,
-    originX,
-    originY,
-    player.aimX,
-    player.aimY,
-    profile,
-  )
 }
 
 export function runWeaponSystem(world: WorldState, deltaMs: number): void {
@@ -92,18 +136,43 @@ export function runWeaponSystem(world: WorldState, deltaMs: number): void {
     world.diagnostics.targetSearchCount += 1
 
     if (target) {
-      target.trackingLoad += 1
+      target.trackingLoad += attackPattern.emissionCount
     }
 
-    spawnProjectile(world, {
-      sourceWeaponInstanceId: weapon.id,
-      x: player.x + player.aimX * attackPattern.muzzleDistance,
-      y: player.y + player.aimY * attackPattern.muzzleDistance,
-      directionX: player.aimX,
-      directionY: player.aimY,
-      profile,
-      targetEnemyId: target?.id ?? null,
-    })
+    for (
+      let emissionIndex = 0;
+      emissionIndex < attackPattern.emissionCount;
+      emissionIndex += 1
+    ) {
+      const angleOffset = getCenteredEmissionAngleOffset(
+        emissionIndex,
+        attackPattern.emissionCount,
+        attackPattern.emissionAngleSpacingRadians,
+      )
+      const cosine = Math.cos(angleOffset)
+      const sine = Math.sin(angleOffset)
+      const directionX = rotateDirectionX(
+        player.aimX,
+        player.aimY,
+        cosine,
+        sine,
+      )
+      const directionY = rotateDirectionY(
+        player.aimX,
+        player.aimY,
+        cosine,
+        sine,
+      )
+      spawnProjectile(world, {
+        sourceWeaponInstanceId: weapon.id,
+        x: player.x + directionX * attackPattern.muzzleDistance,
+        y: player.y + directionY * attackPattern.muzzleDistance,
+        directionX,
+        directionY,
+        profile,
+        targetEnemyId: target?.id ?? null,
+      })
+    }
     weapon.attackSequence += 1
   }
 }

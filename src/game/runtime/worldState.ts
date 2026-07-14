@@ -13,6 +13,8 @@ import {
 } from '../glyph/glyphMaterial.ts'
 import {
   createGlyphDamageQueue,
+  createDamageResolutionScratch,
+  type DamageResolutionScratch,
   type GlyphDamageQueue,
 } from '../glyph/localDamage.ts'
 import { GAME_CONFIG } from './gameConfig.ts'
@@ -23,6 +25,7 @@ import {
 } from './weaponLoadout.ts'
 import type {
   BossEncounterState,
+  DamageTransferLinkState,
   EnemyState,
   ExperienceDropState,
   FlameEmitterState,
@@ -47,6 +50,14 @@ export interface WorldDiagnostics {
   healthyGlyphCount: number
   damagedGlyphCount: number
   huskGlyphCount: number
+  spreadCandidateCount: number
+  spreadPreciseTestCount: number
+  damageClaimDedupCount: number
+  damageTransferLinkDropCount: number
+  attackEmissionCount: number
+  rangeExpiredProjectileCount: number
+  orbitSweepCandidateCount: number
+  orbitSweepPreciseTestCount: number
 }
 
 export interface WorldState {
@@ -59,6 +70,10 @@ export interface WorldState {
   readonly input: InputState
   readonly glyphStore: GlyphStore
   readonly glyphDamageQueue: GlyphDamageQueue
+  readonly damageResolutionScratch: DamageResolutionScratch
+  readonly damageCandidates: EnemyState[]
+  readonly damageTransferLinks: DamageTransferLinkState[]
+  readonly damageTransferLinkPool: DamageTransferLinkState[]
   readonly enemies: EnemyState[]
   readonly enemyPool: EnemyState[]
   readonly enemyById: Map<number, EnemyState>
@@ -84,6 +99,8 @@ export interface WorldState {
   nextEntityId: number
   nextFlameEmitterId: number
   nextOrbitAttackId: number
+  nextDamageEventId: number
+  nextDamageTransferLinkId: number
   collectedXpThisStep: number
   targetSearchCursor: number
   activeEnemyCount: number
@@ -135,6 +152,14 @@ export function createWorldState(
     healthyGlyphCount: 0,
     damagedGlyphCount: 0,
     huskGlyphCount: 0,
+    spreadCandidateCount: 0,
+    spreadPreciseTestCount: 0,
+    damageClaimDedupCount: 0,
+    damageTransferLinkDropCount: 0,
+    attackEmissionCount: 0,
+    rangeExpiredProjectileCount: 0,
+    orbitSweepCandidateCount: 0,
+    orbitSweepPreciseTestCount: 0,
   }
   const weaponLoadout = createWeaponLoadout(content.maximumEquippedWeapons)
   equipWeapon(
@@ -163,6 +188,10 @@ export function createWorldState(
       },
     }),
     glyphDamageQueue: createGlyphDamageQueue(),
+    damageResolutionScratch: createDamageResolutionScratch(),
+    damageCandidates: [],
+    damageTransferLinks: [],
+    damageTransferLinkPool: [],
     enemies: [],
     enemyPool: [],
     enemyById: new Map(),
@@ -188,6 +217,8 @@ export function createWorldState(
     nextEntityId: 1,
     nextFlameEmitterId: 1,
     nextOrbitAttackId: 1,
+    nextDamageEventId: 1,
+    nextDamageTransferLinkId: 1,
     collectedXpThisStep: 0,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
@@ -202,6 +233,12 @@ export function createWorldState(
 export function getNextEntityId(world: WorldState): number {
   const id = world.nextEntityId
   world.nextEntityId += 1
+  return id
+}
+
+export function getNextDamageEventId(world: WorldState): number {
+  const id = world.nextDamageEventId
+  world.nextDamageEventId += 1
   return id
 }
 

@@ -160,9 +160,25 @@ $violet: #b28cff;
 }
 
 .upgrade-card__description {
+  display: grid;
+  gap: 7px;
   color: #718083;
   font-size: 9px;
   line-height: 1.5;
+}
+
+.upgrade-card__ranks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+
+  > span {
+    padding: 2px 5px;
+    border: 1px solid color-mix(in srgb, var(--card-accent) 22%, transparent);
+    color: color-mix(in srgb, var(--card-accent) 72%, #718083);
+    font-size: 8px;
+    letter-spacing: 0.04em;
+  }
 }
 
 .upgrade-card__footer {

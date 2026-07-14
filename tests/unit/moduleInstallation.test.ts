@@ -7,7 +7,6 @@ import {
 import {
   MODULE_EFFECT_KIND,
   defineWeaponModule,
-  type ModuleEffectKind,
   type WeaponModuleDefinition,
 } from '../../src/game/content/upgrades/moduleDefinition.ts'
 import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
@@ -140,7 +139,9 @@ test('ranks a matching module in place using total Rank values and rejects max R
 
 function createTestModule(
   id: string,
-  effectKind: ModuleEffectKind = MODULE_EFFECT_KIND.ATTACK_SPEED,
+  effectKind:
+    | typeof MODULE_EFFECT_KIND.ATTACK_SPEED
+    | typeof MODULE_EFFECT_KIND.KNOCKBACK = MODULE_EFFECT_KIND.ATTACK_SPEED,
 ): WeaponModuleDefinition {
   return defineWeaponModule({
     id,
@@ -173,7 +174,7 @@ test('requires an explicit full-slot replacement and changes only that slot', ()
   const fourth = createTestModule('module.test-fourth')
   const incoming = createTestModule(
     'module.test-incoming',
-    MODULE_EFFECT_KIND.ATTACK_AREA,
+    MODULE_EFFECT_KIND.KNOCKBACK,
   )
   const content = extendModules(baseContent, [fourth, incoming])
   const world = createWorldState(
@@ -186,7 +187,7 @@ test('requires an explicit full-slot replacement and changes only that slot', ()
   const weapon = world.weaponLoadout.equipped[0]
   weapon.moduleSlots = [
     { moduleDefinitionId: 'module.attack-speed', rank: 1 },
-    { moduleDefinitionId: 'module.attack-area', rank: 1 },
+    { moduleDefinitionId: 'module.damage-spread', rank: 1 },
     { moduleDefinitionId: 'module.knockback', rank: 1 },
     { moduleDefinitionId: fourth.id, rank: 1 },
   ]
@@ -220,8 +221,8 @@ test('rejects stale and replayed offers without changing the weapon', () => {
     BASIC_PROJECTILE_WEAPON_ID,
   )
   const weapon = world.weaponLoadout.equipped[0]
-  const area = getModule(content, 'module.attack-area')
-  const command = prepareModuleOffer(world, area, 'offer-current')
+  const spread = getModule(content, 'module.damage-spread')
+  const command = prepareModuleOffer(world, spread, 'offer-current')
 
   const stale = installModuleFromOffer(world, {
     ...command,
@@ -234,7 +235,7 @@ test('rejects stale and replayed offers without changing the weapon', () => {
   const replayed = installModuleFromOffer(world, command)
   assert.equal(replayed.ok, false)
   assert.deepEqual(weapon.moduleSlots, [
-    { moduleDefinitionId: area.id, rank: 1 },
+    { moduleDefinitionId: spread.id, rank: 1 },
     null,
     null,
     null,
@@ -276,12 +277,12 @@ test('does not partially commit when the queued offer pool would be invalid', ()
   const weapon = world.weaponLoadout.equipped[0]
   weapon.moduleSlots = [
     { moduleDefinitionId: 'module.attack-speed', rank: 3 },
-    { moduleDefinitionId: 'module.attack-area', rank: 2 },
-    null,
+    { moduleDefinitionId: 'module.damage-spread', rank: 2 },
+    { moduleDefinitionId: 'module.projectile-count', rank: 3 },
     null,
   ]
-  const area = getModule(content, 'module.attack-area')
-  const command = prepareModuleOffer(world, area, 'offer-invalid-next')
+  const spread = getModule(content, 'module.damage-spread')
+  const command = prepareModuleOffer(world, spread, 'offer-invalid-next')
   world.upgradeState.offerSequence = 1
   world.upgradeState.pendingUpgradeCount = 2
 
@@ -306,8 +307,8 @@ test('keeps an in-flight projectile on its emission-time Module snapshot', () =>
   )
   runWeaponSystem(world, 50)
   const projectile = world.projectiles[0]
-  const area = getModule(content, 'module.attack-area')
-  const command = prepareModuleOffer(world, area, 'offer-in-flight')
+  const spread = getModule(content, 'module.damage-spread')
+  const command = prepareModuleOffer(world, spread, 'offer-in-flight')
 
   assert.equal(installModuleFromOffer(world, command).ok, true)
 
@@ -317,5 +318,10 @@ test('keeps an in-flight projectile on its emission-time Module snapshot', () =>
   }
   assert.equal(projectile.radius, 7)
   assert.equal(projectile.impactStrengthMultiplier, 1)
-  assert.equal(profile.damageShape.radius, 7 * 1.15)
+  assert.equal(projectile.damageSpreadProfile, null)
+  assert.equal(profile.damageShape.radius, 7)
+  assert.deepEqual(profile.damageSpreadProfile, {
+    bandWidth: 24,
+    bandDamageRatios: [0.2],
+  })
 })

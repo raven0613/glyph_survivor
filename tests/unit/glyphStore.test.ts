@@ -117,3 +117,35 @@ test('rejects glyph definitions that cannot produce valid durability', () => {
     /positive safe integer/,
   )
 })
+
+test('preserves fractional durability and normalizes accumulated damage to zero', () => {
+  const store = createGlyphStore()
+  const glyph = store.createGlyph({
+    ownerId: 12,
+    bodySlotId: 0,
+    character: 'M',
+    glyphFrame: getPrintableAsciiGlyphFrame('M'),
+    baseCharacter: 'M',
+    baseGlyphFrame: getPrintableAsciiGlyphFrame('M'),
+    role: 'BODY',
+    topologyX: 0,
+    topologyY: 0,
+    maxDurability: 1,
+    collisionRadius: 12,
+    scale: 1,
+    material: GLYPH_MATERIAL.BASIC,
+    baseTint: 0xc94b5f,
+  })
+
+  store.applyDamage(glyph.id, 0.125)
+  assert.equal(glyph.currentDurability, 0.875)
+  assert.equal(glyph.state, GLYPH_CELL_STATE.DAMAGED)
+
+  for (let hit = 1; hit < 8; hit += 1) {
+    store.applyDamage(glyph.id, 0.125)
+  }
+
+  assert.equal(glyph.currentDurability, 0)
+  assert.equal(store.getOwnerDurability(12)?.currentDurability, 0)
+  assert.equal(glyph.state, GLYPH_CELL_STATE.HUSK)
+})

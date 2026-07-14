@@ -4,6 +4,18 @@ export interface UiUpgradeChoice {
   readonly definitionId: string
   readonly title?: string
   readonly description?: string
+  readonly rankPreviews?: readonly Readonly<UiUpgradeRankPreview>[]
+  readonly weaponTargetPreviews?: readonly Readonly<UiUpgradeWeaponTargetPreview>[]
+}
+
+export interface UiUpgradeRankPreview {
+  readonly rank: number
+  readonly summary: string
+}
+
+export interface UiUpgradeWeaponTargetPreview {
+  readonly weaponInstanceId: number
+  readonly summary: string
 }
 
 export interface UiInitialWeaponChoice {
@@ -121,7 +133,23 @@ export function createUiSnapshot(
 
   const upgradeChoices = Object.freeze(
     machineSnapshot.context.upgradeChoices.map((choice) =>
-      Object.freeze({ ...choice }),
+      Object.freeze({
+        ...choice,
+        rankPreviews: choice.rankPreviews
+          ? Object.freeze(
+              choice.rankPreviews.map((preview) =>
+                Object.freeze({ ...preview }),
+              ),
+            )
+          : undefined,
+        weaponTargetPreviews: choice.weaponTargetPreviews
+          ? Object.freeze(
+              choice.weaponTargetPreviews.map((preview) =>
+                Object.freeze({ ...preview }),
+              ),
+            )
+          : undefined,
+      }),
     ),
   )
   const copiedInitialWeaponChoices = Object.freeze(

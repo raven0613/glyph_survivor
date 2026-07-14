@@ -167,8 +167,8 @@ test('requires an explicit occupied Slot before replacing a Module', () => {
   const weapon = createWeapon(1, [
     {
       slotIndex: 0,
-      moduleDefinitionId: 'module.attack-area',
-      title: 'Attack Area',
+      moduleDefinitionId: 'module.damage-spread',
+      title: 'Damage Spread',
       rank: 2,
       maximumRank: 3,
     },

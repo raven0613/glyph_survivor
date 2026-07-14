@@ -10,12 +10,22 @@ export function runProjectileSystem(world: WorldState, deltaMs: number): void {
 
     projectile.previousX = projectile.x
     projectile.previousY = projectile.y
-    projectile.x += projectile.velocityX * deltaSeconds
-    projectile.y += projectile.velocityY * deltaSeconds
-    projectile.lifetimeMs -= deltaMs
+    const stepX = projectile.velocityX * deltaSeconds
+    const stepY = projectile.velocityY * deltaSeconds
+    const requestedDistance = Math.hypot(stepX, stepY)
+    const travelledDistance = Math.min(
+      requestedDistance,
+      projectile.remainingTravelDistance,
+    )
+    const movementScale =
+      requestedDistance > 0 ? travelledDistance / requestedDistance : 0
 
-    if (projectile.lifetimeMs <= 0) {
-      projectile.isAlive = false
-    }
+    projectile.x += stepX * movementScale
+    projectile.y += stepY * movementScale
+    projectile.remainingTravelDistance = Math.max(
+      0,
+      projectile.remainingTravelDistance - travelledDistance,
+    )
+    projectile.rangeExhausted = projectile.remainingTravelDistance === 0
   }
 }

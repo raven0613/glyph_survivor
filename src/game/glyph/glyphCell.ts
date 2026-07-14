@@ -38,6 +38,7 @@ export interface GlyphCell {
   readonly baseTint: number
   readonly tint: number
   readonly hitFlashRemainingMs: number
+  readonly spreadFlashRemainingMs: number
   readonly material: GlyphMaterialId
   readonly state: GlyphCellState
   readonly rotation: number
@@ -90,6 +91,7 @@ export interface GlyphStore {
     directionY: number,
     material: GlyphMaterialDefinition,
   ): void
+  applySpreadFeedback(glyphId: number, durationMs: number): void
   stepMaterial(
     glyphId: number,
     deltaMs: number,

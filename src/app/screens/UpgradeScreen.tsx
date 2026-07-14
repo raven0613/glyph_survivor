@@ -44,6 +44,27 @@ function getChoiceTitle(choice: Readonly<UiUpgradeChoice>): string {
   return choice.title ?? choice.definitionId
 }
 
+function getRankSummary(
+  choice: Readonly<UiUpgradeChoice>,
+  rank: number,
+): string | null {
+  return (
+    choice.rankPreviews?.find((preview) => preview.rank === rank)?.summary ??
+    null
+  )
+}
+
+function getWeaponTargetPreview(
+  choice: Readonly<UiUpgradeChoice>,
+  weaponInstanceId: number,
+): string | null {
+  return (
+    choice.weaponTargetPreviews?.find(
+      (preview) => preview.weaponInstanceId === weaponInstanceId,
+    )?.summary ?? null
+  )
+}
+
 function getOperationLabel(operation: UpgradeOperation | null): string {
   switch (operation?.kind) {
     case 'ACQUIRE_WEAPON':
@@ -97,12 +118,25 @@ function resetCardTilt(event: PointerEvent<HTMLButtonElement>): void {
 
 interface WeaponTargetProps {
   readonly option: UpgradeDecision['weaponOptions'][number]
+  readonly choice: Readonly<UiUpgradeChoice>
   readonly selected: boolean
   readonly onSelect: () => void
 }
 
-function WeaponTarget({ option, selected, onSelect }: WeaponTargetProps) {
+function WeaponTarget({ option, choice, selected, onSelect }: WeaponTargetProps) {
   const occupiedSlotCount = option.weapon.moduleSlots.filter(Boolean).length
+  const targetRank =
+    option.operation?.kind === 'RANK_UP_MODULE'
+      ? option.operation.rankAfter
+      : option.operation?.kind === 'INSTALL_MODULE' ||
+          option.operation?.kind === 'REPLACE_MODULE'
+        ? 1
+        : null
+  const rankSummary = targetRank ? getRankSummary(choice, targetRank) : null
+  const weaponTargetPreview = getWeaponTargetPreview(
+    choice,
+    option.weapon.instanceId,
+  )
   return (
     <button
       className={`upgrade-target${selected ? ' upgrade-target--selected' : ''}`}
@@ -123,6 +157,8 @@ function WeaponTarget({ option, selected, onSelect }: WeaponTargetProps) {
       </span>
       <span className="upgrade-target__operation">
         {option.disabledReason ?? getOperationLabel(option.operation)}
+        {rankSummary ? ` / ${rankSummary}` : ''}
+        {weaponTargetPreview ? ` / ${weaponTargetPreview}` : ''}
       </span>
     </button>
   )
@@ -173,6 +209,25 @@ function OperationDiff({ choice, operation }: OperationDiffProps) {
     removed = `${operation.replacedSlot.title} / RANK ${getRankLabel(operation.replacedSlot.rank)}`
     added = `${added} / RANK I`
   }
+  const targetRank =
+    operation.kind === 'RANK_UP_MODULE'
+      ? operation.rankAfter
+      : operation.kind === 'INSTALL_MODULE' || operation.kind === 'REPLACE_MODULE'
+        ? 1
+        : null
+  const rankSummary = targetRank ? getRankSummary(choice, targetRank) : null
+  if (rankSummary) {
+    added = `${added} / ${rankSummary}`
+  }
+  if ('weapon' in operation) {
+    const weaponTargetPreview = getWeaponTargetPreview(
+      choice,
+      operation.weapon.instanceId,
+    )
+    if (weaponTargetPreview) {
+      added = `${added} / ${weaponTargetPreview}`
+    }
+  }
 
   return (
     <div className="upgrade-diff" aria-label="Upgrade operation preview">
@@ -209,6 +264,7 @@ export function UpgradeScreen({
     },
     selection,
   )
+  const selectedChoice = decision.selectedChoice
 
   useEffect(() => {
     firstCardRef.current?.focus()
@@ -326,6 +382,15 @@ export function UpgradeScreen({
               </strong>
               <span className="upgrade-card__description">
                 {choice.description ?? 'No description available.'}
+                {choice.rankPreviews && (
+                  <span className="upgrade-card__ranks">
+                    {choice.rankPreviews.map((preview) => (
+                      <span key={preview.rank}>
+                        {getRankLabel(preview.rank)} {preview.summary}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </span>
               <span className="upgrade-card__footer">
                 <span>SELECT [{index + 1}]</span>
@@ -343,12 +408,13 @@ export function UpgradeScreen({
           </div>
         )}
 
-        {decision.stage === 'WEAPON' && (
+        {decision.stage === 'WEAPON' && selectedChoice && (
           <div className="upgrade-target-grid" aria-label="Weapon targets">
             {decision.weaponOptions.map((option) => (
               <WeaponTarget
                 key={option.weapon.instanceId}
                 option={option}
+                choice={selectedChoice}
                 selected={
                   selection.weaponInstanceId === option.weapon.instanceId
                 }

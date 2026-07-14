@@ -164,16 +164,42 @@ test('rejects malformed upgrade offers without pausing gameplay', () => {
 
 test('copies upgrade choices at the command boundary', () => {
   const actor = startRunningActor()
-  const mutableChoices = upgradeChoices.map((choice) => ({ ...choice }))
+  const mutableTargetPreview = {
+    weaponInstanceId: 1,
+    summary: 'Target 700 → 805 / Travel 1116 → 1283',
+  }
+  const mutableChoices = upgradeChoices.map((choice, index) => ({
+    ...choice,
+    weaponTargetPreviews:
+      index === 0 ? [mutableTargetPreview] : undefined,
+  }))
   actor.send({ type: 'UPGRADE_OFFERED', offerId: 'offer-copy', choices: mutableChoices })
 
   mutableChoices[0].title = 'mutated externally'
-  mutableChoices.push({ id: 'extra', kind: 'MODULE', definitionId: 'module.extra', title: 'Extra' })
+  mutableTargetPreview.summary = 'mutated externally'
+  mutableChoices.push({
+    id: 'extra',
+    kind: 'MODULE',
+    definitionId: 'module.extra',
+    title: 'Extra',
+    weaponTargetPreviews: undefined,
+  })
 
   assert.equal(actor.getSnapshot().context.upgradeChoices.length, 3)
   assert.equal(
     actor.getSnapshot().context.upgradeChoices[0].title,
     'Color: Fire Red',
+  )
+  assert.equal(
+    actor.getSnapshot().context.upgradeChoices[0].weaponTargetPreviews?.[0]
+      .summary,
+    'Target 700 → 805 / Travel 1116 → 1283',
+  )
+  assert.equal(
+    Object.isFrozen(
+      actor.getSnapshot().context.upgradeChoices[0].weaponTargetPreviews?.[0],
+    ),
+    true,
   )
 })
 

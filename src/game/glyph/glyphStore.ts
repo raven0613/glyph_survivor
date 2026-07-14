@@ -32,6 +32,17 @@ type Mutable<T> = { -readonly [Key in keyof T]: T[Key] }
 type MutableGlyphCell = Mutable<GlyphCell>
 type MutableOwnerDurability = Mutable<OwnerDurability>
 
+const DURABILITY_ZERO_EPSILON = 1e-9
+const DURABILITY_DECIMAL_SCALE = 1e12
+
+function normalizeDurability(value: number): number {
+  if (value <= DURABILITY_ZERO_EPSILON) {
+    return 0
+  }
+  return Math.round(value * DURABILITY_DECIMAL_SCALE) /
+    DURABILITY_DECIMAL_SCALE
+}
+
 function requirePositiveSafeInteger(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new RangeError(`${name} must be a positive safe integer.`)
@@ -127,6 +138,7 @@ export function createGlyphStore({
       baseTint: input.baseTint,
       tint: input.baseTint,
       hitFlashRemainingMs: 0,
+      spreadFlashRemainingMs: 0,
       material: input.material,
       state: GLYPH_CELL_STATE.HEALTHY,
       rotation: 0,
@@ -191,9 +203,17 @@ export function createGlyphStore({
       throw new Error(`Glyph ${glyphId} has no owner durability aggregate.`)
     }
 
-    const appliedDamage = Math.min(amount, cell.currentDurability)
-    cell.currentDurability -= appliedDamage
-    ownerDurability.currentDurability -= appliedDamage
+    const previousDurability = cell.currentDurability
+    const rawRemainingDurability = Math.max(0, previousDurability - amount)
+    cell.currentDurability = normalizeDurability(rawRemainingDurability)
+    const appliedDamage = previousDurability - cell.currentDurability
+    const rawOwnerDurability = Math.max(
+      0,
+      ownerDurability.currentDurability - appliedDamage,
+    )
+    ownerDurability.currentDurability = normalizeDurability(
+      rawOwnerDurability,
+    )
     const material = getGlyphMaterialDefinition(cell.material)
 
     if (cell.currentDurability === 0) {
@@ -266,6 +286,21 @@ export function createGlyphStore({
     cell.hitFlashRemainingMs = material.hitFlashDurationMs
   }
 
+  function applySpreadFeedback(glyphId: number, durationMs: number): void {
+    requireFiniteNumber(durationMs, 'spread feedback duration')
+    if (durationMs <= 0) {
+      throw new RangeError('spread feedback duration must be greater than zero.')
+    }
+    const cell = cellById.get(glyphId)
+    if (!cell) {
+      return
+    }
+    cell.spreadFlashRemainingMs = Math.max(
+      cell.spreadFlashRemainingMs,
+      durationMs,
+    )
+  }
+
   function stepMaterial(
     glyphId: number,
     deltaMs: number,
@@ -298,6 +333,12 @@ export function createGlyphStore({
       if (cell.hitFlashRemainingMs === 0) {
         cell.tint = cell.baseTint
       }
+    }
+    if (cell.spreadFlashRemainingMs > 0) {
+      cell.spreadFlashRemainingMs = Math.max(
+        0,
+        cell.spreadFlashRemainingMs - deltaMs,
+      )
     }
 
     if (
@@ -489,6 +530,7 @@ export function createGlyphStore({
     },
     applyDamage,
     applyMaterialHit,
+    applySpreadFeedback,
     stepMaterial,
     setGlyphLocalPosition,
     setGlyphBodyMotion,

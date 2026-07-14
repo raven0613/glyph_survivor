@@ -7,6 +7,7 @@ import type {
   DestructionProfileId,
 } from '../content/weapons/weaponDefinition.ts'
 import type { DamageTargetMode } from '../glyph/localDamage.ts'
+import type { DamageSpreadProfile } from '../glyph/localDamage.ts'
 
 export type EnemyPhase =
   | 'MATERIALIZING'
@@ -62,8 +63,11 @@ export interface OrbitAttackState {
   id: number
   sourceWeaponInstanceId: number
   sourceEquipmentSlot: number
+  sourceProfileRevision: number
   ballIndex: number
   phaseRadians: number
+  radialPhaseRadians: number
+  currentRadius: number
   x: number
   y: number
   previousX: number
@@ -73,6 +77,7 @@ export interface OrbitAttackState {
   rehitCooldownMs: number
   rootKnockbackDistance: number
   impactStrengthMultiplier: number
+  damageSpreadProfile: Readonly<DamageSpreadProfile> | null
   glyphFrame: number
   visualScale: number
   visualAlpha: number
@@ -119,10 +124,12 @@ export interface ProjectileState {
   radius: number
   damage: number
   impactStrengthMultiplier: number
+  damageSpreadProfile: Readonly<DamageSpreadProfile> | null
   damageShapeKind: DamageShapeId
   damageTargetMode: DamageTargetMode
   destructionProfileId: DestructionProfileId
-  lifetimeMs: number
+  remainingTravelDistance: number
+  rangeExhausted: boolean
   isAlive: boolean
   trackingMode: ProjectileTrackingMode
   trackingState: ProjectileTrackingState
@@ -138,6 +145,18 @@ export interface ProjectileState {
   visualScale: number
   visualAlpha: number
   visualTint: number
+}
+
+export interface DamageTransferLinkState {
+  id: number
+  sourceGlyphId: number
+  targetGlyphId: number
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  remainingMs: number
+  durationMs: number
 }
 
 export interface ExperienceDropState {

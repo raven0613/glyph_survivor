@@ -1,9 +1,14 @@
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
-import { LOCAL_DAMAGE_SHAPE } from '../glyph/localDamage.ts'
+import {
+  DAMAGE_PRIMARY_SCOPE,
+  LOCAL_DAMAGE_SHAPE,
+} from '../glyph/localDamage.ts'
 import type { OrbitAttackState } from '../runtime/worldEntities.ts'
 import { isEnemyOutlineCollisionPhase } from '../runtime/worldEntities.ts'
 import type { WeaponInstance } from '../runtime/weaponLoadout.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import { getNextDamageEventId } from '../runtime/worldState.ts'
+import { getFirstSegmentCircleContactTime } from './combatGeometry.ts'
 import type { ResolvedOrbitWeaponProfile } from './resolveWeaponProfile.ts'
 
 const FULL_CIRCLE_RADIANS = Math.PI * 2
@@ -29,19 +34,20 @@ function createOrbit(
   weapon: WeaponInstance,
   profile: ResolvedOrbitWeaponProfile,
   ballIndex: number,
+  phaseRadians: number,
+  currentRadius: number,
 ): OrbitAttackState {
-  const phaseRadians =
-    (ballIndex / profile.attackPattern.ballCount) * FULL_CIRCLE_RADIANS
-  const x =
-    world.player.x + Math.cos(phaseRadians) * profile.attackPattern.orbitRadius
-  const y =
-    world.player.y + Math.sin(phaseRadians) * profile.attackPattern.orbitRadius
+  const x = world.player.x + Math.cos(phaseRadians) * currentRadius
+  const y = world.player.y + Math.sin(phaseRadians) * currentRadius
   const orbit: OrbitAttackState = {
     id: world.nextOrbitAttackId,
     sourceWeaponInstanceId: weapon.id,
     sourceEquipmentSlot: weapon.equipmentSlot,
+    sourceProfileRevision: weapon.profileRevision,
     ballIndex,
     phaseRadians,
+    radialPhaseRadians: phaseRadians,
+    currentRadius,
     x,
     y,
     previousX: x,
@@ -51,6 +57,7 @@ function createOrbit(
     rehitCooldownMs: profile.rehitCooldownMs,
     rootKnockbackDistance: profile.rootKnockbackDistance,
     impactStrengthMultiplier: profile.impactStrengthMultiplier,
+    damageSpreadProfile: profile.damageSpreadProfile,
     glyphFrame: profile.orbitPresentation.glyphFrame,
     visualScale: profile.orbitPresentation.scale,
     visualAlpha: profile.orbitPresentation.alpha,
@@ -59,7 +66,21 @@ function createOrbit(
   }
   world.nextOrbitAttackId += 1
   world.orbitAttacks.push(orbit)
+  world.diagnostics.attackEmissionCount += 1
   return orbit
+}
+
+function normalizePhase(phaseRadians: number): number {
+  return (phaseRadians + FULL_CIRCLE_RADIANS) % FULL_CIRCLE_RADIANS
+}
+
+function getOrbitRadius(
+  baseRadius: number,
+  maximumRadius: number,
+  radialPhaseRadians: number,
+): number {
+  const outwardProgress = (1 - Math.cos(radialPhaseRadians)) / 2
+  return baseRadius + (maximumRadius - baseRadius) * outwardProgress
 }
 
 function updateResolvedValues(
@@ -71,28 +92,41 @@ function updateResolvedValues(
   orbit.rehitCooldownMs = profile.rehitCooldownMs
   orbit.rootKnockbackDistance = profile.rootKnockbackDistance
   orbit.impactStrengthMultiplier = profile.impactStrengthMultiplier
+  orbit.damageSpreadProfile = profile.damageSpreadProfile
   orbit.glyphFrame = profile.orbitPresentation.glyphFrame
   orbit.visualScale = profile.orbitPresentation.scale
   orbit.visualAlpha = profile.orbitPresentation.alpha
   orbit.visualTint = profile.orbitPresentation.tint
 }
 
-function hasPreciseOutlineImpact(
+function findEarliestOrbitContactTime(
   world: WorldState,
   ownerId: number,
   ownerX: number,
   ownerY: number,
   orbit: OrbitAttackState,
-): boolean {
+): number | null {
+  let earliestContactTime = Number.POSITIVE_INFINITY
   for (const glyph of world.glyphStore.getOwnerGlyphs(ownerId)) {
-    const deltaX = getGlyphWorldX(ownerX, glyph) - orbit.x
-    const deltaY = getGlyphWorldY(ownerY, glyph) - orbit.y
+    world.diagnostics.orbitSweepPreciseTestCount += 1
     const combinedRadius = glyph.collisionRadius + orbit.damageRadius
-    if (deltaX * deltaX + deltaY * deltaY <= combinedRadius * combinedRadius) {
-      return true
+    const contactTime = getFirstSegmentCircleContactTime(
+      orbit.previousX,
+      orbit.previousY,
+      orbit.x,
+      orbit.y,
+      getGlyphWorldX(ownerX, glyph),
+      getGlyphWorldY(ownerY, glyph),
+      combinedRadius,
+    )
+    if (contactTime !== null && contactTime < earliestContactTime) {
+      earliestContactTime = contactTime
+      if (contactTime === 0) {
+        break
+      }
     }
   }
-  return false
+  return Number.isFinite(earliestContactTime) ? earliestContactTime : null
 }
 
 function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
@@ -102,36 +136,56 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
     }
   }
 
+  const midpointX = (orbit.previousX + orbit.x) / 2
+  const midpointY = (orbit.previousY + orbit.y) / 2
+  const halfSweepLength =
+    Math.hypot(orbit.x - orbit.previousX, orbit.y - orbit.previousY) / 2
   const candidates = world.enemySpatialHash.queryCircle(
-    orbit.x,
-    orbit.y,
-    orbit.damageRadius + world.maximumEnemyQueryRadius,
+    midpointX,
+    midpointY,
+    halfSweepLength + orbit.damageRadius + world.maximumEnemyQueryRadius,
     world.collisionCandidates,
   )
-  const outwardX = orbit.x - world.player.x
-  const outwardY = orbit.y - world.player.y
-  const outwardLength = Math.hypot(outwardX, outwardY)
-  const directionX = outwardLength > 0 ? outwardX / outwardLength : 1
-  const directionY = outwardLength > 0 ? outwardY / outwardLength : 0
+  world.diagnostics.orbitSweepCandidateCount += candidates.length
 
   for (const enemy of candidates) {
     if (
       !isEnemyOutlineCollisionPhase(enemy.phase) ||
-      orbit.nextAllowedHitTimeByOwner.has(enemy.id) ||
-      !hasPreciseOutlineImpact(world, enemy.id, enemy.x, enemy.y, orbit)
+      orbit.nextAllowedHitTimeByOwner.has(enemy.id)
     ) {
       continue
     }
+    const contactTime = findEarliestOrbitContactTime(
+      world,
+      enemy.id,
+      enemy.x,
+      enemy.y,
+      orbit,
+    )
+    if (contactTime === null) {
+      continue
+    }
+    const contactX =
+      orbit.previousX + (orbit.x - orbit.previousX) * contactTime
+    const contactY =
+      orbit.previousY + (orbit.y - orbit.previousY) * contactTime
+    const outwardX = contactX - world.player.x
+    const outwardY = contactY - world.player.y
+    const outwardLength = Math.hypot(outwardX, outwardY)
+    const directionX = outwardLength > 0 ? outwardX / outwardLength : 1
+    const directionY = outwardLength > 0 ? outwardY / outwardLength : 0
 
     orbit.nextAllowedHitTimeByOwner.set(
       enemy.id,
       world.runTimeMs + orbit.rehitCooldownMs,
     )
     world.glyphDamageQueue.enqueue({
+      attackEventId: getNextDamageEventId(world),
+      primaryScope: DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER,
       ownerId: enemy.id,
       shapeKind: LOCAL_DAMAGE_SHAPE.CIRCLE,
-      shapeX: orbit.x,
-      shapeY: orbit.y,
+      shapeX: contactX,
+      shapeY: contactY,
       shapeRadius: orbit.damageRadius,
       shapeDirectionX: 0,
       shapeDirectionY: 0,
@@ -139,6 +193,7 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
       shapeHalfAngleRadians: 0,
       targetMode: 'AREA',
       amount: orbit.damage,
+      damageSpreadProfile: orbit.damageSpreadProfile,
       impactStrengthMultiplier: orbit.impactStrengthMultiplier,
       impactDirectionX: directionX,
       impactDirectionY: directionY,
@@ -188,29 +243,52 @@ export function runOrbitWeaponSystem(world: WorldState, deltaMs: number): void {
     if (profile.targetStrategyId !== 'OWNER_RELATIVE') {
       continue
     }
+    const previousBasePhase = findOrbit(world, weapon.id, 0)?.phaseRadians ?? 0
+    const basePhase = normalizePhase(
+      previousBasePhase +
+        profile.attackPattern.angularSpeedRevolutionsPerSecond *
+          FULL_CIRCLE_RADIANS *
+          (deltaMs / 1_000),
+    )
     for (
       let ballIndex = 0;
       ballIndex < profile.attackPattern.ballCount;
       ballIndex += 1
     ) {
-      const orbit =
-        findOrbit(world, weapon.id, ballIndex) ??
-        createOrbit(world, weapon, profile, ballIndex)
+      const phaseRadians = normalizePhase(
+        basePhase +
+          (ballIndex / profile.attackPattern.ballCount) * FULL_CIRCLE_RADIANS,
+      )
+      const currentRadius = getOrbitRadius(
+        profile.attackPattern.orbitRadius,
+        profile.attackPattern.maximumOrbitRadius,
+        phaseRadians,
+      )
+      const nextX = world.player.x + Math.cos(phaseRadians) * currentRadius
+      const nextY = world.player.y + Math.sin(phaseRadians) * currentRadius
+      let orbit = findOrbit(world, weapon.id, ballIndex)
+      if (!orbit) {
+        orbit = createOrbit(
+          world,
+          weapon,
+          profile,
+          ballIndex,
+          phaseRadians,
+          currentRadius,
+        )
+      } else {
+        const isProfileRebase =
+          orbit.sourceProfileRevision !== weapon.profileRevision
+        orbit.previousX = isProfileRebase ? nextX : orbit.x
+        orbit.previousY = isProfileRebase ? nextY : orbit.y
+        orbit.sourceProfileRevision = weapon.profileRevision
+        orbit.phaseRadians = phaseRadians
+        orbit.radialPhaseRadians = phaseRadians
+        orbit.currentRadius = currentRadius
+        orbit.x = nextX
+        orbit.y = nextY
+      }
       updateResolvedValues(orbit, profile)
-      orbit.previousX = orbit.x
-      orbit.previousY = orbit.y
-      orbit.phaseRadians =
-        (orbit.phaseRadians +
-          profile.attackPattern.angularSpeedRevolutionsPerSecond *
-            FULL_CIRCLE_RADIANS *
-            (deltaMs / 1_000)) %
-        FULL_CIRCLE_RADIANS
-      orbit.x =
-        world.player.x +
-        Math.cos(orbit.phaseRadians) * profile.attackPattern.orbitRadius
-      orbit.y =
-        world.player.y +
-        Math.sin(orbit.phaseRadians) * profile.attackPattern.orbitRadius
       collideOrbit(world, orbit)
     }
   }

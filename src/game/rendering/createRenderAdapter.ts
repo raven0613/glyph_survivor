@@ -5,6 +5,7 @@ import { createPixiApp } from './createPixiApp.ts'
 import { createSceneLayers } from './createSceneLayers.ts'
 import { createFlameEmitterPool } from './flameEmitterPool.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
+import { createDamageTransferLinkPool } from './damageTransferLinkPool.ts'
 
 export interface RenderAdapter {
   getViewportSize(): { readonly width: number; readonly height: number }
@@ -34,6 +35,9 @@ export async function createRenderAdapter(
   const effectViews = createParticleLayerPool(
     scene.effectLayer,
     atlas.printableFrames,
+  )
+  const damageTransferLinkViews = createDamageTransferLinkPool(
+    scene.damageTransferLinkLayer,
   )
   const dropViews = createParticleLayerPool(
     scene.dropLayer,
@@ -66,6 +70,7 @@ export async function createRenderAdapter(
       scene.player.position.set(snapshot.playerX, snapshot.playerY)
       enemyViews.sync(snapshot.enemies)
       effectViews.sync(snapshot.effects)
+      damageTransferLinkViews.sync(snapshot.damageTransferLinks)
       projectileViews.sync(snapshot.projectiles)
       orbitViews.sync(snapshot.orbits)
       dropViews.sync(snapshot.drops)
@@ -81,6 +86,7 @@ export async function createRenderAdapter(
       isDisposed = true
       enemyViews.clear()
       effectViews.clear()
+      damageTransferLinkViews.clear()
       projectileViews.clear()
       orbitViews.clear()
       dropViews.clear()

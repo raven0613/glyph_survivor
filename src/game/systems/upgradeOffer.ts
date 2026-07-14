@@ -1,13 +1,18 @@
 import type { PreparedGameContent } from '../content/gameContent.ts'
-import type { WeaponModuleDefinition } from '../content/upgrades/moduleDefinition.ts'
+import {
+  MODULE_EFFECT_KIND,
+  type WeaponModuleDefinition,
+} from '../content/upgrades/moduleDefinition.ts'
 import type { WeaponDefinition } from '../content/weapons/weaponDefinition.ts'
 import type {
   UpgradeChoiceReference,
   UpgradeOffer,
+  UpgradeRankPreview,
   UpgradeState,
 } from '../runtime/upgradeState.ts'
 import type { WeaponLoadoutState } from '../runtime/weaponLoadout.ts'
 import { canWeaponAcceptModule } from './modulePlacement.ts'
+import { createRangeWeaponTargetPreviews } from './rangeUpgradePreview.ts'
 
 function chooseAndRemove<T>(values: T[], randomValue: number): T {
   const index = Math.min(values.length - 1, Math.floor(randomValue * values.length))
@@ -24,8 +29,45 @@ function weaponChoice(definition: WeaponDefinition): UpgradeChoiceReference {
   }
 }
 
+function createModuleRankPreviews(
+  definition: WeaponModuleDefinition,
+): readonly Readonly<UpgradeRankPreview>[] {
+  if (definition.effectKind === MODULE_EFFECT_KIND.DAMAGE_SPREAD) {
+    return Object.freeze(
+      definition.ranks.map((rank) =>
+        Object.freeze({
+          rank: rank.rank,
+          summary: rank.bandDamageRatios
+            .map((ratio) => `${Number((ratio * 100).toFixed(2))}%`)
+            .join(' / '),
+        }),
+      ),
+    )
+  }
+  if (definition.effectKind === MODULE_EFFECT_KIND.PROJECTILE_COUNT) {
+    return Object.freeze(
+      definition.ranks.map((rank) =>
+        Object.freeze({
+          rank: rank.rank,
+          summary: `${rank.totalCount} emissions`,
+        }),
+      ),
+    )
+  }
+  return Object.freeze(
+    definition.ranks.map((rank) =>
+      Object.freeze({
+        rank: rank.rank,
+        summary: `×${rank.totalMultiplier}`,
+      }),
+    ),
+  )
+}
+
 function moduleChoice(
   definition: WeaponModuleDefinition,
+  content: PreparedGameContent,
+  loadout: WeaponLoadoutState,
 ): UpgradeChoiceReference {
   return {
     id: '',
@@ -33,6 +75,15 @@ function moduleChoice(
     definitionId: definition.id,
     title: definition.title,
     description: definition.description,
+    rankPreviews: createModuleRankPreviews(definition),
+    weaponTargetPreviews:
+      definition.effectKind === MODULE_EFFECT_KIND.RANGE
+        ? createRangeWeaponTargetPreviews(
+            content,
+            loadout,
+            definition,
+          )
+        : undefined,
   }
 }
 
@@ -97,12 +148,26 @@ export function generateUpgradeOffer(
 
   if (state.offerSequence === 0) {
     choices.push(weaponChoice(chooseAndRemove(eligibleWeapons, state.rng.next())))
-    choices.push(moduleChoice(chooseAndRemove(eligibleModules, state.rng.next())))
-    choices.push(moduleChoice(chooseAndRemove(eligibleModules, state.rng.next())))
+    choices.push(
+      moduleChoice(
+        chooseAndRemove(eligibleModules, state.rng.next()),
+        content,
+        loadout,
+      ),
+    )
+    choices.push(
+      moduleChoice(
+        chooseAndRemove(eligibleModules, state.rng.next()),
+        content,
+        loadout,
+      ),
+    )
   } else {
     const pool = [
       ...eligibleWeapons.map(weaponChoice),
-      ...eligibleModules.map(moduleChoice),
+      ...eligibleModules.map((definition) =>
+        moduleChoice(definition, content, loadout),
+      ),
     ]
     while (choices.length < 3) {
       choices.push(chooseAndRemove(pool, state.rng.next()))

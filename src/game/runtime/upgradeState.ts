@@ -2,12 +2,24 @@ import { createSeededRng, type SeededRng } from '../core/seededRng.ts'
 
 export type UpgradeChoiceKind = 'WEAPON' | 'MODULE'
 
+export interface UpgradeRankPreview {
+  readonly rank: number
+  readonly summary: string
+}
+
+export interface UpgradeWeaponTargetPreview {
+  readonly weaponInstanceId: number
+  readonly summary: string
+}
+
 export interface UpgradeChoiceReference {
   readonly id: string
   readonly kind: UpgradeChoiceKind
   readonly definitionId: string
   readonly title: string
   readonly description: string
+  readonly rankPreviews?: readonly Readonly<UpgradeRankPreview>[]
+  readonly weaponTargetPreviews?: readonly Readonly<UpgradeWeaponTargetPreview>[]
 }
 
 export interface UpgradeOffer {

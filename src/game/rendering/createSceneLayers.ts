@@ -11,6 +11,7 @@ import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 export interface SceneLayers {
   readonly worldRoot: Container
   readonly enemyLayer: ParticleContainer<Particle>
+  readonly damageTransferLinkLayer: Container
   readonly effectLayer: ParticleContainer<Particle>
   readonly flameLayer: ParticleContainer<Particle>
   readonly projectileLayer: ParticleContainer<Particle>
@@ -90,6 +91,11 @@ export function createSceneLayers(
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
   })
+  const damageTransferLinkLayer = new Container({
+    label: 'damage-transfer-links',
+  })
+  damageTransferLinkLayer.eventMode = 'none'
+  damageTransferLinkLayer.interactiveChildren = false
   const orbitLayer = new ParticleContainer<Particle>({
     texture: atlas.printableFrames[0],
     boundsArea: createWorldBounds(),
@@ -136,6 +142,7 @@ export function createSceneLayers(
     backgroundLayer,
     dropLayer,
     enemyLayer,
+    damageTransferLinkLayer,
     effectLayer,
     flameLayer,
     projectileLayer,
@@ -147,6 +154,7 @@ export function createSceneLayers(
   return Object.freeze({
     worldRoot,
     enemyLayer,
+    damageTransferLinkLayer,
     effectLayer,
     flameLayer,
     projectileLayer,

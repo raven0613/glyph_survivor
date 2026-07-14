@@ -6,6 +6,7 @@ import {
   DAMAGE_TARGET_MODE,
   type DamageTargetMode,
 } from '../glyph/localDamage.ts'
+import { intersectsDamageShape } from './damageSpreadGeometry.ts'
 
 export { DAMAGE_TARGET_MODE } from '../glyph/localDamage.ts'
 export type { DamageTargetMode } from '../glyph/localDamage.ts'
@@ -42,6 +43,10 @@ export interface DamageSelectionCell {
 export interface GlyphDamageSelection<T extends DamageSelectionCell> {
   readonly impactCells: readonly T[]
   readonly damageTargets: readonly T[]
+  readonly frontierTransfers: readonly Readonly<{
+    sourceImpactCell: T
+    targetCell: T
+  }>[]
 }
 
 const NEIGHBOR_OFFSETS = Object.freeze([
@@ -62,76 +67,15 @@ function distanceSquaredToShape(
   return (cell.worldX - shape.x) ** 2 + (cell.worldY - shape.y) ** 2
 }
 
-function distanceSquaredToSegment(
-  pointX: number,
-  pointY: number,
-  endX: number,
-  endY: number,
-): number {
-  const lengthSquared = endX * endX + endY * endY
-  const projection = Math.max(
-    0,
-    Math.min(1, (pointX * endX + pointY * endY) / lengthSquared),
-  )
-  return (pointX - endX * projection) ** 2 +
-    (pointY - endY * projection) ** 2
+interface TopologyReach {
+  readonly distance: number
+  readonly sourceImpactCellId: number
 }
 
-function intersectsCone(
-  cell: DamageSelectionCell,
-  shape: ConeDamageShape,
-): boolean {
-  const directionLength = Math.hypot(shape.directionX, shape.directionY)
-  if (directionLength === 0) {
-    return false
-  }
-  const directionX = shape.directionX / directionLength
-  const directionY = shape.directionY / directionLength
-  const deltaX = cell.worldX - shape.x
-  const deltaY = cell.worldY - shape.y
-  const localX = deltaX * directionX + deltaY * directionY
-  const localY = -deltaX * directionY + deltaY * directionX
-  const radius = cell.collisionRadius
-  const distance = Math.hypot(localX, localY)
-  if (distance <= radius) {
-    return true
-  }
-  if (distance > shape.range + radius) {
-    return false
-  }
-  if (Math.abs(Math.atan2(localY, localX)) <= shape.halfAngleRadians) {
-    return true
-  }
-
-  const boundaryX = Math.cos(shape.halfAngleRadians) * shape.range
-  const boundaryY = Math.sin(shape.halfAngleRadians) * shape.range
-  return Math.min(
-    distanceSquaredToSegment(localX, localY, boundaryX, boundaryY),
-    distanceSquaredToSegment(localX, localY, boundaryX, -boundaryY),
-  ) <= radius ** 2
-}
-
-function intersectsCircle(
-  cell: DamageSelectionCell,
-  shape: CircleDamageShape,
-): boolean {
-  const combinedRadius = cell.collisionRadius + shape.radius
-  return distanceSquaredToShape(cell, shape) <= combinedRadius ** 2
-}
-
-function intersectsShape(
-  cell: DamageSelectionCell,
-  shape: DamageSelectionShape,
-): boolean {
-  return shape.kind === 'CIRCLE'
-    ? intersectsCircle(cell, shape)
-    : intersectsCone(cell, shape)
-}
-
-function findTopologyDistances<T extends DamageSelectionCell>(
+function findTopologyReach<T extends DamageSelectionCell>(
   cells: readonly T[],
   impactCells: readonly T[],
-): ReadonlyMap<number, number> {
+): ReadonlyMap<number, Readonly<TopologyReach>> {
   const cellsByCoordinate = new Map<string, T[]>()
   for (const cell of cells) {
     const key = `${cell.topologyX},${cell.topologyY}`
@@ -146,15 +90,19 @@ function findTopologyDistances<T extends DamageSelectionCell>(
     occupants.sort((first, second) => first.id - second.id)
   }
 
-  const distanceById = new Map<number, number>()
-  const queue = [...impactCells]
-  for (const cell of impactCells) {
-    distanceById.set(cell.id, 0)
+  const reachById = new Map<number, TopologyReach>()
+  const queue = [...impactCells].sort((first, second) => first.id - second.id)
+  for (const cell of queue) {
+    reachById.set(cell.id, { distance: 0, sourceImpactCellId: cell.id })
   }
 
   for (let index = 0; index < queue.length; index += 1) {
     const cell = queue[index]
-    const nextDistance = (distanceById.get(cell.id) ?? 0) + 1
+    const currentReach = reachById.get(cell.id)
+    if (!currentReach) {
+      continue
+    }
+    const nextDistance = currentReach.distance + 1
     for (const [offsetX, offsetY] of NEIGHBOR_OFFSETS) {
       const neighbors = cellsByCoordinate.get(
         `${cell.topologyX + offsetX},${cell.topologyY + offsetY}`,
@@ -163,16 +111,26 @@ function findTopologyDistances<T extends DamageSelectionCell>(
         continue
       }
       for (const neighbor of neighbors) {
-        if (distanceById.has(neighbor.id)) {
+        const previousReach = reachById.get(neighbor.id)
+        if (
+          previousReach &&
+          (previousReach.distance < nextDistance ||
+            (previousReach.distance === nextDistance &&
+              previousReach.sourceImpactCellId <=
+                currentReach.sourceImpactCellId))
+        ) {
           continue
         }
-        distanceById.set(neighbor.id, nextDistance)
+        reachById.set(neighbor.id, {
+          distance: nextDistance,
+          sourceImpactCellId: currentReach.sourceImpactCellId,
+        })
         queue.push(neighbor)
       }
     }
   }
 
-  return distanceById
+  return reachById
 }
 
 /** Separates local outline impacts from deterministic living durability targets. */
@@ -182,49 +140,60 @@ export function selectGlyphDamage<T extends DamageSelectionCell>(
   targetMode: DamageTargetMode,
 ): GlyphDamageSelection<T> {
   const impactCells = cells
-    .filter((cell) => intersectsShape(cell, shape))
+    .filter((cell) => intersectsDamageShape(cell, shape))
     .sort(
       (first, second) =>
         distanceSquaredToShape(first, shape) -
           distanceSquaredToShape(second, shape) || first.id - second.id,
     )
   if (impactCells.length === 0) {
-    return { impactCells, damageTargets: [] }
+    return { impactCells, damageTargets: [], frontierTransfers: [] }
   }
 
   const targetQuota =
     targetMode === DAMAGE_TARGET_MODE.SINGLE ? 1 : impactCells.length
   const damageTargets = impactCells.filter(isLiving).slice(0, targetQuota)
   if (damageTargets.length === targetQuota) {
-    return { impactCells, damageTargets }
+    return { impactCells, damageTargets, frontierTransfers: [] }
   }
 
   const selectedIds = new Set(damageTargets.map((cell) => cell.id))
   const impactIds = new Set(impactCells.map((cell) => cell.id))
-  const topologyDistances = findTopologyDistances(cells, impactCells)
+  const topologyReach = findTopologyReach(cells, impactCells)
   const frontierTargets = cells
     .filter(
       (cell) =>
         isLiving(cell) &&
         !impactIds.has(cell.id) &&
-        topologyDistances.has(cell.id),
+        topologyReach.has(cell.id),
     )
     .sort(
       (first, second) =>
-        (topologyDistances.get(first.id) ?? Number.POSITIVE_INFINITY) -
-          (topologyDistances.get(second.id) ?? Number.POSITIVE_INFINITY) ||
+        (topologyReach.get(first.id)?.distance ?? Number.POSITIVE_INFINITY) -
+          (topologyReach.get(second.id)?.distance ?? Number.POSITIVE_INFINITY) ||
         distanceSquaredToShape(first, shape) -
           distanceSquaredToShape(second, shape) ||
         first.id - second.id,
     )
 
+  const impactById = new Map(impactCells.map((cell) => [cell.id, cell]))
+  const frontierTransfers: Array<{
+    sourceImpactCell: T
+    targetCell: T
+  }> = []
   for (const cell of frontierTargets) {
     if (damageTargets.length >= targetQuota || selectedIds.has(cell.id)) {
       continue
     }
     damageTargets.push(cell)
     selectedIds.add(cell.id)
+    const sourceImpactCell = impactById.get(
+      topologyReach.get(cell.id)?.sourceImpactCellId ?? -1,
+    )
+    if (sourceImpactCell) {
+      frontierTransfers.push({ sourceImpactCell, targetCell: cell })
+    }
   }
 
-  return { impactCells, damageTargets }
+  return { impactCells, damageTargets, frontierTransfers }
 }

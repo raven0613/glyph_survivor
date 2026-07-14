@@ -46,8 +46,8 @@ test('prepares the assisted o projectile as immutable weapon content', () => {
       fireIntervalMs: weapon.baseProfile.fireIntervalMs,
       muzzleDistance: weapon.baseProfile.attackPattern.muzzleDistance,
       projectileSpeed: weapon.baseProfile.attackPattern.projectileSpeed,
-      projectileLifetimeMs:
-        weapon.baseProfile.attackPattern.projectileLifetimeMs,
+      maximumTravelDistance:
+        weapon.baseProfile.attackPattern.maximumTravelDistance,
       damageRadius: weapon.baseProfile.damageShape.radius,
       damageAmount: weapon.baseProfile.damageAmount,
       glyphFrame: weapon.baseProfile.projectilePresentation.glyphFrame,
@@ -59,7 +59,7 @@ test('prepares the assisted o projectile as immutable weapon content', () => {
       fireIntervalMs: 220,
       muzzleDistance: 22,
       projectileSpeed: 620,
-      projectileLifetimeMs: 1_800,
+      maximumTravelDistance: 1_116,
       damageRadius: 7,
       damageAmount: 1,
       glyphFrame: getPrintableAsciiGlyphFrame('o'),
@@ -68,6 +68,7 @@ test('prepares the assisted o projectile as immutable weapon content', () => {
       tint: 0x66ddff,
     },
   )
+  assert.equal('projectileLifetimeMs' in weapon.baseProfile.attackPattern, false)
   assert.equal(Object.isFrozen(weapon), true)
   assert.equal(Object.isFrozen(weapon.baseProfile), true)
   assert.equal(Object.isFrozen(weapon.baseProfile.attackPattern), true)
@@ -106,7 +107,7 @@ test('prepares the persistent orbiting O as owner-relative weapon content', () =
       damageRadius: 14,
       damage: 0.6,
       rehitCooldownMs: 500,
-      rootKnockbackDistance: 16,
+      rootKnockbackDistance: 20,
       glyphFrame: getPrintableAsciiGlyphFrame('O'),
     },
   )
@@ -134,7 +135,7 @@ test('prepares a short-range 90 degree pulsed cone flamethrower', () => {
       muzzle: 20,
       range: 160,
       angle: Math.PI / 2,
-      damage: 0.25,
+      damage: 0.125,
     },
   )
   assert.equal(Object.isFrozen(weapon.baseProfile.flamePresentation), true)

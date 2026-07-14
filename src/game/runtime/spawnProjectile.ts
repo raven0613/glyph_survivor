@@ -43,10 +43,12 @@ export function spawnProjectile(
     radius: input.profile.damageShape.radius,
     damage: input.profile.damageAmount,
     impactStrengthMultiplier: input.profile.impactStrengthMultiplier,
+    damageSpreadProfile: input.profile.damageSpreadProfile,
     damageShapeKind: input.profile.damageShape.kind,
     damageTargetMode: input.profile.damageShape.targetMode,
     destructionProfileId: input.profile.destructionProfileId,
-    lifetimeMs: attackPattern.projectileLifetimeMs,
+    remainingTravelDistance: attackPattern.maximumTravelDistance,
+    rangeExhausted: false,
     isAlive: true,
     trackingMode: trackingProfile.mode,
     trackingState:
@@ -69,5 +71,6 @@ export function spawnProjectile(
     visualTint: presentation.tint,
   })
   world.projectiles.push(activeProjectile)
+  world.diagnostics.attackEmissionCount += 1
   return activeProjectile
 }

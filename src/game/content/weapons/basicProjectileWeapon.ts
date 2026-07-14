@@ -30,7 +30,7 @@ export function prepareBasicProjectileWeaponDefinition(): WeaponDefinition {
         kind: ATTACK_PATTERN.SINGLE_PROJECTILE,
         muzzleDistance: 22,
         projectileSpeed: 620,
-        projectileLifetimeMs: 1_800,
+        maximumTravelDistance: 1_116,
       },
       damageShape: {
         kind: DAMAGE_SHAPE.POINT,

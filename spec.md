@@ -169,7 +169,7 @@ HEALTHY（完整）→ DAMAGED（受損）→ HUSK（死亡殘骸）
 - `DAMAGED`：`0 < Current Durability < Max Durability`。
 - `HUSK`：`Current Durability === 0`，不再具有生命值，也不再接受傷害。
 
-`Max Durability = 1` 的 Cell 可以在第一次有效傷害後直接由 `HEALTHY` 進入 `HUSK`，不需要為了顯示 `DAMAGED` 階段而增加隱藏耐久。
+Current Durability 與 Damage Amount 都允許有限的正小數；基礎小怪的 `Max Durability = 1` 不代表最低傷害為 `1`，也不得把每次傷害四捨五入成整數。扣除傷害時必須把結果限制在 `0` 以上，並以一致的數值精度規則消除接近零的浮點殘值。`Max Durability = 1` 的 Cell 只有在單次有效傷害大於或等於剩餘 Durability 時，才會直接由 `HEALTHY` 進入 `HUSK`；較小傷害會留下小數 Current Durability 並進入 `DAMAGED`，不需要為了顯示該階段而增加隱藏耐久。
 
 生命體顯示或對外提供的 HP，只能由 `HEALTHY` 與 `DAMAGED` Glyph Cell 的 Current Durability 加總得出：
 
@@ -241,7 +241,19 @@ Damage Targets 是本次實際降低 Current Durability 的 `HEALTHY` 或 `DAMAG
 4. 每個 `HEALTHY`／`DAMAGED` Cell 在同一次攻擊中最多成為一次 Damage Target；若整個 body 的存活 Cells 少於 quota，就只傷害仍存活的不同 Cells，不把剩餘次數重複疊到最後一格。
 5. 等距候選使用穩定的 Glyph ID 次序裁決，確保結果可重現，不得隨機把傷害轉移到無關位置。
 
-Damage Shape 外因 quota 補位而受傷的遠端 Damage Targets 只改變 Durability 與生命狀態；受擊閃光、材質位移、粒子及其他命中特效仍只作用於 Damage Shape 內的 Impact Cells，無論那些 Impact Cells 是存活還是 `HUSK`。
+Damage Shape 外因 quota 補位而受傷的遠端 Damage Targets 只改變 Durability 與生命狀態；受擊閃光、材質位移、粒子及其他主要命中特效仍只作用於 Damage Shape 內的 Impact Cells，無論那些 Impact Cells 是存活還是 `HUSK`。為了讓玩家讀懂這次同一 body 內的拓撲傷害轉移，Runtime 可以輸出由原命中位置連到遠端 Damage Target 的短暫暗亮細線；它只是一個 rendering-only 關聯提示，不得替遠端 Cell 補上 Material impulse、局部命中粒子或第二次傷害。
+
+### Damage Spread Targets
+
+Damage Spread 是附加在一次直接攻擊上的獨立能力軸，不是放大原本 Damage Shape，也不是 targeting／travel Range。它從該次攻擊**原始 Damage Shape 的整體外緣**向外形成相鄰帶狀範圍；Cone 以整個 Cone 的外圍計算，不得讓每顆火星、每個取樣點或每個 Impact Cell 各自再產生一圈擴散。
+
+- 只有原始 Damage Shape 至少取得一個 Primary Impact Cell 時，該 attack event 才會解析擴散；直接攻擊完全落空時，外圍帶不能隔空造成傷害。
+- 每一圈的寬度由集中且可驗證的 `spreadBandWidth` content 參數定義；「一顆 Cell 距離」不綁定任何特定物種的 Glyph spacing。對 Shape 外的正距離 `d`，第 `n` 圈為 `(n - 1) × spreadBandWidth < d ≤ n × spreadBandWidth`。
+- Spread Targets 只包含範圍內仍為 `HEALTHY` 或 `DAMAGED` 的 Glyph Cells；`HUSK` 不承受擴散傷害，也不會由 topology frontier 把這份擴散轉移到遠方 Cell。
+- 擴散可以跨越 owner。每個帶狀範圍內所有存活 Glyph Cells 都是候選，不只限於直接命中的生命體；若原本生命體的存活 Cells 都不在範圍內，它不吃擴散，但範圍內其他生命體的存活 Cells 仍會受傷。
+- Rank I 的第一圈承受主傷害 `20%`；Rank II 的第一、二圈分別承受 `20%`、`10%`；Rank III 的第一、二、三圈分別承受 `20%`、`10%`、`5%`。百分比以該次攻擊已解析的主傷害為基準。
+- 同一個 attack event 內，同一 Glyph Cell 最多降低一次 Durability，取所有直接／擴散候選中的最高傷害；直接主傷害與擴散重疊時以主傷害為準。單一 Cone 內部的幾何取樣都共享同一 event，不能讓同一 Cell 重複吃十幾次擴散；Projectile Count 產生的不同 Cone 則是彼此獨立的 attack events，因此重疊區可以各承受一次傷害。
+- Spread Targets 必須有可見但與主要 Impact Material response 可區分的受傷回饋。除非未來另有明確規則，擴散本身不附帶主要攻擊的局部 impulse 或 whole-body knockback。
 
 ---
 
@@ -255,7 +267,7 @@ Glyph Damage 必須從命中的局部區域開始，並沿著壞死邊界逐步�
 - `HUSK` 以極低亮度保留局部壞死痕跡
 - 壞死區沿 canonical topology 向最近的存活邊界蠶食
 
-而不是整隻 Boss 一起變透明，也不是在未命中的隨機位置產生傷害。若命中範圍已全部壞死，傷害仍依上述 quota 與 topology 規則傳到同一 body 最近的存活邊界，直到必要時蠶食到怪物另一端；但所有受擊特效仍留在實際 Damage Shape 內。
+而不是整隻 Boss 一起變透明，也不是在未命中的隨機位置產生傷害。若命中範圍已全部壞死，直接傷害仍依上述 quota 與 topology 規則傳到同一 body 最近的存活邊界，直到必要時蠶食到怪物另一端；主要命中特效仍留在實際 Damage Shape 內，遠端只可顯示前述暗亮轉移線。Damage Spread 是另一個明確的空間規則，只有外圍帶內的存活 Cells 取得擴散傷害與擴散專屬回饋，不改寫這套 body topology 行為。
 
 玩家需要感受到："我正在從這裡把它逐步蠶食。"
 
@@ -450,7 +462,12 @@ Damage +10%
 - 不同 Module 可以覆蓋指定 Slot；被覆蓋的投資消失，新 Module 從 Rank I 開始。
 - Module 不能卸下、退款、搬到另一把武器或重新分配；玩家只能保留、升階或覆蓋摧毀它。
 - 覆蓋能力讓後期 Build 可以調整方向，但不能繞過 Weapon Instance、Slot、Rank 或卡片選擇規則。
-- 首批實際驗證 Rank／Slot 流程的通用 Module 是 Attack Speed、Attack Area 與 Knockback，先採 Rank I～III。Rank table 保存各階的完整總效果，不把 Rank II、III 當成對前一階再次複利疊乘；精確 prototype 倍率記錄在武器系統文件。
+- 首批已實作的通用 Module 是 Attack Speed、Projectile Count、Damage Spread、Range 與 Knockback，先採 Rank I～III。舊有 Attack Area prototype 只曾用來驗證 Rank／Slot 管線，已由 Damage Spread 取代，不再作為首批玩家能力軸。Rank table 保存各階的完整總效果，不把 Rank II、III 當成對前一階再次疊加；精確 prototype 效果記錄在武器系統文件。
+- Range 已進入正式升級卡池，Rank I～III 的完整總倍率依序為 `×1.15`、`×1.30`、`×1.50`。Range 表示武器從玩家向外可到達的距離，不是放大 Damage Spread，也不能以同一個含糊欄位套用所有 AttackPattern：
+  - assisted `o` 同時增加初次 target acquisition、維持原目標 lock 的距離，以及沿實際飛行路徑計算的 maximum travel distance；不改 projectile speed、DamageShape radius、修正角度或 steering responsiveness。
+  - 噴火槍只延長從 muzzle origin 起算的 authoritative Cone 軸向長度；不改 `90°` 角度、muzzle distance、傷害、pulse interval 或 rendering-only 粒子數。
+  - 環繞能量球保留 `80` world-unit 的基礎軌道半徑，Range 只增加 deterministic radial sweep 的最大半徑；Rank I～III 的最大半徑依序為 `92`、`104`、`120`。球的直接傷害半徑維持 `14`，避免把 Range 重新混成 Attack Area。
+- Range 與 Damage Spread 同時存在時，Spread 的 `24` world-unit band width 與傷害比例不變；它從該次攻擊已解析的原始 DamageShape 外緣起算。Range 對能量球造成的徑向移動必須使用 authoritative swept collision，不能因 fixed-step 位移跨過 Glyph 而漏判。
 
 ---
 
@@ -500,7 +517,7 @@ React 僅負責：
 
 視覺粒子：不參與碰撞。
 
-真正造成傷害的：只有 Gameplay Projectile。
+真正造成傷害的只能是 Runtime 權威的 gameplay attack 與其 Damage Shape／attack event；Projectile、Cone pulse 與 persistent orbit 都可使用這條管線。Rendering-only 粒子、火星、光暈與拖尾永遠不參與傷害或碰撞。
 
 Glyph 儘量使用：Texture Atlas，而不是每幀建立 Text。
 

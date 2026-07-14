@@ -32,7 +32,7 @@ export function prepareFlamethrowerWeaponDefinition(): WeaponDefinition {
         targetMode: DAMAGE_TARGET_MODE.AREA,
       },
       destructionProfileId: DESTRUCTION_PROFILE.MATERIAL_IMPACT,
-      damageAmount: 0.25,
+      damageAmount: 0.125,
       flamePresentation: {
         durationMs: 320,
         particleCount: 12,

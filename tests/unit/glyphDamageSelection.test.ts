@@ -53,6 +53,13 @@ test('advances point damage through a husk region to the nearest living frontier
 
   assert.deepEqual(selection.impactCells.map((cell) => cell.id), [1])
   assert.deepEqual(selection.damageTargets.map((cell) => cell.id), [3])
+  assert.deepEqual(
+    selection.frontierTransfers.map(({ sourceImpactCell, targetCell }) => [
+      sourceImpactCell.id,
+      targetCell.id,
+    ]),
+    [[1, 3]],
+  )
 })
 
 test('fills an area quota with unique living cells beyond the impact shape', () => {

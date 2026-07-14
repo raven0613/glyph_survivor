@@ -47,7 +47,7 @@ export interface SingleProjectileAttackPattern {
   readonly kind: typeof ATTACK_PATTERN.SINGLE_PROJECTILE
   readonly muzzleDistance: number
   readonly projectileSpeed: number
-  readonly projectileLifetimeMs: number
+  readonly maximumTravelDistance: number
 }
 
 export interface PointDamageShape {
@@ -234,7 +234,10 @@ export function defineWeapon(input: WeaponDefinitionInput): WeaponDefinition {
     requireFiniteGreaterThanZero(profile.fireIntervalMs, 'fireIntervalMs')
     requireFiniteAtLeast(profile.attackPattern.muzzleDistance, 0, 'muzzleDistance')
     requireFiniteGreaterThanZero(profile.attackPattern.projectileSpeed, 'projectileSpeed')
-    requireFiniteGreaterThanZero(profile.attackPattern.projectileLifetimeMs, 'projectileLifetimeMs')
+    requireFiniteGreaterThanZero(
+      profile.attackPattern.maximumTravelDistance,
+      'maximumTravelDistance',
+    )
     requireFiniteAtLeast(profile.damageShape.radius, 0, 'damage shape radius')
     if (profile.damageShape.targetMode !== DAMAGE_TARGET_MODE.SINGLE) {
       throw new TypeError('Point damage shapes must use single target mode.')

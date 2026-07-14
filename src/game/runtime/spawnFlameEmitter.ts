@@ -1,4 +1,4 @@
-import type { ConeWeaponCombatProfile } from '../content/weapons/weaponDefinition.ts'
+import type { ResolvedConeWeaponProfile } from '../systems/resolveWeaponProfile.ts'
 import type { FlameEmitterState } from './worldEntities.ts'
 import type { WorldState } from './worldState.ts'
 
@@ -9,11 +9,12 @@ export function spawnFlameEmitter(
   world: WorldState,
   sourceWeaponInstanceId: number,
   attackSequence: number,
+  streamIndex: number,
   x: number,
   y: number,
   directionX: number,
   directionY: number,
-  profile: Readonly<ConeWeaponCombatProfile>,
+  profile: Readonly<ResolvedConeWeaponProfile>,
 ): FlameEmitterState {
   const recycled =
     world.flameEmitters.length >= MAX_ACTIVE_FLAME_EMITTERS
@@ -41,7 +42,10 @@ export function spawnFlameEmitter(
     ),
     innerTint: presentation.innerTint,
     outerTint: presentation.outerTint,
-    seed: Math.imul(sourceWeaponInstanceId, 65_537) + attackSequence,
+    seed:
+      Math.imul(sourceWeaponInstanceId, 65_537) +
+      Math.imul(attackSequence, 257) +
+      streamIndex,
   })
   world.nextFlameEmitterId += 1
   world.flameEmitters.push(emitter)

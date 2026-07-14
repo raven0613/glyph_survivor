@@ -31,6 +31,26 @@ function createWeaponTestWorld() {
   )
 }
 
+function installProjectileCount(
+  world: ReturnType<typeof createWorldState>,
+  rank: number,
+): void {
+  const weapon = world.weaponLoadout.equipped[0]
+  weapon.moduleSlots[0] = {
+    moduleDefinitionId: 'module.projectile-count',
+    rank,
+  }
+  weapon.resolvedProfile = resolveWeaponProfile(
+    getWeaponDefinition(world.content, weapon.definitionId),
+    weapon.moduleSlots,
+    world.content.weaponModuleDefinitionsById,
+  )
+}
+
+function getDirectionAngle(x: number, y: number): number {
+  return Math.atan2(y, x)
+}
+
 test('creates one stable weapon instance with fixed empty module slots', () => {
   const world = createWeaponTestWorld()
   const [weapon] = world.weaponLoadout.equipped
@@ -109,7 +129,8 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
       speed: Math.hypot(projectile.velocityX, projectile.velocityY),
       radius: projectile.radius,
       damage: projectile.damage,
-      lifetimeMs: projectile.lifetimeMs,
+      remainingTravelDistance: projectile.remainingTravelDistance,
+      rangeExhausted: projectile.rangeExhausted,
       trackingMode: projectile.trackingMode,
       trackingState: projectile.trackingState,
       glyphFrame: projectile.glyphFrame,
@@ -122,7 +143,8 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
       speed: 620,
       radius: 7,
       damage: 1,
-      lifetimeMs: 1_800,
+      remainingTravelDistance: 1_116,
+      rangeExhausted: false,
       trackingMode: 'ASSISTED',
       trackingState: 'BALLISTIC',
       glyphFrame: projectileProfile.projectilePresentation.glyphFrame,
@@ -178,6 +200,43 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
   assert.equal(recycledProjectile.visualTint, 0xff0000)
 })
 
+test('emits one centered assisted volley from one target query', () => {
+  const world = createWeaponTestWorld()
+  const target = spawnEnemy(world, world.player.x + 100, world.player.y, 0)
+  target.phase = 'ACTIVE'
+  runEnemySpatialIndexSystem(world)
+  installProjectileCount(world, 1)
+
+  runWeaponSystem(world, 50)
+
+  assert.equal(world.projectiles.length, 2)
+  assert.equal(world.diagnostics.targetSearchCount, 1)
+  assert.equal(world.diagnostics.attackEmissionCount, 2)
+  assert.equal(target.trackingLoad, 2)
+  assert.deepEqual(
+    world.projectiles.map(({ targetEnemyId }) => targetEnemyId),
+    [target.id, target.id],
+  )
+  const expectedHalfSpacing = (4 * Math.PI) / 180
+  assert.ok(
+    Math.abs(
+      getDirectionAngle(
+        world.projectiles[0].launchDirectionX,
+        world.projectiles[0].launchDirectionY,
+      ) + expectedHalfSpacing,
+    ) < 1e-12,
+  )
+  assert.ok(
+    Math.abs(
+      getDirectionAngle(
+        world.projectiles[1].launchDirectionX,
+        world.projectiles[1].launchDirectionY,
+      ) - expectedHalfSpacing,
+    ) < 1e-12,
+  )
+  assert.equal(world.weaponLoadout.equipped[0].attackSequence, 1)
+})
+
 test('flamethrower damages only cone impacts without spawning gameplay projectiles', () => {
   const content = prepareGameContent()
   const world = createWorldState(
@@ -194,18 +253,63 @@ test('flamethrower damages only cone impacts without spawning gameplay projectil
   runEnemySpatialIndexSystem(world)
 
   runWeaponSystem(world, 50)
+  assert.equal(world.glyphDamageQueue.count, 1)
   runDamageSystem(world)
 
   assert.equal(world.projectiles.length, 0)
   assert.equal(world.diagnostics.targetSearchCount, 0)
   assert.equal(world.flameEmitters.length, 1)
-  assert.equal(world.glyphStore.getOwnerGlyphs(inside.id)[0].currentDurability, 0.75)
+  assert.equal(world.glyphStore.getOwnerGlyphs(inside.id)[0].currentDurability, 0.875)
   assert.equal(world.glyphStore.getOwnerGlyphs(behind.id)[0].currentDurability, 1)
 
   const snapshot = createRenderSnapshot()
   writeRenderSnapshot(world, snapshot, 1)
   assert.equal(snapshot.flameEmitters.length, 1)
   assert.equal(snapshot.flameEmitters[0].particleCount, 12)
+})
+
+test('emits centered Cone streams as independent overlapping attack events', () => {
+  const content = prepareGameContent()
+  const world = createWorldState(
+    'flamethrower-projectile-count',
+    800,
+    600,
+    content,
+    FLAMETHROWER_WEAPON_ID,
+  )
+  const target = spawnEnemy(world, world.player.x + 100, world.player.y, 0)
+  target.phase = 'ACTIVE'
+  runEnemySpatialIndexSystem(world)
+  installProjectileCount(world, 1)
+
+  runWeaponSystem(world, 50)
+
+  assert.equal(world.glyphDamageQueue.count, 2)
+  assert.equal(world.flameEmitters.length, 2)
+  assert.equal(world.diagnostics.attackEmissionCount, 2)
+  const expectedHalfSpacing = (5 * Math.PI) / 180
+  assert.ok(
+    Math.abs(
+      getDirectionAngle(
+        world.flameEmitters[0].directionX,
+        world.flameEmitters[0].directionY,
+      ) + expectedHalfSpacing,
+    ) < 1e-12,
+  )
+  assert.ok(
+    Math.abs(
+      getDirectionAngle(
+        world.flameEmitters[1].directionX,
+        world.flameEmitters[1].directionY,
+      ) - expectedHalfSpacing,
+    ) < 1e-12,
+  )
+
+  runDamageSystem(world)
+  assert.equal(
+    world.glyphStore.getOwnerGlyphs(target.id)[0].currentDurability,
+    0.75,
+  )
 })
 
 test('snapshots the resolved Knockback multiplier into projectile impacts', () => {

@@ -212,6 +212,8 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
   assert.equal(eye.baseTint, 0xf4d35e)
 
   world.glyphDamageQueue.enqueue({
+    attackEventId: 1,
+    primaryScope: 'LOCKED_OWNER',
     ownerId: slime.id,
     shapeKind: 'CIRCLE',
     shapeX: getGlyphWorldX(slime.x, eye),
@@ -223,6 +225,7 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
     shapeHalfAngleRadians: 0,
     targetMode: DAMAGE_TARGET_MODE.SINGLE,
     amount: 1,
+    damageSpreadProfile: null,
     impactStrengthMultiplier: 1,
     impactDirectionX: 1,
     impactDirectionY: 0,
