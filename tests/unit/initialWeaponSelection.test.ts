@@ -13,6 +13,7 @@ import { defineWeapon } from '../../src/game/content/weapons/weaponDefinition.ts
 import {
   getUnlockedInitialWeaponDefinition,
   prepareRunWeaponUnlocks,
+  requireEligibleFirstOfferWeapon,
 } from '../../src/game/host/runWeaponUnlocks.ts'
 
 const READY_MACHINE_SNAPSHOT = {
@@ -21,6 +22,7 @@ const READY_MACHINE_SNAPSHOT = {
     seed: null,
     upgradeChoices: [],
     pendingUpgradeCount: 0,
+    activeUpgradeOfferId: null,
     recoverableError: null,
   },
 } as const
@@ -65,7 +67,7 @@ test('freezes a copied run unlock set and derives UI-sized weapon summaries', ()
       title: 'Assisted o',
       description: 'Fires a small projectile with limited aim correction.',
       identityGlyph: 'o',
-      moduleSlotCount: 3,
+        moduleSlotCount: 4,
     },
   ])
   assert.equal(Object.isFrozen(unlocks), true)
@@ -161,4 +163,14 @@ test('copies and freezes initial weapon choices at the UI boundary', () => {
   assert.equal(Object.isFrozen(snapshot), true)
   assert.equal(Object.isFrozen(snapshot.initialWeaponChoices), true)
   assert.equal(Object.isFrozen(snapshot.initialWeaponChoices[0]), true)
+})
+
+test('rejects a run that cannot satisfy the first weapon-card guarantee', () => {
+  const content = prepareGameContent()
+  const unlocks = prepareRunWeaponUnlocks(content, [BASIC_PROJECTILE_WEAPON_ID])
+
+  assert.throws(
+    () => requireEligibleFirstOfferWeapon(unlocks, BASIC_PROJECTILE_WEAPON_ID),
+    /first upgrade offer/,
+  )
 })

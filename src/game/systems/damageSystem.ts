@@ -4,6 +4,39 @@ import { getGlyphMaterialDefinition } from '../glyph/glyphMaterial.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import { isEnemyOutlineCollisionPhase } from '../runtime/worldEntities.ts'
 import { selectGlyphDamage } from './glyphDamageSelection.ts'
+import { LOCAL_DAMAGE_SHAPE } from '../glyph/localDamage.ts'
+import { GAME_CONFIG } from '../runtime/gameConfig.ts'
+
+function applyWholeBodyKnockback(
+  enemy: WorldState['enemies'][number],
+  distance: number,
+  directionX: number,
+  directionY: number,
+): void {
+  if (distance <= 0) {
+    return
+  }
+  const directionLength = Math.hypot(directionX, directionY)
+  if (directionLength === 0) {
+    return
+  }
+  const normalizedX = directionX / directionLength
+  const normalizedY = directionY / directionLength
+  enemy.x = Math.max(
+    enemy.radius,
+    Math.min(
+      GAME_CONFIG.worldWidth - enemy.radius,
+      enemy.x + normalizedX * distance,
+    ),
+  )
+  enemy.y = Math.max(
+    enemy.radius,
+    Math.min(
+      GAME_CONFIG.worldHeight - enemy.radius,
+      enemy.y + normalizedY * distance,
+    ),
+  )
+}
 
 export function runDamageSystem(world: WorldState): void {
   world.glyphDamageQueue.drain((event) => {
@@ -24,12 +57,22 @@ export function runDamageSystem(world: WorldState): void {
         worldY: getGlyphWorldY(enemy.y, glyph),
         collisionRadius: glyph.collisionRadius,
       })),
-      {
-        kind: 'CIRCLE',
-        x: event.shapeX,
-        y: event.shapeY,
-        radius: event.shapeRadius,
-      },
+      event.shapeKind === LOCAL_DAMAGE_SHAPE.CIRCLE
+        ? {
+            kind: 'CIRCLE',
+            x: event.shapeX,
+            y: event.shapeY,
+            radius: event.shapeRadius,
+          }
+        : {
+            kind: 'CONE',
+            x: event.shapeX,
+            y: event.shapeY,
+            directionX: event.shapeDirectionX,
+            directionY: event.shapeDirectionY,
+            range: event.shapeRange,
+            halfAngleRadians: event.shapeHalfAngleRadians,
+          },
       event.targetMode,
     )
     if (selection.impactCells.length === 0) {
@@ -55,10 +98,17 @@ export function runDamageSystem(world: WorldState): void {
       const glyph = impact.glyph
       world.glyphStore.applyMaterialHit(
         glyph.id,
-        event.impactDirectionX,
-        event.impactDirectionY,
+        event.impactDirectionX * event.impactStrengthMultiplier,
+        event.impactDirectionY * event.impactStrengthMultiplier,
         getGlyphMaterialDefinition(glyph.material),
       )
     }
+
+    applyWholeBodyKnockback(
+      enemy,
+      event.rootKnockbackDistance ?? 0,
+      event.rootKnockbackDirectionX ?? 0,
+      event.rootKnockbackDirectionY ?? 0,
+    )
   })
 }

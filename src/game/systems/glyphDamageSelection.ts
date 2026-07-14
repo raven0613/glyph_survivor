@@ -17,6 +17,18 @@ export interface CircleDamageShape {
   readonly radius: number
 }
 
+export interface ConeDamageShape {
+  readonly kind: 'CONE'
+  readonly x: number
+  readonly y: number
+  readonly directionX: number
+  readonly directionY: number
+  readonly range: number
+  readonly halfAngleRadians: number
+}
+
+export type DamageSelectionShape = CircleDamageShape | ConeDamageShape
+
 export interface DamageSelectionCell {
   readonly id: number
   readonly state: GlyphCellState
@@ -45,9 +57,58 @@ function isLiving(cell: DamageSelectionCell): boolean {
 
 function distanceSquaredToShape(
   cell: DamageSelectionCell,
-  shape: CircleDamageShape,
+  shape: DamageSelectionShape,
 ): number {
   return (cell.worldX - shape.x) ** 2 + (cell.worldY - shape.y) ** 2
+}
+
+function distanceSquaredToSegment(
+  pointX: number,
+  pointY: number,
+  endX: number,
+  endY: number,
+): number {
+  const lengthSquared = endX * endX + endY * endY
+  const projection = Math.max(
+    0,
+    Math.min(1, (pointX * endX + pointY * endY) / lengthSquared),
+  )
+  return (pointX - endX * projection) ** 2 +
+    (pointY - endY * projection) ** 2
+}
+
+function intersectsCone(
+  cell: DamageSelectionCell,
+  shape: ConeDamageShape,
+): boolean {
+  const directionLength = Math.hypot(shape.directionX, shape.directionY)
+  if (directionLength === 0) {
+    return false
+  }
+  const directionX = shape.directionX / directionLength
+  const directionY = shape.directionY / directionLength
+  const deltaX = cell.worldX - shape.x
+  const deltaY = cell.worldY - shape.y
+  const localX = deltaX * directionX + deltaY * directionY
+  const localY = -deltaX * directionY + deltaY * directionX
+  const radius = cell.collisionRadius
+  const distance = Math.hypot(localX, localY)
+  if (distance <= radius) {
+    return true
+  }
+  if (distance > shape.range + radius) {
+    return false
+  }
+  if (Math.abs(Math.atan2(localY, localX)) <= shape.halfAngleRadians) {
+    return true
+  }
+
+  const boundaryX = Math.cos(shape.halfAngleRadians) * shape.range
+  const boundaryY = Math.sin(shape.halfAngleRadians) * shape.range
+  return Math.min(
+    distanceSquaredToSegment(localX, localY, boundaryX, boundaryY),
+    distanceSquaredToSegment(localX, localY, boundaryX, -boundaryY),
+  ) <= radius ** 2
 }
 
 function intersectsCircle(
@@ -56,6 +117,15 @@ function intersectsCircle(
 ): boolean {
   const combinedRadius = cell.collisionRadius + shape.radius
   return distanceSquaredToShape(cell, shape) <= combinedRadius ** 2
+}
+
+function intersectsShape(
+  cell: DamageSelectionCell,
+  shape: DamageSelectionShape,
+): boolean {
+  return shape.kind === 'CIRCLE'
+    ? intersectsCircle(cell, shape)
+    : intersectsCone(cell, shape)
 }
 
 function findTopologyDistances<T extends DamageSelectionCell>(
@@ -108,11 +178,11 @@ function findTopologyDistances<T extends DamageSelectionCell>(
 /** Separates local outline impacts from deterministic living durability targets. */
 export function selectGlyphDamage<T extends DamageSelectionCell>(
   cells: readonly T[],
-  shape: CircleDamageShape,
+  shape: DamageSelectionShape,
   targetMode: DamageTargetMode,
 ): GlyphDamageSelection<T> {
   const impactCells = cells
-    .filter((cell) => intersectsCircle(cell, shape))
+    .filter((cell) => intersectsShape(cell, shape))
     .sort(
       (first, second) =>
         distanceSquaredToShape(first, shape) -

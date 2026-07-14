@@ -8,6 +8,7 @@ export interface ViewportSize {
 
 export interface InputAdapter {
   sample(target: InputState): void
+  clearMovement(): void
   dispose(): void
 }
 
@@ -85,6 +86,10 @@ export function createInputAdapter(
       target.pointerScreenY = pointerScreenY
       target.hasPointer = hasPointer
       target.pointerRevision = pointerRevision
+    },
+
+    clearMovement() {
+      pressedKeys.clear()
     },
 
     dispose() {

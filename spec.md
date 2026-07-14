@@ -395,6 +395,14 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 玩家能從 Boss 身上的破壞痕跡，看出自己是哪種 Build。
 
+首版前三把武器的玩法身分已確認：
+
+- Assisted `o` 是遠距、單體、有限修正的基準子彈。
+- 噴火槍沿玩家瞄準方向形成約 `90°` 的短程扇形 AREA attack；單一 Glyph 每次承受的傷害低於 assisted `o`，但可以同時侵蝕多個 Impact Cells。橘黃 `.`／`*` 火星是 rendering-only presentation，不是會各自造成傷害的 gameplay projectiles；首版噴火槍不自帶 Fire DoT。
+- 能量球以 Printable ASCII `O` 在玩家身邊持續旋轉，單次 Glyph 傷害低於 assisted `o`、高於噴火槍，並將命中的整個 creature root 往玩家外側擊退。軌道、碰撞、重複命中冷卻與 whole-body knockback 都由 Runtime 權威持有，光暈與拖尾才是 rendering-only。
+
+精確 prototype damage、cadence、幾何尺寸與實作順序記錄在 [`docs/content/weapon-system.md`](docs/content/weapon-system.md)，屬於集中管理、可經 playtest 調整的 content defaults。
+
 武器的永久解鎖與單局取得是不同流程：
 
 - 新武器在一場遊戲結束後，回到主選單透過 Meta Progression 永久解鎖。
@@ -437,11 +445,12 @@ Damage +10%
 通用升級以武器自己的 Module Slots 為投資單位：
 
 - 升級卡可以投資到任何具有明確對應語意的已裝備武器。
-- 每把武器有 content-defined 的固定 Module Slot 數量；首版每個 Module 佔一格。
+- 首版每把武器固定有 `4` 個 Module Slots，數值由 Weapon Definition 明確保存；每個 Module 佔一格。
 - 相同 Module 再次投資到同一把武器時，在原 Slot 由 Rank I 升為 Rank II，依此類推至該 Module 的 content-defined 最大 Rank。
 - 不同 Module 可以覆蓋指定 Slot；被覆蓋的投資消失，新 Module 從 Rank I 開始。
 - Module 不能卸下、退款、搬到另一把武器或重新分配；玩家只能保留、升階或覆蓋摧毀它。
 - 覆蓋能力讓後期 Build 可以調整方向，但不能繞過 Weapon Instance、Slot、Rank 或卡片選擇規則。
+- 首批實際驗證 Rank／Slot 流程的通用 Module 是 Attack Speed、Attack Area 與 Knockback，先採 Rank I～III。Rank table 保存各階的完整總效果，不把 Rank II、III 當成對前一階再次複利疊乘；精確 prototype 倍率記錄在武器系統文件。
 
 ---
 
@@ -459,6 +468,8 @@ Damage +10%
 - 武器卡：裝備未滿時取得新武器；裝備已滿時選擇要替換哪把武器。
 
 從選卡、選武器、必要的 Slot／武器 replacement，到 Runtime 驗證並 commit 為止，遊戲都保持完全暫停。只有完整決策成功後，角色才恢復戰鬥或進入下一個 queued upgrade。
+
+XP 升級必須保留超額經驗；一次跨越多個門檻就排入相同數量的 upgrade choices，且連續選擇期間不得短暫恢復 simulation。第一次武器卡保證以第一個實際產生的 offer 為準，不假設一定發生在 Lv.2。首版 XP curve、普通敵人 prototype reward 與前期節奏目標記錄在武器系統文件，之後可以透過 content tuning 調整。
 
 卡片、武器與 Slot 選擇使用 Canvas 上方的 React DOM overlay。React 可以使用 CSS、SVG 或 Web Animations 呈現文字聚合、3D tilt、glitch、neon、code diff 與 Rank compile 動畫；PixiJS 只顯示暫停中的戰場，不決定卡片結果。
 

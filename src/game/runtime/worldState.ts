@@ -25,11 +25,14 @@ import type {
   BossEncounterState,
   EnemyState,
   ExperienceDropState,
+  FlameEmitterState,
   InputState,
+  OrbitAttackState,
   PlayerState,
   ProjectileState,
   SpawnSide,
 } from './worldEntities.ts'
+import { createUpgradeState, type UpgradeState } from './upgradeState.ts'
 
 export interface WorldDiagnostics {
   droppedSimulationTimeMs: number
@@ -40,6 +43,7 @@ export interface WorldDiagnostics {
   targetSearchCount: number
   targetReacquireCount: number
   glyphPoolMisses: number
+  flameEmitterPoolMisses: number
   healthyGlyphCount: number
   damagedGlyphCount: number
   huskGlyphCount: number
@@ -51,6 +55,7 @@ export interface WorldState {
   readonly rng: SeededRng
   readonly player: PlayerState
   readonly weaponLoadout: WeaponLoadoutState
+  readonly upgradeState: UpgradeState
   readonly input: InputState
   readonly glyphStore: GlyphStore
   readonly glyphDamageQueue: GlyphDamageQueue
@@ -63,6 +68,9 @@ export interface WorldState {
   readonly projectilePool: ProjectileState[]
   readonly drops: ExperienceDropState[]
   readonly dropPool: ExperienceDropState[]
+  readonly flameEmitters: FlameEmitterState[]
+  readonly flameEmitterPool: FlameEmitterState[]
+  readonly orbitAttacks: OrbitAttackState[]
   readonly obstacles: Bounds[]
   readonly enemySpatialHash: SpatialHash<EnemyState>
   readonly collisionCandidates: EnemyState[]
@@ -74,6 +82,9 @@ export interface WorldState {
   runTimeMs: number
   spawnCooldownMs: number
   nextEntityId: number
+  nextFlameEmitterId: number
+  nextOrbitAttackId: number
+  collectedXpThisStep: number
   targetSearchCursor: number
   activeEnemyCount: number
   ordinaryEnemySpawnCount: number
@@ -96,7 +107,7 @@ function createPlayer(): PlayerState {
     aimX: 1,
     aimY: 0,
     lastProcessedPointerRevision: 0,
-    xp: 0,
+    xpIntoLevel: 0,
     level: 1,
   }
 }
@@ -107,6 +118,9 @@ export function createWorldState(
   viewportHeight: number,
   content: PreparedGameContent,
   initialWeaponDefinitionId: string,
+  unlockedWeaponDefinitionIds: readonly string[] = content.weaponDefinitions.map(
+    ({ id }) => id,
+  ),
 ): WorldState {
   const diagnostics: WorldDiagnostics = {
     droppedSimulationTimeMs: 0,
@@ -117,6 +131,7 @@ export function createWorldState(
     targetSearchCount: 0,
     targetReacquireCount: 0,
     glyphPoolMisses: 0,
+    flameEmitterPoolMisses: 0,
     healthyGlyphCount: 0,
     damagedGlyphCount: 0,
     huskGlyphCount: 0,
@@ -133,6 +148,7 @@ export function createWorldState(
     rng: createSeededRng(seed),
     player: createPlayer(),
     weaponLoadout,
+    upgradeState: createUpgradeState(seed, unlockedWeaponDefinitionIds),
     input: {
       horizontal: 0,
       vertical: 0,
@@ -156,6 +172,9 @@ export function createWorldState(
     projectilePool: [],
     drops: [],
     dropPool: [],
+    flameEmitters: [],
+    flameEmitterPool: [],
+    orbitAttacks: [],
     obstacles: [],
     enemySpatialHash: createSpatialHash(GAME_CONFIG.spatialHashCellSize),
     collisionCandidates: [],
@@ -167,6 +186,9 @@ export function createWorldState(
     runTimeMs: 0,
     spawnCooldownMs: 350,
     nextEntityId: 1,
+    nextFlameEmitterId: 1,
+    nextOrbitAttackId: 1,
+    collectedXpThisStep: 0,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
     ordinaryEnemySpawnCount: 0,
@@ -321,7 +343,11 @@ export function spawnExperienceDrop(
   world: WorldState,
   x: number,
   y: number,
+  value: number,
 ): ExperienceDropState {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new RangeError('Experience reward must be finite and non-negative.')
+  }
   const drop = world.dropPool.pop()
 
   if (!drop) {
@@ -333,7 +359,7 @@ export function spawnExperienceDrop(
     id: getNextEntityId(world),
     x,
     y,
-    value: 1,
+    value,
     isAlive: true,
   })
   world.drops.push(activeDrop)

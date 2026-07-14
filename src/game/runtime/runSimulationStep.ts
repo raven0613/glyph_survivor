@@ -13,13 +13,16 @@ import {
   runProjectileTargetingSystem,
 } from '../systems/projectileTargetingSystem.ts'
 import { runWeaponSystem } from '../systems/weaponSystem.ts'
+import { runFlamePresentationSystem } from '../systems/flamePresentationSystem.ts'
+import { runUpgradeSystem } from '../systems/upgradeSystem.ts'
 import { runBossSpawnSystem } from '../systems/bossSpawnSystem.ts'
 import { runGlyphMaterialSystem } from '../systems/glyphMaterialSystem.ts'
 import { runGlyphDiagnosticsSystem } from '../systems/glyphDiagnosticsSystem.ts'
 import { runSlimeSplitSystem } from '../systems/slimeSplitSystem.ts'
+import { runOrbitWeaponSystem } from '../systems/orbitWeaponSystem.ts'
 import type { WorldState } from './worldState.ts'
 
-export function runSimulationStep(world: WorldState, deltaMs: number): void {
+export function runSimulationStep(world: WorldState, deltaMs: number): boolean {
   world.runTimeMs += deltaMs
   world.diagnostics.simulationStepCount += 1
   runAimSystem(world)
@@ -29,7 +32,9 @@ export function runSimulationStep(world: WorldState, deltaMs: number): void {
   runDirectorSystem(world, deltaMs)
   runBossSpawnSystem(world)
   prepareProjectileTargetingSystem(world)
+  runFlamePresentationSystem(world, deltaMs)
   runWeaponSystem(world, deltaMs)
+  runOrbitWeaponSystem(world, deltaMs)
   runProjectileTargetingSystem(world, deltaMs)
   runProjectileSystem(world, deltaMs)
   runCollisionSystem(world)
@@ -37,6 +42,8 @@ export function runSimulationStep(world: WorldState, deltaMs: number): void {
   runSlimeSplitSystem(world)
   runDeathSystem(world, deltaMs)
   runDropSystem(world)
+  const upgradeOfferCreated = runUpgradeSystem(world)
   runCleanupSystem(world)
   runGlyphDiagnosticsSystem(world)
+  return upgradeOfferCreated
 }

@@ -7,6 +7,7 @@ import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import type { GlyphCell } from '../glyph/glyphStore.ts'
 import { circlesIntersect } from './combatGeometry.ts'
+import { LOCAL_DAMAGE_SHAPE } from '../glyph/localDamage.ts'
 
 function findHitGlyph(
   world: WorldState,
@@ -86,11 +87,17 @@ export function runCollisionSystem(world: WorldState): void {
           : projectile.launchDirectionY
       world.glyphDamageQueue.enqueue({
         ownerId: glyph.ownerId,
+        shapeKind: LOCAL_DAMAGE_SHAPE.CIRCLE,
         shapeX: projectile.x,
         shapeY: projectile.y,
         shapeRadius: projectile.radius,
+        shapeDirectionX: 0,
+        shapeDirectionY: 0,
+        shapeRange: 0,
+        shapeHalfAngleRadians: 0,
         targetMode: projectile.damageTargetMode,
         amount: projectile.damage,
+        impactStrengthMultiplier: projectile.impactStrengthMultiplier,
         impactDirectionX: directionX,
         impactDirectionY: directionY,
       })

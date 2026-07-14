@@ -4,9 +4,9 @@ import { createActor } from 'xstate'
 import { GAME_PHASE, gameMachine } from '../../src/game/runtime/gameMachine.ts'
 
 const upgradeChoices = [
-  { id: 'color-fire-red', title: 'Color: Fire Red' },
-  { id: 'size-200', title: 'Size: 200%' },
-  { id: 'weight-bold', title: 'Weight: Bold' },
+  { id: 'color-fire-red', kind: 'MODULE' as const, definitionId: 'module.fire', title: 'Color: Fire Red' },
+  { id: 'size-200', kind: 'MODULE' as const, definitionId: 'module.size', title: 'Size: 200%' },
+  { id: 'weight-bold', kind: 'MODULE' as const, definitionId: 'module.weight', title: 'Weight: Bold' },
 ]
 
 function startRunningActor(machine: typeof gameMachine = gameMachine) {
@@ -70,57 +70,70 @@ test('pauses and resumes a running game from the menu', () => {
   assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
 })
 
-test('pauses for an upgrade and resumes only after applying an offered choice', () => {
-  const appliedUpgradeIds: string[] = []
-  const actor = startRunningActor(
-    gameMachine.provide({
-      actions: {
-        applySelectedUpgrade: ({ event }) => {
-          if (event.type === 'SELECT_UPGRADE') {
-            appliedUpgradeIds.push(event.choiceId)
-          }
-        },
-      },
-    }),
-  )
+test('pauses for an upgrade and resumes only after an offered choice commits', () => {
+  const actor = startRunningActor()
 
-  actor.send({ type: 'UPGRADE_OFFERED', choices: upgradeChoices })
+  actor.send({ type: 'UPGRADE_OFFERED', offerId: 'offer-1', choices: upgradeChoices })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_UPGRADE)
 
   actor.send({ type: 'RESUME_REQUESTED' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_UPGRADE)
 
-  actor.send({ type: 'SELECT_UPGRADE', choiceId: 'not-offered' })
+  actor.send({ type: 'UPGRADE_COMMITTED', choiceId: 'not-offered' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_UPGRADE)
-  assert.deepEqual(appliedUpgradeIds, [])
 
-  actor.send({ type: 'SELECT_UPGRADE', choiceId: 'size-200' })
+  actor.send({ type: 'UPGRADE_COMMITTED', choiceId: 'size-200' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
-  assert.deepEqual(appliedUpgradeIds, ['size-200'])
 })
 
 test('keeps gameplay paused while queued level-ups still need a choice', () => {
   const actor = startRunningActor()
   actor.send({
     type: 'UPGRADE_OFFERED',
+    offerId: 'offer-1',
     choices: upgradeChoices,
     pendingUpgradeCount: 2,
   })
 
-  actor.send({ type: 'SELECT_UPGRADE', choiceId: 'color-fire-red' })
+  actor.send({ type: 'UPGRADE_COMMITTED', choiceId: 'color-fire-red' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_UPGRADE)
   assert.equal(actor.getSnapshot().context.pendingUpgradeCount, 1)
   assert.deepEqual(actor.getSnapshot().context.upgradeChoices, [])
 
-  actor.send({ type: 'UPGRADE_OFFERED', choices: upgradeChoices })
-  actor.send({ type: 'SELECT_UPGRADE', choiceId: 'weight-bold' })
+  actor.send({ type: 'UPGRADE_OFFERED', offerId: 'offer-2', choices: upgradeChoices })
+  actor.send({ type: 'UPGRADE_COMMITTED', choiceId: 'weight-bold' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
+})
+
+test('keeps the active offer paused after an authoritative command rejection', () => {
+  const actor = startRunningActor()
+  actor.send({
+    type: 'UPGRADE_OFFERED',
+    offerId: 'offer-rejected',
+    choices: upgradeChoices,
+  })
+
+  actor.send({
+    type: 'UPGRADE_COMMAND_REJECTED',
+    error: 'A replacement slot is required.',
+  })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_UPGRADE)
+  assert.equal(
+    actor.getSnapshot().context.activeUpgradeOfferId,
+    'offer-rejected',
+  )
+  assert.equal(
+    actor.getSnapshot().context.recoverableError,
+    'A replacement slot is required.',
+  )
 })
 
 test('rejects malformed upgrade offers without pausing gameplay', () => {
   const actor = startRunningActor()
   actor.send({
     type: 'UPGRADE_OFFERED',
+    offerId: 'offer-invalid',
     choices: [upgradeChoices[0], upgradeChoices[0], upgradeChoices[2]],
   })
 
@@ -131,12 +144,18 @@ test('rejects malformed upgrade offers without pausing gameplay', () => {
 
   actor.send({
     type: 'UPGRADE_OFFERED',
-    choices: [upgradeChoices[0], { id: '   ' }, upgradeChoices[2]],
+    offerId: 'offer-invalid-2',
+    choices: [
+      upgradeChoices[0],
+      { id: '   ', kind: 'MODULE', definitionId: 'module.invalid' },
+      upgradeChoices[2],
+    ],
   })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
 
   actor.send({
     type: 'UPGRADE_OFFERED',
+    offerId: 'offer-invalid-3',
     choices: upgradeChoices,
     pendingUpgradeCount: 0,
   })
@@ -146,10 +165,10 @@ test('rejects malformed upgrade offers without pausing gameplay', () => {
 test('copies upgrade choices at the command boundary', () => {
   const actor = startRunningActor()
   const mutableChoices = upgradeChoices.map((choice) => ({ ...choice }))
-  actor.send({ type: 'UPGRADE_OFFERED', choices: mutableChoices })
+  actor.send({ type: 'UPGRADE_OFFERED', offerId: 'offer-copy', choices: mutableChoices })
 
   mutableChoices[0].title = 'mutated externally'
-  mutableChoices.push({ id: 'extra', title: 'Extra' })
+  mutableChoices.push({ id: 'extra', kind: 'MODULE', definitionId: 'module.extra', title: 'Extra' })
 
   assert.equal(actor.getSnapshot().context.upgradeChoices.length, 3)
   assert.equal(
@@ -161,7 +180,7 @@ test('copies upgrade choices at the command boundary', () => {
 test('enters game over before accepting further upgrade offers and can restart', () => {
   const actor = startRunningActor()
   actor.send({ type: 'PLAYER_DIED' })
-  actor.send({ type: 'UPGRADE_OFFERED', choices: upgradeChoices })
+  actor.send({ type: 'UPGRADE_OFFERED', offerId: 'offer-late', choices: upgradeChoices })
 
   assert.equal(actor.getSnapshot().value, GAME_PHASE.GAME_OVER)
 

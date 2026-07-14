@@ -29,9 +29,12 @@ These rules come directly from `spec.md` and must survive refactors:
 - The first ordinary-enemy appearances progress in the fixed order `ZOMBIE (Z) → BONE (BO) → BAT`; exact stage thresholds, post-unlock mixing, weights, and speeds remain validated content parameters.
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
 - Weapon identity comes from target logic, attack shape, and destruction shape—not only numeric damage.
+- The confirmed first three weapon identities are the assisted single-target `o`, a short-range approximately 90-degree aimed flamethrower Cone, and a Runtime-owned orbiting `O` with whole-body outward knockback. Their tunable prototype values live in `docs/content/weapon-system.md`.
+- Flamethrower sparks are rendering-only particles and never deal damage. The orbiting ball's phase, position, collision, re-hit gating, and knockback are authoritative Runtime state.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
 - Permanent weapon unlocks happen outside a run. A run receives a frozen set of unlocked weapon definitions, starts with exactly one selected weapon, and may acquire only those unlocked weapons through level-up cards.
 - Level-up offers mix weapon cards and universal Module cards. The first upgrade must contain at least one eligible weapon card.
+- XP overflow is never discarded. Crossing multiple level thresholds queues the same number of upgrade decisions, and gameplay remains paused between those decisions.
 - Module investments belong to ordered Slots on one Weapon Instance. A matching Module raises that Slot's Rank; a different Module may overwrite and destroy the selected Slot, but no Module may be moved, refunded, or reassigned to another weapon.
 - Replacing a weapon destroys that Weapon Instance's Module Slots and runtime state. It must not mutate the other equipped Weapon Instances.
 - Opening the upgrade screen completely pauses gameplay simulation through card, weapon, Module Slot, and weapon-replacement selection until an authoritative commit succeeds.
@@ -508,6 +511,8 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 
 Content definitions may select strategies and parameters. They must not contain hidden mutable runtime state.
 
+Use discriminated combat profiles. A Cone attack must not carry fake projectile speed／tracking fields, and a persistent orbit must not masquerade as a projectile solely to reuse an existing system. Each AttackPattern owns only the state and parameters it actually requires.
+
 Weapon content and runtime state must remain separate:
 
 - A prepared Weapon Definition is immutable content: stable ID, UI metadata, Module Slot count, strategy selections, base combat parameters, and explicit tracking profile where applicable.
@@ -516,7 +521,7 @@ Weapon content and runtime state must remain separate:
 - A Module Slot is authoritative run state containing either nothing or one module definition ID plus Rank. Slot usage is not a second independently mutable capacity total.
 - `ResolvedWeaponProfile` is disposable derived data compiled from the Weapon Definition plus ordered Slots. Rebuild it only when Slots or Ranks change; never treat it as the investment source of truth.
 
-The first-pass `maximumEquippedWeapons` default is `3`, but it must live in validated run／content configuration rather than repeated literals. The exact Module Slot count belongs to each Weapon Definition. First-pass Modules occupy one Slot, and one Weapon Instance cannot hold the same Module in multiple Slots.
+The first-pass `maximumEquippedWeapons` default is `3`, but it must live in validated run／content configuration rather than repeated literals. Every first-pass Weapon Definition must explicitly declare exactly `4` Module Slots; Runtime and UI must read that prepared value instead of repeating a magic number. First-pass Modules occupy one Slot, and one Weapon Instance cannot hold the same Module in multiple Slots.
 
 Module placement follows one deterministic transaction rule:
 
@@ -529,11 +534,17 @@ Weapon replacement is also atomic. Below the equipment limit, create a new empty
 
 Every level-up offer contains exactly three unique choice references and a stable offer ID. Choices may be `WEAPON` or `MODULE`; weapon choices come only from the run's frozen unlock set. The first offer guarantees at least one eligible, unlocked, unequipped weapon. Use a dedicated seeded upgrade RNG and stable content ordering. Exact later weights are content parameters, not system constants.
 
+Level progression uses validated content for `xpToNext(level)` and reward values. Add XP into the current-level remainder, repeatedly consume crossed thresholds, preserve overflow, and queue one upgrade decision per crossed level. Determine the first-weapon-card guarantee from the first generated offer sequence, not from an assumed player level. Boss／Elite rewards require explicit content values and must not accidentally inherit an ordinary-enemy fallback.
+
 React selection previews do not mutate the run. Final install／acquire commands must revalidate the active offer, choice kind, instance IDs, Rank, empty/full Slot state, and replacement target. Invalid or stale commands consume nothing, change nothing, and keep gameplay paused. Successful validation commits all changes atomically before consuming the offer or resuming.
 
 Every damaging attack defines a `DamageShape`, its geometric dimensions such as radius/length/angle, and a damage amount. A shape intersects the full authoritative creature outline, including Husks. A point-like attack selects one living Damage Target from the struck body; area shapes derive each struck body's quota from the number of its distinct intersected outline Cells. In-shape living Cells are selected first, and deterministic topology-frontier selection fills any remaining quota. DamageShape intersection and durability-target selection are separate from local visual effects: only the actual in-shape Impact Cells receive those effects. Entity-level collision may be used only as a broad phase before Glyph-level queries and precise shape tests.
 
 Gameplay projectiles are the only projectile-like objects that participate in damage/collision. Visual particles are rendering-only and never cause damage.
+
+- The flamethrower's authoritative damage comes from fixed-step Cone DamageShape pulses. Its orange／yellow `.`, `*`, and related sparks only visualize that shape; changing their density must not change gameplay.
+- An orbiting ball that damages enemies is an instance-attached authoritative attack. Runtime owns its deterministic orbit phase, world position, collision radius, per-owner re-hit gating, pause behavior, and cleanup when its Weapon Instance disappears. Renderer-owned halo and trail particles do not collide.
+- When a weapon explicitly applies whole-body knockback, Runtime displaces the creature root in an authoritative, bounded way so every active outline Glyph, including Husks, follows it. Local Material impulse and hit presentation remain restricted to actual Impact Cells; topology-frontier-only Damage Targets receive neither.
 
 - Every fired gameplay projectile uses an explicit tracking profile.
 - `ASSISTED` projectiles may make limited corrections toward their initial target, but permanently become ballistic after passing or losing that target. They must not reacquire or turn back.
@@ -693,13 +704,17 @@ preserves the first-appearance progression from Z to BO to BAT
 returns body motion to the same pose without accumulating drift
 keeps active husks on the same body-motion track as living glyphs
 keeps the zombie bottom pivot stable while its glyph center moves
+preserves XP overflow and queues one decision for every crossed level
 guarantees an eligible weapon card in the first upgrade offer
+intersects the aimed cone with authoritative glyph circles including husks
+keeps flame-particle density from changing authoritative cone damage
 upgrades a matching module in place without consuming another slot
 replaces only the selected full module slot and resets it to rank one
 rejects a stale upgrade offer without consuming it or resuming gameplay
 replaces one weapon and discards only that weapon's module slots
 keeps gameplay paused through card, weapon, and replacement selection
 keeps in-flight attack values unchanged after replacing their source weapon
+clears persistent orbit attacks when their weapon instance is replaced
 ```
 
 ## 18. AI implementation workflow
@@ -743,6 +758,6 @@ Do not silently hard-code these product decisions when they materially affect im
 - save/replay requirements across content versions;
 - analytics/telemetry collection;
 - the testing stack to add when tests are first implemented;
-- exact first-release weapon roster, permanent unlock conditions, per-weapon Module Slot counts, Module Rank tables, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
+- weapons beyond the confirmed first three, permanent unlock conditions, Module Rank tables beyond the confirmed prototype set, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
 
 Use a conservative temporary default only when it is easy to reverse, and record it next to the relevant contract.

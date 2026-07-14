@@ -17,13 +17,25 @@ import { createRenderAdapter } from '../rendering/createRenderAdapter.ts'
 import { createGameLoop } from '../runtime/createGameLoop.ts'
 import { GAME_PHASE, gameMachine } from '../runtime/gameMachine.ts'
 import { runSimulationStep } from '../runtime/runSimulationStep.ts'
+import type { UpgradeOffer } from '../runtime/upgradeState.ts'
 import { createWorldState, type WorldState } from '../runtime/worldState.ts'
+import { getXpToNextLevel } from '../content/upgrades/levelProgression.ts'
+import {
+  installModuleFromOffer,
+  type InstallModuleCommand,
+} from '../systems/moduleInstallation.ts'
+import {
+  acquireWeaponFromOffer,
+  type AcquireWeaponCommand,
+} from '../systems/weaponAcquisition.ts'
 import { createInputAdapter } from './createInputAdapter.ts'
 import {
   getUnlockedInitialWeaponDefinition,
   prepareRunWeaponUnlocks,
+  requireEligibleFirstOfferWeapon,
   type RunWeaponUnlocks,
 } from './runWeaponUnlocks.ts'
+import { createLoadoutUiSummaries } from './createLoadoutUiSummaries.ts'
 
 export interface StartRunOptions {
   readonly seed: string | number
@@ -34,6 +46,8 @@ export type UiSnapshotListener = (snapshot: Readonly<UiSnapshot>) => void
 
 export interface GameHost {
   startRun(options: StartRunOptions): void
+  acquireWeapon(options: AcquireWeaponCommand): void
+  installModule(options: InstallModuleCommand): void
   subscribeUi(listener: UiSnapshotListener): () => void
   getUiSnapshot(): Readonly<UiSnapshot>
   dispose(): void
@@ -57,12 +71,16 @@ function isValidSeed(seed: unknown): seed is string | number {
 function getGameplayUi(world: WorldState | null): GameplayUiData {
   return world
     ? {
-        xp: world.player.xp,
+        xp: world.player.xpIntoLevel,
+        xpToNext: getXpToNextLevel(
+          world.content.levelProgression,
+          world.player.level,
+        ),
         level: world.player.level,
         runTimeMs: world.runTimeMs,
         enemyCount: world.enemies.length,
       }
-    : { xp: 0, level: 1, runTimeMs: 0, enemyCount: 0 }
+    : { xp: 0, xpToNext: 5, level: 1, runTimeMs: 0, enemyCount: 0 }
 }
 
 /** Owns browser adapters, authoritative runtime state, and lifecycle commands. */
@@ -92,6 +110,10 @@ export async function createGameHost({
       machineSnapshot.value === GAME_PHASE.READY
         ? runWeaponUnlocks?.initialWeaponChoices
         : undefined,
+      world
+        ? createLoadoutUiSummaries(world.content, world.weaponLoadout)
+        : undefined,
+      world?.weaponLoadout.maximumEquippedWeapons,
     )
     uiListeners.forEach((listener) => listener(currentUiSnapshot))
   }
@@ -128,7 +150,19 @@ export async function createGameHost({
       }
 
       inputAdapter.sample(world.input)
-      runSimulationStep(world, fixedStepMs)
+      const upgradeOfferCreated = runSimulationStep(world, fixedStepMs)
+      if (upgradeOfferCreated && world.upgradeState.activeOffer) {
+        inputAdapter.clearMovement()
+        world.input.horizontal = 0
+        world.input.vertical = 0
+        gameActor.send({
+          type: 'UPGRADE_OFFERED',
+          offerId: world.upgradeState.activeOffer.id,
+          choices: world.upgradeState.activeOffer.choices,
+          pendingUpgradeCount: world.upgradeState.pendingUpgradeCount,
+        })
+        publishUi()
+      }
     },
     render: (interpolationAlpha) => {
       if (!world) {
@@ -157,6 +191,40 @@ export async function createGameHost({
   gameActor.send({ type: 'LOAD_SUCCEEDED' })
   gameLoop.start()
 
+  function publishUpgradeCommandResult(
+    result:
+      | {
+          readonly ok: true
+          readonly choiceId: string
+          readonly nextOffer: Readonly<UpgradeOffer> | null
+        }
+      | { readonly ok: false; readonly error: string },
+  ): void {
+    if (!result.ok) {
+      gameActor.send({
+        type: 'UPGRADE_COMMAND_REJECTED',
+        error: result.error,
+      })
+      publishUi()
+      return
+    }
+
+    inputAdapter.clearMovement()
+    gameActor.send({
+      type: 'UPGRADE_COMMITTED',
+      choiceId: result.choiceId,
+    })
+    if (result.nextOffer && world) {
+      gameActor.send({
+        type: 'UPGRADE_OFFERED',
+        offerId: result.nextOffer.id,
+        choices: result.nextOffer.choices,
+        pendingUpgradeCount: world.upgradeState.pendingUpgradeCount,
+      })
+    }
+    publishUi()
+  }
+
   return Object.freeze({
     startRun({ seed, initialWeaponDefinitionId }: StartRunOptions) {
       if (isDisposed) {
@@ -174,6 +242,10 @@ export async function createGameHost({
         runWeaponUnlocks,
         initialWeaponDefinitionId,
       )
+      requireEligibleFirstOfferWeapon(
+        runWeaponUnlocks,
+        initialWeaponDefinition.id,
+      )
 
       if (gameActor.getSnapshot().value !== GAME_PHASE.READY) {
         return
@@ -186,8 +258,33 @@ export async function createGameHost({
         viewport.height,
         gameContent,
         initialWeaponDefinition.id,
+        runWeaponUnlocks.definitionIds,
       )
       gameActor.send({ type: 'START_RUN', seed })
+    },
+
+    acquireWeapon(options: AcquireWeaponCommand) {
+      if (
+        isDisposed ||
+        !world ||
+        gameActor.getSnapshot().value !== GAME_PHASE.PAUSED_UPGRADE
+      ) {
+        return
+      }
+
+      publishUpgradeCommandResult(acquireWeaponFromOffer(world, options))
+    },
+
+    installModule(options: InstallModuleCommand) {
+      if (
+        isDisposed ||
+        !world ||
+        gameActor.getSnapshot().value !== GAME_PHASE.PAUSED_UPGRADE
+      ) {
+        return
+      }
+
+      publishUpgradeCommandResult(installModuleFromOffer(world, options))
     },
 
     subscribeUi(listener: UiSnapshotListener) {

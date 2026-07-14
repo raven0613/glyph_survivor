@@ -3,6 +3,8 @@ import { createGlyphAtlas } from './createGlyphAtlas.ts'
 import { createParticleLayerPool } from './particleLayerPool.ts'
 import { createPixiApp } from './createPixiApp.ts'
 import { createSceneLayers } from './createSceneLayers.ts'
+import { createFlameEmitterPool } from './flameEmitterPool.ts'
+import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
 
 export interface RenderAdapter {
   getViewportSize(): { readonly width: number; readonly height: number }
@@ -25,6 +27,10 @@ export async function createRenderAdapter(
     scene.projectileLayer,
     atlas.printableFrames,
   )
+  const orbitViews = createParticleLayerPool(
+    scene.orbitLayer,
+    atlas.printableFrames,
+  )
   const effectViews = createParticleLayerPool(
     scene.effectLayer,
     atlas.printableFrames,
@@ -32,6 +38,11 @@ export async function createRenderAdapter(
   const dropViews = createParticleLayerPool(
     scene.dropLayer,
     [atlas.frames.experience],
+  )
+  const flameViews = createFlameEmitterPool(
+    scene.flameLayer,
+    atlas.printableFrames[getPrintableAsciiGlyphFrame('.')],
+    atlas.printableFrames[getPrintableAsciiGlyphFrame('*')],
   )
   let isDisposed = false
 
@@ -56,7 +67,9 @@ export async function createRenderAdapter(
       enemyViews.sync(snapshot.enemies)
       effectViews.sync(snapshot.effects)
       projectileViews.sync(snapshot.projectiles)
+      orbitViews.sync(snapshot.orbits)
       dropViews.sync(snapshot.drops)
+      flameViews.sync(snapshot.flameEmitters)
       application.render()
     },
 
@@ -69,7 +82,9 @@ export async function createRenderAdapter(
       enemyViews.clear()
       effectViews.clear()
       projectileViews.clear()
+      orbitViews.clear()
       dropViews.clear()
+      flameViews.clear()
       application.destroy(
         { removeView: false, releaseGlobalResources: true },
         { children: true, texture: false, textureSource: false },

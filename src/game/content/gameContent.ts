@@ -8,7 +8,15 @@ import {
 } from './enemies/ordinaryEnemyProgression.ts'
 import { prepareOrdinaryZombieDefinition } from './enemies/ordinaryZombie.ts'
 import { prepareBasicProjectileWeaponDefinition } from './weapons/basicProjectileWeapon.ts'
+import { prepareFlamethrowerWeaponDefinition } from './weapons/flamethrowerWeapon.ts'
+import { prepareOrbitEnergyBallWeaponDefinition } from './weapons/orbitEnergyBallWeapon.ts'
 import type { WeaponDefinition } from './weapons/weaponDefinition.ts'
+import {
+  PROTOTYPE_LEVEL_PROGRESSION,
+  type LevelProgressionDefinition,
+} from './upgrades/levelProgression.ts'
+import { preparePrototypeWeaponModules } from './upgrades/prototypeWeaponModules.ts'
+import type { WeaponModuleDefinition } from './upgrades/moduleDefinition.ts'
 
 const FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS = 3
 
@@ -19,6 +27,11 @@ export interface PreparedGameContent {
   readonly creatureDefinitions: Readonly<Record<string, CreatureDefinition>>
   readonly weaponDefinitions: readonly WeaponDefinition[]
   readonly weaponDefinitionsById: Readonly<Record<string, WeaponDefinition>>
+  readonly weaponModuleDefinitions: readonly WeaponModuleDefinition[]
+  readonly weaponModuleDefinitionsById: Readonly<
+    Record<string, WeaponModuleDefinition>
+  >
+  readonly levelProgression: Readonly<LevelProgressionDefinition>
   readonly maximumEquippedWeapons: number
   readonly maximumEnemyBroadPhaseRadius: number
 }
@@ -41,6 +54,17 @@ export function getWeaponDefinition(
   const definition = content.weaponDefinitionsById[definitionId]
   if (!definition) {
     throw new Error(`Unknown weapon definition ${definitionId}.`)
+  }
+  return definition
+}
+
+export function getWeaponModuleDefinition(
+  content: PreparedGameContent,
+  definitionId: string,
+): WeaponModuleDefinition {
+  const definition = content.weaponModuleDefinitionsById[definitionId]
+  if (!definition) {
+    throw new Error(`Unknown weapon module definition ${definitionId}.`)
   }
   return definition
 }
@@ -76,7 +100,17 @@ export function prepareGameContent(): PreparedGameContent {
   }
   const weaponDefinitions = Object.freeze([
     prepareBasicProjectileWeaponDefinition(),
+    prepareFlamethrowerWeaponDefinition(),
+    prepareOrbitEnergyBallWeaponDefinition(),
   ])
+  const weaponModuleDefinitions = preparePrototypeWeaponModules()
+  const weaponModuleDefinitionsById: Record<string, WeaponModuleDefinition> = {}
+  for (const definition of weaponModuleDefinitions) {
+    if (weaponModuleDefinitionsById[definition.id]) {
+      throw new Error(`Duplicate weapon module definition ${definition.id}.`)
+    }
+    weaponModuleDefinitionsById[definition.id] = definition
+  }
   const weaponDefinitionsById: Record<string, WeaponDefinition> = {}
   for (const definition of weaponDefinitions) {
     if (weaponDefinitionsById[definition.id]) {
@@ -92,6 +126,9 @@ export function prepareGameContent(): PreparedGameContent {
     creatureDefinitions: Object.freeze(creatureDefinitions),
     weaponDefinitions,
     weaponDefinitionsById: Object.freeze(weaponDefinitionsById),
+    weaponModuleDefinitions,
+    weaponModuleDefinitionsById: Object.freeze(weaponModuleDefinitionsById),
+    levelProgression: PROTOTYPE_LEVEL_PROGRESSION,
     maximumEquippedWeapons: FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS,
     maximumEnemyBroadPhaseRadius: Math.max(
       slimeBossDefinition.broadPhaseRadius,

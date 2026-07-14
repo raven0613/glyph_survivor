@@ -32,3 +32,17 @@ export function calculateFixedStepFrame(
     droppedTimeMs: canKeepAccumulator ? 0 : remainingAfterStepsMs,
   }
 }
+
+/** Runs planned catch-up steps but rechecks the authoritative phase each time. */
+export function runFixedStepsWhileActive(
+  stepCount: number,
+  shouldStep: () => boolean,
+  step: () => void,
+): number {
+  let completed = 0
+  while (completed < stepCount && shouldStep()) {
+    step()
+    completed += 1
+  }
+  return completed
+}

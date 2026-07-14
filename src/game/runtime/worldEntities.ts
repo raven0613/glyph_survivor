@@ -37,8 +37,47 @@ export interface PlayerState {
   aimX: number
   aimY: number
   lastProcessedPointerRevision: number
-  xp: number
+  xpIntoLevel: number
   level: number
+}
+
+export interface FlameEmitterState {
+  id: number
+  sourceWeaponInstanceId: number
+  x: number
+  y: number
+  directionX: number
+  directionY: number
+  range: number
+  fullAngleRadians: number
+  durationMs: number
+  remainingMs: number
+  particleCount: number
+  innerTint: number
+  outerTint: number
+  seed: number
+}
+
+export interface OrbitAttackState {
+  id: number
+  sourceWeaponInstanceId: number
+  sourceEquipmentSlot: number
+  ballIndex: number
+  phaseRadians: number
+  x: number
+  y: number
+  previousX: number
+  previousY: number
+  damageRadius: number
+  damage: number
+  rehitCooldownMs: number
+  rootKnockbackDistance: number
+  impactStrengthMultiplier: number
+  glyphFrame: number
+  visualScale: number
+  visualAlpha: number
+  visualTint: number
+  readonly nextAllowedHitTimeByOwner: Map<number, number>
 }
 
 export interface EnemyState {
@@ -79,6 +118,7 @@ export interface ProjectileState {
   velocityY: number
   radius: number
   damage: number
+  impactStrengthMultiplier: number
   damageShapeKind: DamageShapeId
   damageTargetMode: DamageTargetMode
   destructionProfileId: DestructionProfileId

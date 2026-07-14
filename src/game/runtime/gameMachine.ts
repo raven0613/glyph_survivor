@@ -23,6 +23,8 @@ const LOAD_FAILURE_FALLBACK_ERROR = 'Game initialization failed.'
 /** A UI-sized reference to an authoritative runtime upgrade definition. */
 export interface UpgradeChoice {
   readonly id: string
+  readonly kind: 'WEAPON' | 'MODULE'
+  readonly definitionId: string
   readonly title?: string
   readonly description?: string
 }
@@ -31,18 +33,25 @@ export interface GameMachineContext {
   readonly seed: string | number | null
   readonly upgradeChoices: readonly Readonly<UpgradeChoice>[]
   readonly pendingUpgradeCount: number
+  readonly activeUpgradeOfferId: string | null
   readonly recoverableError: string | null
 }
 
 type UpgradeOfferedEvent = {
   readonly type: 'UPGRADE_OFFERED'
+  readonly offerId: string
   readonly choices: readonly UpgradeChoice[]
   readonly pendingUpgradeCount?: number
 }
 
-type SelectUpgradeEvent = {
-  readonly type: 'SELECT_UPGRADE'
+type UpgradeCommittedEvent = {
+  readonly type: 'UPGRADE_COMMITTED'
   readonly choiceId: string
+}
+
+type UpgradeCommandRejectedEvent = {
+  readonly type: 'UPGRADE_COMMAND_REJECTED'
+  readonly error: string
 }
 
 export type GameMachineEvent =
@@ -53,7 +62,8 @@ export type GameMachineEvent =
   | { readonly type: 'PAUSE_REQUESTED' }
   | { readonly type: 'RESUME_REQUESTED' }
   | UpgradeOfferedEvent
-  | SelectUpgradeEvent
+  | UpgradeCommittedEvent
+  | UpgradeCommandRejectedEvent
   | { readonly type: 'PLAYER_DIED' }
   | { readonly type: 'RESTART'; readonly seed?: string | number }
   | { readonly type: 'DISPOSE' }
@@ -63,6 +73,7 @@ function createInitialContext(): GameMachineContext {
     seed: null,
     upgradeChoices: Object.freeze([]),
     pendingUpgradeCount: 0,
+    activeUpgradeOfferId: null,
     recoverableError: null,
   }
 }
@@ -85,7 +96,12 @@ function hasValidChoiceId(choice: unknown): choice is UpgradeChoice {
     typeof choice === 'object' &&
     'id' in choice &&
     typeof choice.id === 'string' &&
-    choice.id.trim().length > 0
+    choice.id.trim().length > 0 &&
+    'definitionId' in choice &&
+    typeof choice.definitionId === 'string' &&
+    choice.definitionId.trim().length > 0 &&
+    'kind' in choice &&
+    (choice.kind === 'WEAPON' || choice.kind === 'MODULE')
   )
 }
 
@@ -119,6 +135,8 @@ function isValidUpgradeOffer(
 ): event is UpgradeOfferedEvent {
   return (
     event.type === 'UPGRADE_OFFERED' &&
+    typeof event.offerId === 'string' &&
+    event.offerId.trim().length > 0 &&
     hasValidUpgradeChoices(event.choices) &&
     hasValidPendingUpgradeCount(event.pendingUpgradeCount)
   )
@@ -127,9 +145,9 @@ function isValidUpgradeOffer(
 function isOfferedChoice(
   context: GameMachineContext,
   event: GameMachineEvent,
-): event is SelectUpgradeEvent {
+): event is UpgradeCommittedEvent {
   return (
-    event.type === 'SELECT_UPGRADE' &&
+    event.type === 'UPGRADE_COMMITTED' &&
     typeof event.choiceId === 'string' &&
     context.upgradeChoices.some((choice) => choice.id === event.choiceId)
   )
@@ -149,14 +167,18 @@ const gameMachineSetup = setup({
     events: GameMachineEvent
   },
   actions: {
-    // GameHost replaces this named action with the authoritative upgrade port.
-    applySelectedUpgrade: () => {},
     assignInvalidUpgradeOfferError: assign({
       recoverableError: () => INVALID_UPGRADE_OFFER_ERROR,
     }),
     assignInvalidUpgradeSelectionError: assign({
       recoverableError: () => INVALID_UPGRADE_SELECTION_ERROR,
     }),
+    assignUpgradeCommandError: assign(({ event }) => ({
+      recoverableError:
+        event.type === 'UPGRADE_COMMAND_REJECTED' && event.error.trim()
+          ? event.error
+          : INVALID_UPGRADE_SELECTION_ERROR,
+    })),
     assignLoadFailure: assign(({ event }) => {
       if (event.type !== 'LOAD_FAILED') {
         return {}
@@ -172,12 +194,14 @@ const gameMachineSetup = setup({
       return {
         upgradeChoices: copyUpgradeChoices(event.choices),
         pendingUpgradeCount: event.pendingUpgradeCount ?? 1,
+        activeUpgradeOfferId: event.offerId,
         recoverableError: null,
       }
     }),
     clearCompletedUpgrade: assign({
       upgradeChoices: () => Object.freeze([]),
       pendingUpgradeCount: () => 0,
+      activeUpgradeOfferId: () => null,
       recoverableError: () => null,
     }),
     clearRecoverableError: assign({
@@ -186,6 +210,7 @@ const gameMachineSetup = setup({
     consumeQueuedUpgrade: assign(({ context }) => ({
       upgradeChoices: Object.freeze([]),
       pendingUpgradeCount: context.pendingUpgradeCount - 1,
+      activeUpgradeOfferId: null,
       recoverableError: null,
     })),
     resetRunContext: assign(({ event }) => {
@@ -198,6 +223,7 @@ const gameMachineSetup = setup({
         seed,
         upgradeChoices: Object.freeze([]),
         pendingUpgradeCount: 0,
+        activeUpgradeOfferId: null,
         recoverableError: null,
       }
     }),
@@ -277,20 +303,23 @@ export const gameMachine = gameMachineSetup.createMachine({
     },
     [GAME_PHASE.PAUSED_UPGRADE]: {
       on: {
-        SELECT_UPGRADE: [
+        UPGRADE_COMMITTED: [
           {
             guard: 'hasQueuedUpgradeAfterSelection',
-            actions: ['applySelectedUpgrade', 'consumeQueuedUpgrade'],
+            actions: 'consumeQueuedUpgrade',
           },
           {
             guard: 'isOfferedUpgradeChoice',
             target: GAME_PHASE.RUNNING,
-            actions: ['applySelectedUpgrade', 'clearCompletedUpgrade'],
+            actions: 'clearCompletedUpgrade',
           },
           {
             actions: 'assignInvalidUpgradeSelectionError',
           },
         ],
+        UPGRADE_COMMAND_REJECTED: {
+          actions: 'assignUpgradeCommandError',
+        },
         UPGRADE_OFFERED: [
           {
             guard: 'canAcceptNextUpgradeOffer',

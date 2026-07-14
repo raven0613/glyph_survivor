@@ -135,5 +135,6 @@ export function prepareSlimeBossDefinition(): CreatureDefinition {
     minimumIndependentCellRatio: 0.3,
     contactDamage: 1,
     collapseDurationMs: 500,
+    experienceReward: 1,
   })
 }

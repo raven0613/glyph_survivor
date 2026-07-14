@@ -65,24 +65,11 @@ function findFirstOpenEquipmentSlot(loadout: WeaponLoadoutState): number {
   return -1
 }
 
-/** Adds one validated definition below the loadout cap in stable slot order. */
-export function equipWeapon(
+function createWeaponInstance(
   loadout: WeaponLoadoutState,
   definition: WeaponDefinition,
+  equipmentSlot: number,
 ): WeaponInstance {
-  if (
-    loadout.equipped.some(
-      (weapon) => weapon.definitionId === definition.id,
-    )
-  ) {
-    throw new Error(`Weapon definition ${definition.id} is already equipped.`)
-  }
-
-  const equipmentSlot = findFirstOpenEquipmentSlot(loadout)
-  if (equipmentSlot < 0) {
-    throw new Error('Weapon loadout is full.')
-  }
-
   const weapon: WeaponInstance = {
     id: loadout.nextWeaponInstanceId,
     definitionId: definition.id,
@@ -97,7 +84,59 @@ export function equipWeapon(
     resolvedProfile: resolveWeaponProfile(definition),
   }
   loadout.nextWeaponInstanceId += 1
+  return weapon
+}
+
+function requireDefinitionIsNotEquipped(
+  loadout: WeaponLoadoutState,
+  definition: WeaponDefinition,
+): void {
+  if (
+    loadout.equipped.some(
+      (weapon) => weapon.definitionId === definition.id,
+    )
+  ) {
+    throw new Error(`Weapon definition ${definition.id} is already equipped.`)
+  }
+}
+
+/** Adds one validated definition below the loadout cap in stable slot order. */
+export function equipWeapon(
+  loadout: WeaponLoadoutState,
+  definition: WeaponDefinition,
+): WeaponInstance {
+  requireDefinitionIsNotEquipped(loadout, definition)
+
+  const equipmentSlot = findFirstOpenEquipmentSlot(loadout)
+  if (equipmentSlot < 0) {
+    throw new Error('Weapon loadout is full.')
+  }
+
+  const weapon = createWeaponInstance(loadout, definition, equipmentSlot)
   loadout.equipped.push(weapon)
+  loadout.equipped.sort(
+    (first, second) => first.equipmentSlot - second.equipmentSlot,
+  )
+  return weapon
+}
+
+/** Replaces one equipped instance while retaining its stable equipment slot. */
+export function replaceWeapon(
+  loadout: WeaponLoadoutState,
+  definition: WeaponDefinition,
+  replacedWeaponInstanceId: number,
+): WeaponInstance {
+  requireDefinitionIsNotEquipped(loadout, definition)
+  const replacedIndex = loadout.equipped.findIndex(
+    ({ id }) => id === replacedWeaponInstanceId,
+  )
+  if (replacedIndex < 0) {
+    throw new Error('The replacement weapon is no longer equipped.')
+  }
+
+  const equipmentSlot = loadout.equipped[replacedIndex].equipmentSlot
+  const weapon = createWeaponInstance(loadout, definition, equipmentSlot)
+  loadout.equipped[replacedIndex] = weapon
   loadout.equipped.sort(
     (first, second) => first.equipmentSlot - second.equipmentSlot,
   )

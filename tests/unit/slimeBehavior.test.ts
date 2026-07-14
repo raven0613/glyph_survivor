@@ -213,11 +213,17 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
 
   world.glyphDamageQueue.enqueue({
     ownerId: slime.id,
+    shapeKind: 'CIRCLE',
     shapeX: getGlyphWorldX(slime.x, eye),
     shapeY: getGlyphWorldY(slime.y, eye),
     shapeRadius: 0,
+    shapeDirectionX: 0,
+    shapeDirectionY: 0,
+    shapeRange: 0,
+    shapeHalfAngleRadians: 0,
     targetMode: DAMAGE_TARGET_MODE.SINGLE,
     amount: 1,
+    impactStrengthMultiplier: 1,
     impactDirectionX: 1,
     impactDirectionY: 0,
   })

@@ -92,3 +92,25 @@ test('does not stack an unfilled area quota onto the last living cell', () => {
 
   assert.deepEqual(selection.damageTargets.map((cell) => cell.id), [4])
 })
+
+test('cone damage includes cell radii at its angular boundary and rejects cells behind it', () => {
+  const inside = { ...createCell(1, 0, GLYPH_CELL_STATE.HEALTHY), worldX: 80, worldY: 80 }
+  const boundary = { ...createCell(2, 0, GLYPH_CELL_STATE.HEALTHY), worldX: 80, worldY: 88 }
+  const behind = { ...createCell(3, 0, GLYPH_CELL_STATE.HEALTHY), worldX: -20, worldY: 0 }
+
+  const selection = selectGlyphDamage(
+    [inside, boundary, behind],
+    {
+      kind: 'CONE',
+      x: 0,
+      y: 0,
+      directionX: 1,
+      directionY: 0,
+      range: 160,
+      halfAngleRadians: Math.PI / 4,
+    },
+    DAMAGE_TARGET_MODE.AREA,
+  )
+
+  assert.deepEqual(selection.impactCells.map((cell) => cell.id), [1, 2])
+})

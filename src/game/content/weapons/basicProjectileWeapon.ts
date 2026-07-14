@@ -14,7 +14,7 @@ import {
 export const BASIC_PROJECTILE_WEAPON_ID = WEAPON_DEFINITION_ID.ASSISTED_O
 
 // Temporary content-local default until the first weapon roster is tuned.
-const PROTOTYPE_MODULE_SLOT_COUNT = 3
+const PROTOTYPE_MODULE_SLOT_COUNT = 4
 
 export function prepareBasicProjectileWeaponDefinition(): WeaponDefinition {
   return defineWeapon({

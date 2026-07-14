@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { InitialWeaponScreen } from './app/screens/InitialWeaponScreen.tsx'
+import { UpgradeScreen } from './app/screens/UpgradeScreen.tsx'
+import type { UpgradeCommitCommand } from './app/screens/upgradeDecision.ts'
 import { INITIAL_UI_SNAPSHOT } from './game/bridge/uiSnapshot.ts'
 import {
   createGameHost,
@@ -11,6 +13,8 @@ import './App.scss'
 // Persistence will provide this snapshot when permanent unlocks are added.
 const PROTOTYPE_UNLOCKED_WEAPON_DEFINITION_IDS = Object.freeze([
   WEAPON_DEFINITION_ID.ASSISTED_O,
+  WEAPON_DEFINITION_ID.FLAMETHROWER,
+  WEAPON_DEFINITION_ID.ORBIT_ENERGY_BALL,
 ])
 
 function App() {
@@ -21,6 +25,7 @@ function App() {
     null,
   )
   const isReady = uiSnapshot.phase === 'READY'
+  const isUpgradePaused = uiSnapshot.phase === 'PAUSED_UPGRADE'
   const hasStarted = !['BOOT', 'LOADING', 'READY'].includes(uiSnapshot.phase)
 
   useEffect(() => {
@@ -82,6 +87,24 @@ function App() {
     })
   }
 
+  function handleUpgradeCommit(command: UpgradeCommitCommand): void {
+    if (command.kind === 'WEAPON') {
+      gameHostRef.current?.acquireWeapon({
+        offerId: command.offerId,
+        choiceId: command.choiceId,
+        replacedWeaponInstanceId: command.replacedWeaponInstanceId,
+      })
+      return
+    }
+
+    gameHostRef.current?.installModule({
+      offerId: command.offerId,
+      choiceId: command.choiceId,
+      weaponInstanceId: command.weaponInstanceId,
+      replacedSlotIndex: command.replacedSlotIndex,
+    })
+  }
+
   return (
     <div className={`game-page${hasStarted ? ' game-page--started' : ''}`}>
       <header className="site-header">
@@ -128,10 +151,23 @@ function App() {
         {hasStarted && (
           <aside className="game-hud" aria-label="Run status">
             <span>LV.{uiSnapshot.level}</span>
-            <span>XP {uiSnapshot.xp}</span>
+            <span>XP {uiSnapshot.xp}/{uiSnapshot.xpToNext}</span>
             <span>ENEMIES {uiSnapshot.enemyCount}</span>
             <span>{Math.floor(uiSnapshot.runTimeMs / 1_000)}s</span>
           </aside>
+        )}
+
+        {isUpgradePaused && uiSnapshot.activeUpgradeOfferId && (
+          <UpgradeScreen
+            key={uiSnapshot.activeUpgradeOfferId}
+            offerId={uiSnapshot.activeUpgradeOfferId}
+            choices={uiSnapshot.upgradeChoices}
+            equippedWeapons={uiSnapshot.equippedWeapons}
+            maximumEquippedWeapons={uiSnapshot.maximumEquippedWeapons}
+            pendingUpgradeCount={uiSnapshot.pendingUpgradeCount}
+            recoverableError={uiSnapshot.recoverableError}
+            onCommit={handleUpgradeCommit}
+          />
         )}
       </main>
 

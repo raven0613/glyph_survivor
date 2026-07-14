@@ -4,6 +4,7 @@ import {
   type WorldState,
 } from '../runtime/worldState.ts'
 import { circlesIntersect } from './combatGeometry.ts'
+import { getCreatureDefinition } from '../content/gameContent.ts'
 
 export function runDropSystem(world: WorldState): void {
   for (const enemy of world.enemies) {
@@ -12,7 +13,12 @@ export function runDropSystem(world: WorldState): void {
       enemy.rewardEligible &&
       !enemy.rewardCommitted
     ) {
-      spawnExperienceDrop(world, enemy.x, enemy.y)
+      spawnExperienceDrop(
+        world,
+        enemy.x,
+        enemy.y,
+        getCreatureDefinition(world.content, enemy.definitionId).experienceReward,
+      )
       enemy.rewardCommitted = true
     }
   }
@@ -30,7 +36,7 @@ export function runDropSystem(world: WorldState): void {
       )
     ) {
       drop.isAlive = false
-      world.player.xp += drop.value
+      world.collectedXpThisStep += drop.value
     }
   }
 }

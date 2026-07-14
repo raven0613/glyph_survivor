@@ -55,5 +55,6 @@ export function prepareOrdinaryBoneDefinition(): CreatureDefinition {
     minimumIndependentCellRatio: 0,
     contactDamage: 1,
     collapseDurationMs: 300,
+    experienceReward: 1,
   })
 }

@@ -26,6 +26,21 @@ export interface RenderGlyph {
   tint: number
 }
 
+export interface RenderFlameEmitter {
+  id: number
+  x: number
+  y: number
+  directionX: number
+  directionY: number
+  range: number
+  fullAngleRadians: number
+  progress: number
+  particleCount: number
+  innerTint: number
+  outerTint: number
+  seed: number
+}
+
 export interface RenderSnapshot {
   cameraX: number
   cameraY: number
@@ -36,7 +51,9 @@ export interface RenderSnapshot {
   readonly enemies: RenderGlyph[]
   readonly effects: RenderGlyph[]
   readonly projectiles: RenderGlyph[]
+  readonly orbits: RenderGlyph[]
   readonly drops: RenderGlyph[]
+  readonly flameEmitters: RenderFlameEmitter[]
 }
 
 function interpolate(previous: number, current: number, alpha: number): number {
@@ -100,7 +117,9 @@ export function createRenderSnapshot(): RenderSnapshot {
     enemies: [],
     effects: [],
     projectiles: [],
+    orbits: [],
     drops: [],
+    flameEmitters: [],
   }
 }
 
@@ -294,6 +313,28 @@ export function writeRenderSnapshot(
   }
   snapshot.projectiles.length = projectileCount
 
+  let orbitCount = 0
+  for (const orbit of world.orbitAttacks) {
+    const x = interpolate(orbit.previousX, orbit.x, interpolationAlpha)
+    const y = interpolate(orbit.previousY, orbit.y, interpolationAlpha)
+    if (!isVisible(x, y, camera)) {
+      continue
+    }
+    writeGlyph(
+      snapshot.orbits,
+      orbitCount,
+      orbit.id,
+      orbit.glyphFrame,
+      x,
+      y,
+      orbit.visualScale,
+      orbit.visualAlpha,
+      orbit.visualTint,
+    )
+    orbitCount += 1
+  }
+  snapshot.orbits.length = orbitCount
+
   let dropCount = 0
   for (const drop of world.drops) {
     if (drop.isAlive && isVisible(drop.x, drop.y, camera)) {
@@ -312,4 +353,27 @@ export function writeRenderSnapshot(
     }
   }
   snapshot.drops.length = dropCount
+
+  let flameEmitterCount = 0
+  for (const emitter of world.flameEmitters) {
+    if (!isVisible(emitter.x, emitter.y, camera)) {
+      continue
+    }
+    const output = snapshot.flameEmitters[flameEmitterCount] ?? ({} as RenderFlameEmitter)
+    output.id = emitter.id
+    output.x = emitter.x
+    output.y = emitter.y
+    output.directionX = emitter.directionX
+    output.directionY = emitter.directionY
+    output.range = emitter.range
+    output.fullAngleRadians = emitter.fullAngleRadians
+    output.progress = 1 - emitter.remainingMs / emitter.durationMs
+    output.particleCount = emitter.particleCount
+    output.innerTint = emitter.innerTint
+    output.outerTint = emitter.outerTint
+    output.seed = emitter.seed
+    snapshot.flameEmitters[flameEmitterCount] = output
+    flameEmitterCount += 1
+  }
+  snapshot.flameEmitters.length = flameEmitterCount
 }

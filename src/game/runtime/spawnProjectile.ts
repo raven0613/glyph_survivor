@@ -1,4 +1,5 @@
 import type { ResolvedWeaponProfile } from '../systems/resolveWeaponProfile.ts'
+import { TARGET_STRATEGY } from '../content/weapons/weaponDefinition.ts'
 import type { ProjectileState } from './worldEntities.ts'
 import { getNextEntityId, type WorldState } from './worldState.ts'
 
@@ -17,6 +18,9 @@ export function spawnProjectile(
   world: WorldState,
   input: Readonly<SpawnProjectileInput>,
 ): ProjectileState {
+  if (input.profile.targetStrategyId !== TARGET_STRATEGY.AIM_ASSISTED) {
+    throw new TypeError('spawnProjectile requires a projectile weapon profile.')
+  }
   const projectile = world.projectilePool.pop()
 
   if (!projectile) {
@@ -38,6 +42,7 @@ export function spawnProjectile(
     velocityY: input.directionY * attackPattern.projectileSpeed,
     radius: input.profile.damageShape.radius,
     damage: input.profile.damageAmount,
+    impactStrengthMultiplier: input.profile.impactStrengthMultiplier,
     damageShapeKind: input.profile.damageShape.kind,
     damageTargetMode: input.profile.damageShape.targetMode,
     destructionProfileId: input.profile.destructionProfileId,

@@ -1,4 +1,7 @@
-import { calculateFixedStepFrame } from './fixedStep.ts'
+import {
+  calculateFixedStepFrame,
+  runFixedStepsWhileActive,
+} from './fixedStep.ts'
 import { GAME_CONFIG } from './gameConfig.ts'
 
 export interface GameLoop {
@@ -38,8 +41,13 @@ export function createGameLoop(options: GameLoopOptions): GameLoop {
       })
       accumulatorMs = fixedFrame.accumulatorMs
 
-      for (let index = 0; index < fixedFrame.stepCount; index += 1) {
-        options.step(GAME_CONFIG.fixedStepMs)
+      const completedSteps = runFixedStepsWhileActive(
+        fixedFrame.stepCount,
+        options.shouldStep,
+        () => options.step(GAME_CONFIG.fixedStepMs),
+      )
+      if (completedSteps < fixedFrame.stepCount) {
+        accumulatorMs = 0
       }
 
       if (fixedFrame.droppedTimeMs > 0) {

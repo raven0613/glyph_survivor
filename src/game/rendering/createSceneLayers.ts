@@ -12,7 +12,9 @@ export interface SceneLayers {
   readonly worldRoot: Container
   readonly enemyLayer: ParticleContainer<Particle>
   readonly effectLayer: ParticleContainer<Particle>
+  readonly flameLayer: ParticleContainer<Particle>
   readonly projectileLayer: ParticleContainer<Particle>
+  readonly orbitLayer: ParticleContainer<Particle>
   readonly dropLayer: ParticleContainer<Particle>
   readonly player: Sprite
 }
@@ -88,7 +90,29 @@ export function createSceneLayers(
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
   })
+  const orbitLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    dynamicProperties: {
+      position: true,
+      rotation: false,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
   const effectLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    dynamicProperties: {
+      position: true,
+      rotation: false,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
+  const flameLayer = new ParticleContainer<Particle>({
     texture: atlas.printableFrames[0],
     boundsArea: createWorldBounds(),
     dynamicProperties: {
@@ -113,7 +137,9 @@ export function createSceneLayers(
     dropLayer,
     enemyLayer,
     effectLayer,
+    flameLayer,
     projectileLayer,
+    orbitLayer,
     player,
   )
   stage.addChild(worldRoot)
@@ -122,7 +148,9 @@ export function createSceneLayers(
     worldRoot,
     enemyLayer,
     effectLayer,
+    flameLayer,
     projectileLayer,
+    orbitLayer,
     dropLayer,
     player,
   })

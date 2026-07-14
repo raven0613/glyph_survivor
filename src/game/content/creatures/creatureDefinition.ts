@@ -56,6 +56,7 @@ export interface CreatureDefinitionInput {
   readonly minimumIndependentCellRatio: number
   readonly contactDamage: number
   readonly collapseDurationMs: number
+  readonly experienceReward: number
 }
 
 export type CreatureDefinition = Readonly<CreatureDefinitionInput> & {
@@ -117,6 +118,9 @@ export function defineCreature(
     input.collapseDurationMs <= 0
   ) {
     throw new RangeError('collapseDurationMs must be finite and greater than zero.')
+  }
+  if (!Number.isFinite(input.experienceReward) || input.experienceReward < 0) {
+    throw new RangeError('experienceReward must be finite and non-negative.')
   }
   if (
     !Number.isFinite(input.minimumIndependentCellRatio) ||

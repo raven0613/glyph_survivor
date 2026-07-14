@@ -76,3 +76,19 @@ export function getUnlockedInitialWeaponDefinition(
 
   return getWeaponDefinition(content, validDefinitionId)
 }
+
+/** Enforces the first-offer guarantee before fixed simulation can start. */
+export function requireEligibleFirstOfferWeapon(
+  unlocks: Readonly<RunWeaponUnlocks>,
+  initialWeaponDefinitionId: string,
+): void {
+  if (
+    !unlocks.definitionIds.some(
+      (definitionId) => definitionId !== initialWeaponDefinitionId,
+    )
+  ) {
+    throw new RangeError(
+      'A run requires an unlocked, unequipped weapon for its first upgrade offer.',
+    )
+  }
+}
