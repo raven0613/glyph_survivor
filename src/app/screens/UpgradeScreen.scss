@@ -12,7 +12,7 @@ $panel: rgb(7 10 13 / 92%);
   grid-template-rows: auto auto minmax(260px, 1fr) auto auto auto;
   gap: clamp(10px, 1.6vh, 18px);
   padding: clamp(18px, 3.5vw, 46px);
-  overflow: auto;
+  overflow: hidden;
   color: #d8e1e1;
   background:
     linear-gradient(180deg, rgb(4 7 10 / 72%), rgb(3 4 6 / 94%)),
