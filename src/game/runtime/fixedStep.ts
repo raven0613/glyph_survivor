@@ -46,3 +46,17 @@ export function runFixedStepsWhileActive(
   }
   return completed
 }
+
+/** Prevents one catch-up batch from crossing an authoritative phase boundary. */
+export function runFixedStepsWhileModeStable<Mode>(
+  stepCount: number,
+  initialMode: Mode,
+  getMode: () => Mode | null,
+  step: (mode: Mode) => void,
+): number {
+  return runFixedStepsWhileActive(
+    stepCount,
+    () => getMode() === initialMode,
+    () => step(initialMode),
+  )
+}

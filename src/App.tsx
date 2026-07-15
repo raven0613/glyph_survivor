@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { InitialWeaponScreen } from './app/screens/InitialWeaponScreen.tsx'
 import { GameOverScreen } from './app/screens/GameOverScreen.tsx'
 import { UpgradeScreen } from './app/screens/UpgradeScreen.tsx'
+import { DeathReviewPrompt } from './app/screens/DeathReviewPrompt.tsx'
 import type { UpgradeCommitCommand } from './app/screens/upgradeDecision.ts'
 import { INITIAL_UI_SNAPSHOT } from './game/bridge/uiSnapshot.ts'
 import {
@@ -27,6 +28,7 @@ function App() {
   )
   const isReady = uiSnapshot.phase === 'READY'
   const isUpgradePaused = uiSnapshot.phase === 'PAUSED_UPGRADE'
+  const isDeathReview = uiSnapshot.phase === 'DEATH_REVIEW'
   const isGameOver = uiSnapshot.phase === 'GAME_OVER'
   const hasStarted = !['BOOT', 'LOADING', 'READY'].includes(uiSnapshot.phase)
 
@@ -111,6 +113,10 @@ function App() {
     gameHostRef.current?.returnToMainMenu()
   }
 
+  function handleEnterRunResult(): void {
+    gameHostRef.current?.enterRunResult()
+  }
+
   return (
     <div className={`game-page${hasStarted ? ' game-page--started' : ''}`}>
       <header className="site-header">
@@ -179,6 +185,10 @@ function App() {
             recoverableError={uiSnapshot.recoverableError}
             onCommit={handleUpgradeCommit}
           />
+        )}
+
+        {isDeathReview && uiSnapshot.canEnterRunResult && (
+          <DeathReviewPrompt onEnterRunResult={handleEnterRunResult} />
         )}
 
         {isGameOver && uiSnapshot.runResult && (

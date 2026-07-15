@@ -9,7 +9,6 @@ import {
   createRenderSnapshot,
   writeRenderSnapshot,
 } from '../bridge/renderSnapshot.ts'
-import { clearRenderSnapshot } from '../bridge/renderSnapshotLifecycle.ts'
 import {
   prepareGameContent,
   type PreparedGameContent,
@@ -23,6 +22,7 @@ import {
 } from '../runtime/runSimulationStep.ts'
 import type { UpgradeOffer } from '../runtime/upgradeState.ts'
 import { createWorldState, type WorldState } from '../runtime/worldState.ts'
+import { runDeathReviewStep } from '../runtime/runDeathReviewStep.ts'
 import { getXpToNextLevel } from '../content/upgrades/levelProgression.ts'
 import {
   installModuleFromOffer,
@@ -40,6 +40,7 @@ import {
   type RunWeaponUnlocks,
 } from './runWeaponUnlocks.ts'
 import { createLoadoutUiSummaries } from './createLoadoutUiSummaries.ts'
+import { clearCompletedRun } from './clearCompletedRun.ts'
 
 export interface StartRunOptions {
   readonly seed: string | number
@@ -52,6 +53,7 @@ export interface GameHost {
   startRun(options: StartRunOptions): void
   acquireWeapon(options: AcquireWeaponCommand): void
   installModule(options: InstallModuleCommand): void
+  enterRunResult(): void
   returnToMainMenu(): void
   subscribeUi(listener: UiSnapshotListener): () => void
   getUiSnapshot(): Readonly<UiSnapshot>
@@ -167,10 +169,24 @@ export async function createGameHost({
     renderAdapter.getViewportSize(),
   )
   const gameLoop = createGameLoop({
-    shouldStep: () =>
-      world !== null && gameActor.getSnapshot().value === GAME_PHASE.RUNNING,
-    step: (fixedStepMs) => {
+    getStepMode: () => {
       if (!world) {
+        return null
+      }
+      const phase = gameActor.getSnapshot().value
+      return phase === GAME_PHASE.RUNNING || phase === GAME_PHASE.DEATH_REVIEW
+        ? phase
+        : null
+    },
+    step: (mode, fixedStepMs) => {
+      if (!world) {
+        return
+      }
+
+      if (mode === GAME_PHASE.DEATH_REVIEW) {
+        if (runDeathReviewStep(world, fixedStepMs)) {
+          gameActor.send({ type: 'DEATH_REVIEW_READY' })
+        }
         return
       }
 
@@ -323,6 +339,19 @@ export async function createGameHost({
       publishUpgradeCommandResult(installModuleFromOffer(world, options))
     },
 
+    enterRunResult() {
+      if (
+        isDisposed ||
+        !world ||
+        gameActor.getSnapshot().value !== GAME_PHASE.DEATH_REVIEW ||
+        !world.deathReview.canEnterRunResult
+      ) {
+        return
+      }
+
+      gameActor.send({ type: 'ENTER_RUN_RESULT' })
+    },
+
     returnToMainMenu() {
       if (
         isDisposed ||
@@ -332,9 +361,7 @@ export async function createGameHost({
         return
       }
 
-      inputAdapter.reset()
-      clearRenderSnapshot(renderSnapshot)
-      renderAdapter.clear()
+      clearCompletedRun(inputAdapter, renderSnapshot, renderAdapter)
       world = null
       lastUiPublishTimeMs = 0
       gameActor.send({ type: 'RETURN_TO_MAIN_MENU' })

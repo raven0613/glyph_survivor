@@ -18,6 +18,7 @@ import {
   writeRenderPlayerState,
   type RenderPlayerState,
 } from './playerRenderSnapshot.ts'
+import { getDeathReviewPresentationTimeMs } from '../runtime/playerDeathReview.ts'
 
 const COLLAPSE_SCATTER_DISTANCE = 42
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
@@ -229,6 +230,10 @@ export function writeRenderSnapshot(
   interpolationAlpha: number,
 ): void {
   const camera = writeRenderPlayerState(world, snapshot, interpolationAlpha)
+  const presentationTimeMs = getDeathReviewPresentationTimeMs(
+    world.runTimeMs,
+    world.deathReview,
+  )
 
   let enemyCount = 0
   let effectCount = 0
@@ -402,7 +407,7 @@ export function writeRenderSnapshot(
     if (drop.isAlive && isVisible(drop.x, drop.y, camera)) {
       const presentation = resolveExperienceDropPresentation(
         world.content.combatVisualTheme,
-        world.runTimeMs - drop.spawnedAtRunTimeMs,
+        presentationTimeMs - drop.spawnedAtRunTimeMs,
         drop.id,
       )
       writeGlyph(

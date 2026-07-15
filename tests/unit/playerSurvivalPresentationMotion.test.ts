@@ -22,6 +22,9 @@ function presentation(
       : null,
     eventElapsedMs,
     eventSeed: 17,
+    deathRevision: 0,
+    deathActive: false,
+    deathFallProgress: 0,
   }
 }
 
@@ -117,4 +120,28 @@ test('health damage produces deterministic local shake, flash, and dot fragments
   assert.equal(first.playerTint, theme.player.tint)
   assert.equal(first.playerOffsetX, 0)
   assert.equal(first.fragmentCount, 0)
+})
+
+test('layers a deterministic quarter-turn fall over lethal hit feedback', () => {
+  const frame = createPlayerSurvivalPresentationFrame(6)
+  const snapshot = {
+    ...presentation('HEALTH_DAMAGED', 30, 0),
+    deathRevision: 1,
+    deathActive: true,
+    deathFallProgress: 0.5,
+  }
+
+  writePlayerSurvivalPresentationFrame(snapshot, theme, frame)
+
+  assert.notEqual(frame.playerOffsetX, 0)
+  assert.ok(frame.fragmentCount > 0)
+  assert.ok(frame.playerRotation > 0)
+  assert.ok(frame.playerRotation < Math.PI / 2)
+
+  writePlayerSurvivalPresentationFrame(
+    { ...snapshot, eventElapsedMs: 500, deathFallProgress: 1 },
+    theme,
+    frame,
+  )
+  assert.equal(frame.playerRotation, Math.PI / 2)
 })

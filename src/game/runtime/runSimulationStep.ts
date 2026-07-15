@@ -25,6 +25,7 @@ import { runPlayerContactSystem } from '../systems/playerContactSystem.ts'
 import { runPlayerSurvivalSystem } from '../systems/playerSurvivalSystem.ts'
 import { runStatisticsSystem } from '../systems/runStatisticsSystem.ts'
 import { finalizeRunResult } from './runResult.ts'
+import { beginWorldDeathReview } from './runDeathReviewStep.ts'
 import type { WorldState } from './worldState.ts'
 
 export const SIMULATION_STEP_RESULT = Object.freeze({
@@ -63,6 +64,7 @@ export function runSimulationStep(
   runPlayerContactSystem(world)
   if (runPlayerSurvivalSystem(world)) {
     finalizeRunResult(world)
+    beginWorldDeathReview(world)
     runGlyphDiagnosticsSystem(world)
     return SIMULATION_STEP_RESULT.PLAYER_DIED
   }

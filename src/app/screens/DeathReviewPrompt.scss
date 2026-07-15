@@ -1,0 +1,66 @@
+.death-review-prompt {
+  position: absolute;
+  z-index: 2;
+  right: clamp(16px, 3vw, 34px);
+  bottom: clamp(16px, 3vw, 30px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  background: rgb(5 5 5 / 72%);
+  font: 9px/1 var(--mono);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  animation: death-review-prompt-arrival 180ms ease-out both;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 20px;
+    padding: 11px 13px;
+    border: 1px solid var(--text-h);
+    color: var(--bg);
+    background: var(--text-h);
+    font: 700 10px/1 var(--mono);
+    letter-spacing: 0.1em;
+    cursor: pointer;
+
+    &:hover {
+      filter: brightness(1.08);
+    }
+
+    &:focus-visible {
+      outline: 1px solid var(--text-h);
+      outline-offset: 4px;
+    }
+  }
+}
+
+@keyframes death-review-prompt-arrival {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .death-review-prompt {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    justify-content: space-between;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .death-review-prompt {
+    animation-duration: 1ms;
+  }
+}

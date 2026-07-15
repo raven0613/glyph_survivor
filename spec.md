@@ -69,9 +69,9 @@
 - 系統保留可直接傷害生命值的明確 damage route，供未來怪物能力使用；它不能靠臨時條件偷偷繞過護盾。
 - 護盾在一段沒有被接受受擊的 Gameplay simulation time 後逐層回復。選單暫停、升級暫停與結算期間不推進回復或無敵時間。
 - 目前玩家因碰觸具戰鬥碰撞的怪物完整 Glyph 輪廓而受傷；敵方投射物延後實作，但未來必須走同一套 incoming-player-damage 契約。
-- 無論還有多少護盾，只要生命值歸零，玩家就死亡並進入 `GAME_OVER`。
+- 無論還有多少護盾，只要生命值歸零，玩家就立即死亡並進入 `DEATH_REVIEW`，而不是直接顯示結算。死亡當下凍結本局 Gameplay time、統計與 immutable run result；玩家失去移動、攻擊與受擊身分，現存怪物則立即解除玩家 target，不得繼續追向死亡座標或聚集在屍體周圍，而是改為各自錯開、可重現的無目標游走，同時保留 Body Motion 與允許的生命週期演出，讓戰場保持動態供玩家截圖。玩家 Glyph 轉四分之一圈躺地，經過 config 定義的躺地等待後顯示「進入結算」按鈕；只有玩家按下該操作才進入 `GAME_OVER` 與結算畫面，等待期間不得自動跳轉或產生新的戰鬥結果。
 
-實際降低生命值的 accepted hit 以玩家閃爍、rendering-only 的 `.` Glyph 碎片與不影響權威位置的小震動呈現。只要仍有至少一層護盾，玩家身邊固定只顯示一對帶輕微光暈的淺藍語意括號，形成 `(@)`；精確層數仍由 HUD 顯示。護盾受擊後若仍有層數，括號只震動而不消失；最後一層被消耗時才震動並向左右外側 fade out。護盾由零回復為正值時，括號從玩家中心淡入並展開至常駐位置；已有括號時不因其他層回復而疊加另一對。這些效果都不參與 Gameplay，所有實際顏色與可調 presentation 數值只存在集中、可驗證的 visual theme config，不寫入產品文件或 renderer magic number。
+實際降低生命值的 accepted hit 以玩家閃爍、rendering-only 的 `.` Glyph 碎片與不影響權威位置的小震動呈現。只要仍有至少一層護盾，玩家身邊固定只顯示一對帶輕微光暈的淺藍語意括號，形成 `(@)`；左右括號各自具有以括號本身為中心的獨立霧面光暈，不合成以玩家為中心的共同 aura，也不以模糊字形製造實體殘影。精確層數仍由 HUD 顯示。護盾受擊後若仍有層數，括號只震動而不消失；最後一層被消耗時才震動並向左右外側 fade out。護盾由零回復為正值時，括號從玩家中心淡入並展開至常駐位置；已有括號時不因其他層回復而疊加另一對。這些效果都不參與 Gameplay，所有實際顏色與可調 presentation 數值只存在集中、可驗證的 visual theme config，不寫入產品文件或 renderer magic number。
 
 死亡結算顯示本場 Gameplay simulation time、正式完成的怪物擊殺數、最終玩家等級，以及死亡當下仍裝備的 Weapon Instances。每把顯示其 Module Slots 與各 Module Rank、實際造成的 Glyph Durability 總傷害、該 Weapon Instance 的裝備中 Gameplay time，及由兩者計算的裝備期間平均 DPS。被替換武器不顯示，新 Weapon Instance 不繼承舊 Instance 的傷害或時間。最高總傷害武器取得金色裝飾與小皇冠；全部沒有造成傷害時不頒發皇冠。
 

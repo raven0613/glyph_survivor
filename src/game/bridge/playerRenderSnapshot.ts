@@ -2,6 +2,10 @@ import { calculateCameraView } from '../runtime/cameraTransform.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { PlayerSurvivalPresentationEventKind } from '../runtime/playerSurvivalPresentation.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import {
+  getDeathReviewPresentationTimeMs,
+  getPlayerDeathFallProgress,
+} from '../runtime/playerDeathReview.ts'
 
 export interface RenderPlayerSurvivalPresentation {
   currentShieldLayers: number
@@ -9,6 +13,9 @@ export interface RenderPlayerSurvivalPresentation {
   eventKind: PlayerSurvivalPresentationEventKind | null
   eventElapsedMs: number
   eventSeed: number
+  deathRevision: number
+  deathActive: boolean
+  deathFallProgress: number
 }
 
 export interface RenderPlayerState {
@@ -37,6 +44,9 @@ export function createRenderPlayerState(): RenderPlayerState {
       eventKind: null,
       eventElapsedMs: 0,
       eventSeed: 0,
+      deathRevision: 0,
+      deathActive: false,
+      deathFallProgress: 0,
     },
   }
 }
@@ -61,6 +71,10 @@ export function writeRenderPlayerState(
     interpolationAlpha,
   )
   const presentation = world.player.survivalPresentation
+  const presentationTimeMs = getDeathReviewPresentationTimeMs(
+    world.runTimeMs,
+    world.deathReview,
+  )
   snapshot.cameraX = playerX
   snapshot.cameraY = playerY
   snapshot.viewportWidth = world.viewportWidth
@@ -74,9 +88,14 @@ export function writeRenderPlayerState(
   snapshot.playerSurvivalPresentation.eventKind = presentation.eventKind
   snapshot.playerSurvivalPresentation.eventElapsedMs = Math.max(
     0,
-    world.runTimeMs - presentation.eventStartedAtMs,
+    presentationTimeMs - presentation.eventStartedAtMs,
   )
   snapshot.playerSurvivalPresentation.eventSeed = presentation.eventSeed
+  snapshot.playerSurvivalPresentation.deathRevision =
+    world.deathReview.revision
+  snapshot.playerSurvivalPresentation.deathActive = world.deathReview.active
+  snapshot.playerSurvivalPresentation.deathFallProgress =
+    getPlayerDeathFallProgress(world.deathReview, GAME_CONFIG)
   return calculateCameraView(
     playerX,
     playerY,
@@ -97,4 +116,7 @@ export function clearRenderPlayerState(snapshot: RenderPlayerState): void {
   snapshot.playerSurvivalPresentation.eventKind = null
   snapshot.playerSurvivalPresentation.eventElapsedMs = 0
   snapshot.playerSurvivalPresentation.eventSeed = 0
+  snapshot.playerSurvivalPresentation.deathRevision = 0
+  snapshot.playerSurvivalPresentation.deathActive = false
+  snapshot.playerSurvivalPresentation.deathFallProgress = 0
 }

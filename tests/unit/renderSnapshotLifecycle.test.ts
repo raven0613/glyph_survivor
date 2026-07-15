@@ -16,6 +16,9 @@ test('clears all run-owned render data before returning to ready', () => {
   snapshot.playerSurvivalPresentation.eventKind = 'SHIELD_HIT'
   snapshot.playerSurvivalPresentation.eventElapsedMs = 20
   snapshot.playerSurvivalPresentation.eventSeed = 9
+  snapshot.playerSurvivalPresentation.deathRevision = 2
+  snapshot.playerSurvivalPresentation.deathActive = true
+  snapshot.playerSurvivalPresentation.deathFallProgress = 1
   snapshot.enemies.push({
     id: 1,
     glyphFrame: 1,
@@ -67,6 +70,9 @@ test('clears all run-owned render data before returning to ready', () => {
     eventKind: null,
     eventElapsedMs: 0,
     eventSeed: 0,
+    deathRevision: 0,
+    deathActive: false,
+    deathFallProgress: 0,
   })
   assert.equal(snapshot.enemies.length, 0)
   assert.equal(snapshot.effects.length, 0)

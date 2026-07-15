@@ -87,6 +87,7 @@ export function createPlayerSurvivalView(
 
   function clear(): void {
     player.position.set(0, 0)
+    player.rotation = 0
     player.tint = theme.player.tint
     player.alpha = theme.player.alpha
     leftGlow.visible = false
@@ -102,6 +103,7 @@ export function createPlayerSurvivalView(
     sync(snapshot: Readonly<RenderPlayerSurvivalPresentation>) {
       writePlayerSurvivalPresentationFrame(snapshot, theme, frame)
       player.position.set(frame.playerOffsetX, frame.playerOffsetY)
+      player.rotation = frame.playerRotation
       player.tint = frame.playerTint
       player.alpha = frame.playerAlpha
 

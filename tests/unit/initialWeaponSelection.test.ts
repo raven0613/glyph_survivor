@@ -22,8 +22,9 @@ const READY_MACHINE_SNAPSHOT = {
     seed: null,
     upgradeChoices: [],
     pendingUpgradeCount: 0,
-    activeUpgradeOfferId: null,
-    recoverableError: null,
+        activeUpgradeOfferId: null,
+        recoverableError: null,
+        canEnterRunResult: false,
   },
 } as const
 

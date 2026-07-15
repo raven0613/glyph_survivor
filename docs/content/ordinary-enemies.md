@@ -15,7 +15,7 @@ worldGlyphPosition = creatureRootPosition
                    + deformationOffset
 ```
 
-- Root movement 負責整隻怪物追蹤與位移。
+- Root movement 在一般 `RUNNING` 戰鬥中負責整隻怪物追蹤與位移；玩家死亡進入 `DEATH_REVIEW` 後必須解除玩家 target，並依 [`player-survival.md`](player-survival.md) 改用無目標游走，不得繼續追向玩家死亡座標。
 - Layout Anchor 負責 Body Blueprint、morph、重組後的結構位置。
 - Body Motion 負責該物種有節奏的局部姿態與旋轉。
 - Deformation 負責命中、材質位移、擊退與回復。

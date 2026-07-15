@@ -21,6 +21,7 @@ test('deeply copies weapon-specific upgrade previews for React', () => {
       pendingUpgradeCount: 1,
       activeUpgradeOfferId: 'offer-1',
       recoverableError: null,
+      canEnterRunResult: false,
     },
   })
 
@@ -56,6 +57,7 @@ test('publishes player survival and a deeply immutable run result', () => {
         pendingUpgradeCount: 0,
         activeUpgradeOfferId: null,
         recoverableError: null,
+        canEnterRunResult: false,
       },
     },
     {
@@ -96,4 +98,41 @@ test('publishes player survival and a deeply immutable run result', () => {
   assert.equal(snapshot.runResult?.weapons[0].totalDamage, 8)
   assert.equal(Object.isFrozen(snapshot.runResult), true)
   assert.equal(Object.isFrozen(snapshot.runResult?.weapons[0]), true)
+})
+
+test('publishes review readiness without exposing the frozen result early', () => {
+  const runResult = {
+    gameplayTimeMs: 1_000,
+    killCount: 2,
+    finalPlayerLevel: 1,
+    weapons: [],
+  }
+  const snapshot = createUiSnapshot(
+    {
+      value: 'DEATH_REVIEW',
+      context: {
+        seed: 'death-review',
+        upgradeChoices: [],
+        pendingUpgradeCount: 0,
+        activeUpgradeOfferId: null,
+        recoverableError: null,
+        canEnterRunResult: true,
+      },
+    },
+    {
+      xp: 0,
+      xpToNext: 5,
+      level: 1,
+      runTimeMs: 1_000,
+      enemyCount: 2,
+      currentHealth: 0,
+      maximumHealth: 10,
+      currentShieldLayers: 0,
+      maximumShieldLayers: 1,
+      runResult,
+    },
+  )
+
+  assert.equal(snapshot.canEnterRunResult, true)
+  assert.equal(snapshot.runResult, null)
 })

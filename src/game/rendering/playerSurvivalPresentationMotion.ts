@@ -14,6 +14,7 @@ export interface PlayerSurvivalPresentationFrame {
   playerOffsetY: number
   playerTint: number
   playerAlpha: number
+  playerRotation: number
   shieldVisible: boolean
   shieldLeftX: number
   shieldRightX: number
@@ -69,6 +70,7 @@ export function createPlayerSurvivalPresentationFrame(
     playerOffsetY: 0,
     playerTint: 0,
     playerAlpha: 0,
+    playerRotation: 0,
     shieldVisible: false,
     shieldLeftX: 0,
     shieldRightX: 0,
@@ -231,6 +233,9 @@ export function writePlayerSurvivalPresentationFrame(
   frame.playerOffsetY = 0
   frame.playerTint = theme.player.tint
   frame.playerAlpha = theme.player.alpha
+  frame.playerRotation = snapshot.deathActive
+    ? easeOutCubic(clampUnit(snapshot.deathFallProgress)) * (Math.PI / 2)
+    : 0
   frame.shieldVisible = false
   frame.shieldAlpha = 0
   frame.shieldGlowAlpha = 0

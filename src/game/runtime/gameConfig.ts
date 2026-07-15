@@ -1,4 +1,5 @@
 import { assertValidPlayerSurvivalConfig } from './playerSurvival.ts'
+import { assertValidPlayerDeathReviewConfig } from './playerDeathReview.ts'
 
 const gameConfig = {
   worldWidth: 4_000,
@@ -20,8 +21,14 @@ const gameConfig = {
   shieldRechargeIntervalMs: 4_000,
   playerDamageInvulnerabilityMs: 500,
   playerCollisionRadius: 14,
+  playerDeathFallDurationMs: 220,
+  playerDeathGroundedDurationMs: 2_000,
+  deathReviewEnemyWanderIntervalMs: 1_400,
+  deathReviewEnemyWanderSpeedMultiplier: 0.42,
+  deathReviewEnemyWanderTurnResponsiveness: 3.2,
 }
 
 assertValidPlayerSurvivalConfig(gameConfig)
+assertValidPlayerDeathReviewConfig(gameConfig)
 
 export const GAME_CONFIG = Object.freeze(gameConfig)

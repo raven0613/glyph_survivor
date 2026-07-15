@@ -203,16 +203,21 @@ test('copies upgrade choices at the command boundary', () => {
   )
 })
 
-test('enters game over before accepting further upgrade offers and can restart', () => {
+test('enters death review before accepting further gameplay commands', () => {
   const actor = startRunningActor()
   actor.send({ type: 'PLAYER_DIED' })
   actor.send({ type: 'UPGRADE_OFFERED', offerId: 'offer-late', choices: upgradeChoices })
 
-  assert.equal(actor.getSnapshot().value, GAME_PHASE.GAME_OVER)
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.DEATH_REVIEW)
+  assert.equal(actor.getSnapshot().context.canEnterRunResult, false)
 
-  actor.send({ type: 'RESTART', seed: 'run-002' })
-  assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
-  assert.equal(actor.getSnapshot().context.seed, 'run-002')
+  actor.send({ type: 'ENTER_RUN_RESULT' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.DEATH_REVIEW)
+
+  actor.send({ type: 'DEATH_REVIEW_READY' })
+  assert.equal(actor.getSnapshot().context.canEnterRunResult, true)
+  actor.send({ type: 'ENTER_RUN_RESULT' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.GAME_OVER)
 })
 
 test('returns from game over to a clean ready context and ignores repeated commands', () => {
@@ -225,6 +230,8 @@ test('returns from game over to a clean ready context and ignores repeated comma
   assert.ok(actor.getSnapshot().context.recoverableError)
 
   actor.send({ type: 'PLAYER_DIED' })
+  actor.send({ type: 'DEATH_REVIEW_READY' })
+  actor.send({ type: 'ENTER_RUN_RESULT' })
   actor.send({ type: 'RETURN_TO_MAIN_MENU' })
 
   assert.equal(actor.getSnapshot().value, GAME_PHASE.READY)
@@ -234,10 +241,15 @@ test('returns from game over to a clean ready context and ignores repeated comma
     pendingUpgradeCount: 0,
     activeUpgradeOfferId: null,
     recoverableError: null,
+    canEnterRunResult: false,
   })
 
   actor.send({ type: 'RETURN_TO_MAIN_MENU' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.READY)
+
+  actor.send({ type: 'START_RUN', seed: 'second-run' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
+  assert.equal(actor.getSnapshot().context.seed, 'second-run')
 })
 
 test('does not return to the main menu while a run is active', () => {

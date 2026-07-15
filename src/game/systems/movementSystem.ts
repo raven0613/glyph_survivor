@@ -6,21 +6,10 @@ import { normalizeMovement } from './movementVector.ts'
 import { runCreatureLayoutBehavior } from './creatureLayoutStrategies.ts'
 import { runCreatureBodyMotionBehavior } from './creatureBodyMotionStrategies.ts'
 import { runCreatureMovementBehavior } from './creatureMovementStrategies.ts'
+import { hasCreatureFinishedReassembling } from './creatureReassembly.ts'
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(value, maximum))
-}
-
-function hasFinishedReassembling(world: WorldState, ownerId: number): boolean {
-  for (const glyph of world.glyphStore.getOwnerGlyphs(ownerId)) {
-    if (
-      Math.hypot(glyph.offsetX, glyph.offsetY) > 1 ||
-      Math.hypot(glyph.velocityX, glyph.velocityY) > 5
-    ) {
-      return false
-    }
-  }
-  return true
 }
 
 export function runMovementSystem(world: WorldState, deltaMs: number): void {
@@ -69,7 +58,7 @@ export function runMovementSystem(world: WorldState, deltaMs: number): void {
     }
 
     if (enemy.phase === 'REASSEMBLING') {
-      if (hasFinishedReassembling(world, enemy.id)) {
+      if (hasCreatureFinishedReassembling(world, enemy.id)) {
         enemy.phase = 'ACTIVE'
       } else {
         continue

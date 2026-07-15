@@ -1,8 +1,13 @@
 import {
   calculateFixedStepFrame,
-  runFixedStepsWhileActive,
+  runFixedStepsWhileModeStable,
 } from './fixedStep.ts'
 import { GAME_CONFIG } from './gameConfig.ts'
+import { GAME_PHASE } from './gameMachine.ts'
+
+export type GameLoopStepMode =
+  | typeof GAME_PHASE.RUNNING
+  | typeof GAME_PHASE.DEATH_REVIEW
 
 export interface GameLoop {
   start(): void
@@ -10,8 +15,8 @@ export interface GameLoop {
 }
 
 export interface GameLoopOptions {
-  readonly shouldStep: () => boolean
-  readonly step: (fixedStepMs: number) => void
+  readonly getStepMode: () => GameLoopStepMode | null
+  readonly step: (mode: GameLoopStepMode, fixedStepMs: number) => void
   readonly render: (interpolationAlpha: number) => void
   readonly recordDroppedTime: (droppedTimeMs: number) => void
 }
@@ -31,7 +36,8 @@ export function createGameLoop(options: GameLoopOptions): GameLoop {
       previousTimestampMs === null ? 0 : timestampMs - previousTimestampMs
     previousTimestampMs = timestampMs
 
-    if (options.shouldStep()) {
+    const stepMode = options.getStepMode()
+    if (stepMode !== null) {
       const fixedFrame = calculateFixedStepFrame({
         accumulatorMs,
         frameDeltaMs,
@@ -41,10 +47,11 @@ export function createGameLoop(options: GameLoopOptions): GameLoop {
       })
       accumulatorMs = fixedFrame.accumulatorMs
 
-      const completedSteps = runFixedStepsWhileActive(
+      const completedSteps = runFixedStepsWhileModeStable(
         fixedFrame.stepCount,
-        options.shouldStep,
-        () => options.step(GAME_CONFIG.fixedStepMs),
+        stepMode,
+        options.getStepMode,
+        (stableMode) => options.step(stableMode, GAME_CONFIG.fixedStepMs),
       )
       if (completedSteps < fixedFrame.stepCount) {
         accumulatorMs = 0

@@ -2,7 +2,7 @@ export interface SeededRng {
   next(): number
 }
 
-function hashSeed(seed: string | number): number {
+export function hashSeed(seed: string | number): number {
   const input = String(seed)
   let hash = 2_166_136_261
 

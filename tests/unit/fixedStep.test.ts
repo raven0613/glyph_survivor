@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   calculateFixedStepFrame,
   runFixedStepsWhileActive,
+  runFixedStepsWhileModeStable,
 } from '../../src/game/runtime/fixedStep.ts'
 
 test('caps catch-up steps and reports dropped simulation time', () => {
@@ -44,4 +45,28 @@ test('preserves fractional accumulated time for the next frame', () => {
   assert.equal(result.stepCount, 1)
   assert.equal(result.accumulatorMs, 5)
   assert.equal(result.droppedTimeMs, 0)
+})
+
+test('stops the current catch-up batch when running changes to death review', () => {
+  let mode: 'RUNNING' | 'DEATH_REVIEW' = 'RUNNING'
+  let runningSteps = 0
+  let reviewSteps = 0
+
+  const completed = runFixedStepsWhileModeStable(
+    4,
+    mode,
+    () => mode,
+    (stepMode) => {
+      if (stepMode === 'RUNNING') {
+        runningSteps += 1
+        mode = 'DEATH_REVIEW'
+      } else {
+        reviewSteps += 1
+      }
+    },
+  )
+
+  assert.equal(completed, 1)
+  assert.equal(runningSteps, 1)
+  assert.equal(reviewSteps, 0)
 })

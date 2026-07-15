@@ -76,6 +76,7 @@ export interface UiSnapshot {
   readonly maximumHealth: number
   readonly currentShieldLayers: number
   readonly maximumShieldLayers: number
+  readonly canEnterRunResult: boolean
   readonly runResult: Readonly<UiRunResult> | null
   readonly xp: number
   readonly xpToNext: number
@@ -130,6 +131,7 @@ interface MachineSnapshotForUi {
     readonly pendingUpgradeCount: number
     readonly activeUpgradeOfferId: string | null
     readonly recoverableError: string | null
+    readonly canEnterRunResult: boolean
   }
 }
 
@@ -140,6 +142,7 @@ export const INITIAL_UI_SNAPSHOT: Readonly<UiSnapshot> = Object.freeze({
   maximumHealth: 0,
   currentShieldLayers: 0,
   maximumShieldLayers: 0,
+  canEnterRunResult: false,
   runResult: null,
   xp: 0,
   xpToNext: 5,
@@ -213,7 +216,8 @@ export function createUiSnapshot(
       }),
     ),
   )
-  const copiedRunResult = gameplayUi.runResult
+  const copiedRunResult =
+    machineSnapshot.value === 'GAME_OVER' && gameplayUi.runResult
     ? Object.freeze({
         gameplayTimeMs: gameplayUi.runResult.gameplayTimeMs,
         killCount: gameplayUi.runResult.killCount,
@@ -240,6 +244,9 @@ export function createUiSnapshot(
     maximumHealth: gameplayUi.maximumHealth,
     currentShieldLayers: gameplayUi.currentShieldLayers,
     maximumShieldLayers: gameplayUi.maximumShieldLayers,
+    canEnterRunResult:
+      machineSnapshot.value === 'DEATH_REVIEW' &&
+      machineSnapshot.context.canEnterRunResult,
     runResult: copiedRunResult,
     xp: gameplayUi.xp,
     xpToNext: gameplayUi.xpToNext,

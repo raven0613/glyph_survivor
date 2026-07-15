@@ -1,6 +1,6 @@
 # Player Survival — Health, Shields, Death, and Run Results
 
-> 狀態：生存、死亡、統計、結算、回主畫面，以及玩家生命／護盾受擊 presentation 契約均已實作。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
+> 狀態：生存、統計、結算／回主畫面、玩家生命／護盾受擊 presentation、死亡回看、手動進入結算與跨局清理均已實作並完成回歸驗證。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
 
 本文是玩家生命、護盾、incoming damage、接觸碰撞、死亡、單局統計、結算畫面與回主畫面流程的唯一詳細入口。跨系統產品意圖以 [`spec.md`](../../spec.md) 為準，依賴方向與 lifecycle 架構以 [`AGENTS.md`](../../AGENTS.md) 為準；未來生存 Module 的 ordered Slot transaction 另須遵守 [`weapon-system.md`](weapon-system.md)。
 
@@ -12,7 +12,7 @@
 - Health、Shield Layers、shield recharge 與 global damage invulnerability；
 - 玩家和普通怪／Boss 權威 Glyph 輪廓的接觸受傷；
 - 生命受擊、護盾常駐／受擊／回復的 rendering-only 玩家 presentation；
-- 玩家死亡、`GAME_OVER`、不可變 run result 與停止 simulation；
+- 玩家死亡、`DEATH_REVIEW` 戰場回看、手動進入 `GAME_OVER`、不可變 run result 與停止 simulation；
 - 每局時間、正式擊殺數、Weapon Instance 傷害／裝備時間／平均 DPS 統計；
 - React HUD、結算畫面與回到主畫面的完整流程。
 
@@ -47,6 +47,11 @@ React 只讀取 UI-sized immutable summaries 並送出明確 command。Renderer 
 | `shieldRechargeIntervalMs` | 每回復一層護盾所需的連續未受擊 RUNNING simulation time；必須是有限正值 |
 | `playerDamageInvulnerabilityMs` | 一次受擊被接受後的 global incoming-damage gate 時長；必須是有限正值 |
 | `playerCollisionRadius` | 玩家權威圓形接觸判定半徑；必須是有限正值 |
+| `playerDeathFallDurationMs` | 致命傷成立後，玩家 Glyph 從站立轉至躺地姿態所需的 death-review time；必須是有限正值 |
+| `playerDeathGroundedDurationMs` | 玩家完全躺地後，顯示「進入結算」操作前必須經過的 death-review time；必須是有限正值 |
+| `deathReviewEnemyWanderIntervalMs` | `DEATH_REVIEW` 中每隻怪物重新選擇無目標游走方向的間隔；必須是有限正值 |
+| `deathReviewEnemyWanderSpeedMultiplier` | `DEATH_REVIEW` 無目標游走速度相對於各 Creature Definition maximum speed 的倍率；必須是有限正值 |
+| `deathReviewEnemyWanderTurnResponsiveness` | `DEATH_REVIEW` 中目前速度轉向下一個游走方向的平滑響應；必須是有限正值 |
 
 Creature contact damage 保留在各 validated Creature Definition 的 `contactDamage`，不搬入 Player config，也不在本文、Boss sheet 或 enemy sheet 複製。未來 hostile projectile 的 damage／routing 由 projectile content authoring。戰鬥色彩、alpha、光暈、粒子、震動與 hit feedback timing 仍由集中 combat visual theme 管理；本文只保存淺藍護盾等語意身份，不保存色碼、時間、數量、距離、速度或強度 default。
 
@@ -71,7 +76,7 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - 回復排程必須保留 fixed-step overflow，不能因一步跨過多個 interval 就丟失已到期的層數。
 - Shield 已滿時不預存 recharge progress；之後的 accepted hit 必須從新的受擊 timestamp 重新等待。
 - 同一步若既達到 recharge threshold 又收到 accepted hit，先解析 incoming damage 並重設 recharge，不會先補出一層來阻擋該次攻擊。
-- `READY`、`PAUSED_MENU`、`PAUSED_UPGRADE` 與 `GAME_OVER` 都不推進護盾回復或 global invulnerability；兩者只讀 RUNNING simulation time，不讀 wall-clock time。
+- `READY`、`PAUSED_MENU`、`PAUSED_UPGRADE`、`DEATH_REVIEW` 與 `GAME_OVER` 都不推進護盾回復或 global invulnerability；護盾回復與無敵期限都只讀 RUNNING simulation time，不讀 wall-clock time。
 
 ## 6. Incoming Player Damage
 
@@ -119,6 +124,7 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - current Shield Layers 大於零時，玩家周圍只顯示一對括號，組成 `(@)` 的語意外觀；括號是獨立於玩家 `@` 的 rendering-only Glyph views。
 - 無論 current Shield Layers 是一層或多層，都只顯示一對括號。精確 current／maximum 層數仍由 HUD 表達，不以重疊括號編碼。
 - 護盾具有淺藍色語意身份與輕微光暈。具體 base／glow color、alpha 與其他數值只存在集中 combat visual theme authoring config，不得複製到本文、Runtime system、render adapter 或 React SCSS。
+- 左右括號各自擁有一團以該括號本身為中心的獨立霧面光暈。兩團光可以在空間上自然相接，但不得先合成一個以玩家 `@` 為中心的共同 aura，也不得以模糊括號副本製造可辨識的實體殘影。
 
 ### 護盾受擊與回復
 
@@ -137,19 +143,32 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 
 ## 9. 玩家死亡與 phase 優先序
 
-- Health 歸零只提交一次 player-death transition，建立死亡當下的 immutable run result，並把全域 phase 轉為 `GAME_OVER`。
-- 一旦 transition 成立，不再開始下一個 fixed simulation step；同一 RAF callback 尚未執行的 catch-up steps 必須停止，pause boundary 不得留下可在回主畫面後洩漏的 accumulator time。
-- 已在死亡當步正式 commit 的傷害與死亡結果保留；尚未完成的 creature collapse 不會在 `GAME_OVER` 自動前進。
+```text
+RUNNING → DEATH_REVIEW（轉身 → 躺地等待 → 顯示按鈕；戰場持續動態）
+        → enterRunResult → GAME_OVER
+```
+
+- Health 歸零只提交一次 player-death transition，建立死亡當下的 immutable run result，並把全域 phase 從 `RUNNING` 轉為 `DEATH_REVIEW`；不得在致命傷當下直接顯示結算畫面。
+- 一旦 transition 成立，不再開始下一個一般 `RUNNING` fixed simulation step；同一 RAF callback 尚未執行的 RUNNING catch-up steps 必須停止並切換至 phase-specific death-review scheduler，避免多執行一次玩家攻擊、傷害、掉落、統計或 upgrade。
+- 已在死亡當步正式 commit 的傷害、擊殺、裝備時間與死亡結果保留並立即凍結。`DEATH_REVIEW` 經過的時間不屬於本場 Gameplay time，也不得改寫 death-time run result。
 - 若死亡與 level-up／upgrade trigger 落在同一 fixed step，死亡優先。不得先開啟或保留 `PAUSED_UPGRADE` overlay，也不得消耗 pending upgrade transaction。
-- `GAME_OVER` 停止 gameplay time、Weapon Instance equipped time、無敵、shield recharge、AI、攻擊、碰撞、掉落與 cleanup simulation。Renderer 可以呈現靜態或有限的非權威 transition，但不能推進結果資料。
+- `DEATH_REVIEW` 不是全域暫停。玩家移動、輸入、武器 emission、player-owned authoritative attacks、incoming player damage、XP／upgrade、掉落獎勵與所有 run statistics 停止；玩家不再具有可受擊或可造成傷害的 Gameplay 身分。
+- 為保留可截圖的活戰場，死亡當下已存在的怪物仍由 Runtime 繼續其移動、Body Motion、materialization、reassembly 與已開始的 collapse presentation，rendering-only 戰場效果也可繼續。Director 不再生成新怪，且這段回看不得產生新的 combat damage、reward、XP、kill count 或 run-result mutation。
+- 進入 `DEATH_REVIEW` 時，所有怪物必須立即解除玩家 target；不得繼續讀取玩家的死亡座標、把倒地玩家當作 steering target，或因此逐漸聚集在屍體周圍。`ACTIVE` 怪物改用 phase-specific 的無目標游走，`MATERIALIZING`／`REASSEMBLING` 怪物完成既有階段後也進入同一游走；已進入 `COLLAPSING` 的怪物只完成崩解 presentation，不重新取得移動行為。
+- 無目標游走由 Runtime 依 run seed、stable Creature ID 與 death-review time 產生彼此錯開的方向，使用各物種既有 maximum speed／Body Motion 身分，再套用 death-review config 的速度、轉向與換向間隔。切換 phase 時不得瞬移或把速度歸零，而是從當下 velocity 平滑轉向第一個游走方向；移動仍須留在既有 world bounds 內。相同 seed 與狀態必須可重現；不得每幀取亂數、共同追逐一個隱藏 wander target，或讓 Renderer 私自位移怪物。
+- `DEATH_REVIEW` 使用獨立、可重現且受 frame-delta clamp 保護的 review clock；它可以執行上述窄化 scheduler，但不得推進 RUNNING gameplay clock、invulnerability、shield recharge 或 Weapon Instance equipped time。Camera 保持死亡位置，玩家輸入不能移動畫面。
+- 致命傷仍先播放同一筆 Health hit feedback；玩家 Glyph 隨後以自身為中心轉四分之一圈至躺地姿態。旋轉進度由 Runtime／render snapshot 的 stable death presentation identity 與 review elapsed time 驅動，Renderer 不得自行決定完成時點，且不得改寫玩家死亡座標。
+- 玩家完全躺地後，必須再等待 `playerDeathGroundedDurationMs`，才由 `UiSnapshot` 將 `canEnterRunResult` 切為 true，並由 React 顯示「進入結算」按鈕。按鈕出現後仍停留在 `DEATH_REVIEW`，戰場動態繼續，不得自動倒數進入結算。
+- 「進入結算」送出明確 `enterRunResult` command；Runtime 只在 `DEATH_REVIEW` 且 `canEnterRunResult` 為 true 時接受，並原子轉入 `GAME_OVER`。重複、過早或其他 phase 的 command 必須安全拒絕且不得重播死亡 side effects。
+- 只有進入 `GAME_OVER` 後才停止 death-review scheduler 並顯示 React-owned 結算畫面。`GAME_OVER` 不再推進 AI、Body Motion、collapse presentation 或其他戰場動態。
 - 重複 damage、phase publication 或 React remount 不得建立第二份 result、重複計入統計或再次執行死亡 side effects。
-- `GAME_OVER` phase 與已存在的 immutable run result 可以作為 transition／side-effect idempotency guard，但不得成為能否決 Health 歸零死亡條件的第二份 combat truth。
+- `DEATH_REVIEW`／`GAME_OVER` phase 與已存在的 immutable run result 可以作為 transition／side-effect idempotency guard，但不得成為能否決 Health 歸零死亡條件的第二份 combat truth。
 
 ## 10. Run Statistics
 
 ### Gameplay time 與擊殺
 
-- 本場時間只累積 `RUNNING` fixed-step simulation time。`READY`、選單暫停、升級暫停與 `GAME_OVER` 不計時。
+- 本場時間只累積 `RUNNING` fixed-step simulation time。`READY`、選單暫停、升級暫停、`DEATH_REVIEW` 與 `GAME_OVER` 不計時。
 - 普通怪與未來 Elite 只在整體 collapse 完成並正式進入 reward-authorizing death state 時各計一次擊殺。
 - Boss 以 Encounter 正式 `DEFEATED` 時計一次，不因 root／child bodies、分體或多份 cleanup 重複增加。
 - 玩家死亡當下仍在 `COLLAPSING`、尚未正式死亡／`DEFEATED` 的怪物不列入擊殺數。
@@ -177,9 +196,9 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 
 ## 11. Run Result、HUD 與結算 UI
 
-Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary：current／maximum Health、current／maximum Shield Layers、phase 與既有 HUD values。只在值改變或既有低頻 publication cadence 發布，不能為此每個 render frame 更新 React state。
+Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary：current／maximum Health、current／maximum Shield Layers、phase、`canEnterRunResult` 與既有 HUD values。只在值改變或既有低頻 publication cadence 發布，不能為 death animation 每個 render frame 更新 React state；逐幀 death presentation progress 只走 render snapshot。
 
-進入 `GAME_OVER` 時，snapshot 另外提供一份固定的 run result：
+Run result 在致命傷成立時已建立並凍結，但只在接受 `enterRunResult`、進入 `GAME_OVER` 時才作為結算資料對 React 發布：
 
 - 本場 Gameplay time；
 - 正式擊殺數；
@@ -190,6 +209,8 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 
 沒有 Weapon Level 欄位；「modules 和等級」只指各 Slot 的 Module Rank。Run result 不含 Glyph arrays、projectiles、retired weapons、Pixi objects 或 mutable Runtime references。
 
+`DEATH_REVIEW` 中的 React 只能在 `canEnterRunResult` 成立後顯示輕量的「進入結算」操作，不得提前掛載 GameOver panel、全畫面遮罩、暗幕或會暫停 Canvas 的 modal。操作位置不得遮住玩家死亡位置與主要戰場構圖，讓玩家可以在動態戰場上截圖後再自行進入結算。
+
 結算是 React-owned DOM screen，視覺語言、字體、panel、按鈕與動態風格應延續首頁。它可以覆蓋已停止的 Canvas，但不得從 render snapshot 反推統計。畫面結構預留未來廣告版位的 extension point；本里程碑不載入 SDK、不發請求，也不顯示偽造廣告。
 
 ## 12. 回到主畫面
@@ -197,7 +218,7 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 結算頁的按鈕送出明確 `returnToMainMenu` command。Runtime／Host 只在合法 phase 接受，並以一個 lifecycle transaction：
 
 - 丟棄本局 WorldState、pending upgrades、run statistics、run result 與輸入狀態；
-- 清空本局 Glyph、creature、projectile 與 effect，將 active render views 解除同步並歸還既有 pool，不保留可在下一局觸發的 event；
+- 清空本局 Glyph、creature、projectile、effect、death-review clock／prompt 與玩家死亡 presentation，將 active render views 解除同步並歸還既有 pool，不保留可在下一局觸發的 event；
 - 回到 `READY`／主畫面與初始武器選擇流程；
 - 保留可安全重用的 GameHost、Pixi Application、prepared content、visual theme 與永久解鎖 snapshot，避免整頁 reload。
 
@@ -222,7 +243,11 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 - shield recharge 只讀 RUNNING simulation time、保留 interval overflow 並停止於 maximum；
 - 同 owner 多 Glyph 接觸只產生一個 candidate，Husk 仍參與 active outline；
 - 多 owner 同步接觸使用 stable ordering，且不能在同一 invulnerability window 批次扣血；
-- Health 歸零優先進入 `GAME_OVER`，停止 catch-up steps 並壓過同一步 upgrade；
+- Health 歸零優先進入 `DEATH_REVIEW`，停止剩餘 RUNNING catch-up steps 並壓過同一步 upgrade；
+- `DEATH_REVIEW` 凍結 death-time result／Gameplay time／Weapon equipped time；既有怪物立即解除玩家 target 並進入 deterministic、per-creature 錯開的無目標游走，Body Motion 與允許的 lifecycle presentation 持續，且不產生新 damage、reward、XP、kill 或 statistics mutation；
+- death-review wander 不讀取玩家死亡座標、切換時不瞬移或突然歸零速度，且遵守 world bounds；相同 seed／Creature IDs 可重現，不同怪物不會同步換向或共同聚集至同一隱藏 target；
+- 玩家 Glyph 依 snapshot-owned progress 轉四分之一圈，完全躺地並經過 config 定義的 grounded duration 後才發布一次 `canEnterRunResult`；在此之前與之後都不得自動進入結算；
+- `enterRunResult` 只有在 prompt ready 時能把 `DEATH_REVIEW` 原子轉成 `GAME_OVER`，過早／重複 command 安全無副作用；
 - kill count 只在正式 death／Boss Encounter defeat 增加，玩家死亡時未完成 collapse 不計；
 - actual Glyph Durability delta 正確歸屬 stable Weapon Instance，排除 overkill、Husk Cell 本身未發生的 delta 與純 presentation，同時保留 living topology-frontier target 的實際傷害；
 - replacement weapon 從空 counter 開始，舊在途 attack 不轉嫁，結果只列 death-time loadout；
@@ -232,7 +257,7 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 - global invulnerability 忽略的 hit 不產生 Health／Shield presentation revision，重複 render snapshot 也不重播已消費的 revision；
 - Health damage 只觸發 flash、可停用的 `.` 碎片與 render-local shake，且不改變權威玩家／camera 座標；
 - Shield 尚有剩餘層數時只有括號震動、沒有 fade out；最後一層消耗時才震動並向兩側 fade out；
-- 任意正 Shield Layers 都只保留一對常駐括號，零到正值的回復由中心淡入展開，正值間的層數回復不疊出另一對；
+- 任意正 Shield Layers 都只保留一對常駐括號，左右各有以自身為中心的獨立霧面光暈；零到正值的回復由中心淡入展開，正值間的層數回復不疊出另一對；
 - `HEALTH_ONLY` hit 在 Shield 尚存時不破壞或重播護盾括號，回主畫面與下一局也不殘留 presentation views。
 
-瀏覽器實機驗收另外確認 HUD 可讀性、生命受擊辨識度、`.` 碎片密度、玩家局部震動手感、護盾光暈與括號在常駐／受擊／耗盡／回復時的可讀性、首頁與結算頁視覺一致、responsive layout、keyboard／pointer 操作，以及 reduced-motion 路徑。任何實機調整出的數值仍只回填 config／content，不回填本文。
+瀏覽器實機驗收另外確認 HUD 可讀性、生命受擊辨識度、`.` 碎片密度、玩家局部震動手感、左右護盾獨立霧面光暈與括號在常駐／受擊／耗盡／回復時的可讀性、死亡轉身與躺地節奏、死亡回看期間怪物解除追蹤後自然且不同步的無目標游走、怪物不聚集於玩家屍體、截圖構圖、「進入結算」操作、首頁與結算頁視覺一致、responsive layout、keyboard／pointer 操作，以及 reduced-motion 路徑。任何實機調整出的數值仍只回填 config／content，不回填本文。

@@ -267,7 +267,7 @@ Use an explicit phase/state machine rather than scattered booleans:
 BOOT → LOADING → READY → RUNNING
                          ↔ PAUSED_MENU
                          → PAUSED_UPGRADE → RUNNING
-                         → GAME_OVER → READY
+                         → DEATH_REVIEW → GAME_OVER → READY
 any non-final phase      → DISPOSED
 ```
 
@@ -277,6 +277,7 @@ Required behavior:
 - `READY` means initialization succeeded and the runtime is waiting for an explicit `startRun` command with a valid initial weapon from the frozen unlock set; fixed simulation steps have not started.
 - `PAUSED_UPGRADE` stops fixed simulation steps completely for the whole decision chain: card preview, weapon target, optional Module-Slot or weapon replacement, authoritative commit, and any next queued offer.
 - Menu pause stops gameplay time. Rendering may remain static or run at a deliberately reduced rate.
+- `DEATH_REVIEW` may run only the narrow phase-specific scheduler defined by [`docs/content/player-survival.md`](docs/content/player-survival.md); it is neither ordinary `RUNNING` simulation nor a renderer-owned timer. The explicit result-entry command alone transitions it to `GAME_OVER`.
 - Repeated `start`, `pause`, `resume`, and `dispose` calls must have defined idempotent behavior.
 - Disposal removes DOM listeners, input listeners, ticker/RAF callbacks, subscriptions, scene nodes, and owned GPU resources.
 - `COLLAPSING` is an individual creature lifecycle phase, not a global game phase. A collapsing creature no longer participates in targeting, damage, or collision. The runtime owns collapse timing and allows reward/cleanup only after the whole-body collapse resolves, even if an explicit death rule hands its visual fragments to the renderer during that phase.

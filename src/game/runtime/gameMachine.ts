@@ -11,6 +11,7 @@ export const GAME_PHASE = Object.freeze({
   RUNNING: 'RUNNING',
   PAUSED_MENU: 'PAUSED_MENU',
   PAUSED_UPGRADE: 'PAUSED_UPGRADE',
+  DEATH_REVIEW: 'DEATH_REVIEW',
   GAME_OVER: 'GAME_OVER',
   DISPOSED: 'DISPOSED',
 })
@@ -41,6 +42,7 @@ export interface GameMachineContext {
   readonly pendingUpgradeCount: number
   readonly activeUpgradeOfferId: string | null
   readonly recoverableError: string | null
+  readonly canEnterRunResult: boolean
 }
 
 type UpgradeOfferedEvent = {
@@ -71,6 +73,8 @@ export type GameMachineEvent =
   | UpgradeCommittedEvent
   | UpgradeCommandRejectedEvent
   | { readonly type: 'PLAYER_DIED' }
+  | { readonly type: 'DEATH_REVIEW_READY' }
+  | { readonly type: 'ENTER_RUN_RESULT' }
   | { readonly type: 'RESTART'; readonly seed?: string | number }
   | { readonly type: 'RETURN_TO_MAIN_MENU' }
   | { readonly type: 'DISPOSE' }
@@ -82,6 +86,7 @@ function createInitialContext(): GameMachineContext {
     pendingUpgradeCount: 0,
     activeUpgradeOfferId: null,
     recoverableError: null,
+    canEnterRunResult: false,
   }
 }
 
@@ -295,7 +300,21 @@ const gameMachineSetup = setup({
         pendingUpgradeCount: 0,
         activeUpgradeOfferId: null,
         recoverableError: null,
+        canEnterRunResult: false,
       }
+    }),
+    beginDeathReview: assign({
+      upgradeChoices: () => Object.freeze([]),
+      pendingUpgradeCount: () => 0,
+      activeUpgradeOfferId: () => null,
+      recoverableError: () => null,
+      canEnterRunResult: () => false,
+    }),
+    markDeathReviewReady: assign({
+      canEnterRunResult: () => true,
+    }),
+    clearDeathReviewReadiness: assign({
+      canEnterRunResult: () => false,
     }),
   },
   guards: {
@@ -306,6 +325,7 @@ const gameMachineSetup = setup({
     isOfferedUpgradeChoice: ({ context, event }) =>
       isOfferedChoice(context, event),
     isValidUpgradeOffer: ({ event }) => isValidUpgradeOffer(event),
+    canEnterRunResult: ({ context }) => context.canEnterRunResult,
   },
 })
 
@@ -313,8 +333,8 @@ const gameMachineSetup = setup({
  * Top-level lifecycle machine for one game run.
  *
  * World entities and fixed-step simulation data deliberately remain outside
- * this machine. GameHost should gate simulation steps on the RUNNING phase and
- * provide the `applySelectedUpgrade` action when wiring the runtime.
+ * this machine. GameHost selects the phase-specific fixed-step scheduler and
+ * keeps authoritative world mutation outside this lifecycle state machine.
  */
 export const gameMachine = gameMachineSetup.createMachine({
   id: 'game',
@@ -363,7 +383,10 @@ export const gameMachine = gameMachineSetup.createMachine({
             actions: 'assignInvalidUpgradeOfferError',
           },
         ],
-        PLAYER_DIED: GAME_PHASE.GAME_OVER,
+        PLAYER_DIED: {
+          target: GAME_PHASE.DEATH_REVIEW,
+          actions: 'beginDeathReview',
+        },
       },
     },
     [GAME_PHASE.PAUSED_MENU]: {
@@ -399,6 +422,18 @@ export const gameMachine = gameMachineSetup.createMachine({
             actions: 'assignInvalidUpgradeOfferError',
           },
         ],
+      },
+    },
+    [GAME_PHASE.DEATH_REVIEW]: {
+      on: {
+        DEATH_REVIEW_READY: {
+          actions: 'markDeathReviewReady',
+        },
+        ENTER_RUN_RESULT: {
+          guard: 'canEnterRunResult',
+          target: GAME_PHASE.GAME_OVER,
+          actions: 'clearDeathReviewReadiness',
+        },
       },
     },
     [GAME_PHASE.GAME_OVER]: {

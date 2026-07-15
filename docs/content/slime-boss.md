@@ -118,7 +118,7 @@ Marker 定義：
 ## 6. 移動與蠕動
 
 - 首版最大移動速度為 60 world units/s。普通怪物現在具有獨立內容定義與 `Z → BO → BAT` progression，不再假設所有普通怪共用 72 world units/s；各普通怪速度以 [`ordinary-enemies.md`](ordinary-enemies.md) 的後續調校為準。
-- 移動採平滑、具阻尼的追蹤，不允許瞬間改變 world position。
+- 一般 `RUNNING` 戰鬥中的移動採平滑、具阻尼的玩家追蹤，不允許瞬間改變 world position；玩家死亡進入 `DEATH_REVIEW` 後解除玩家 target，並依 [`player-survival.md`](player-survival.md) 改用平滑的無目標游走，不得繼續追向玩家死亡座標。
 - 蠕動是 layout anchor 在中性、寬扁、直立形狀間的連續變形；不是 renderer 私自移動 Glyph。
 - 同一個 Glyph ID 在所有 morph layouts 中都存在。形狀改變造成文字重新排成不同列，但不交換生命、不重新分配耐久。
 - 眼睛使用同一批眼睛 Cells 跟隨 face targets 移動；一般 morph 不反覆挑選新眼睛。

@@ -4,7 +4,11 @@ import {
   type PreparedGameContent,
 } from '../content/gameContent.ts'
 import type { CreatureDefinition } from '../content/creatures/creatureDefinition.ts'
-import { createSeededRng, type SeededRng } from '../core/seededRng.ts'
+import {
+  createSeededRng,
+  hashSeed,
+  type SeededRng,
+} from '../core/seededRng.ts'
 import { createSpatialHash, type SpatialHash } from '../core/spatialHash.ts'
 import { createGlyphStore, type GlyphStore } from '../glyph/glyphStore.ts'
 import {
@@ -41,6 +45,10 @@ import {
 import type { RunResult } from './runResult.ts'
 import { createPlayerSurvivalPresentationState } from './playerSurvivalPresentation.ts'
 import {
+  createPlayerDeathReviewState,
+  type PlayerDeathReviewState,
+} from './playerDeathReview.ts'
+import {
   createRunStatisticsState,
   synchronizeEquippedWeaponStatistics,
   type RunStatisticsState,
@@ -71,12 +79,14 @@ export interface WorldDiagnostics {
 
 export interface WorldState {
   readonly seed: string | number
+  readonly seedHash: number
   readonly content: PreparedGameContent
   readonly rng: SeededRng
   readonly player: PlayerState
   readonly weaponLoadout: WeaponLoadoutState
   readonly runStatistics: RunStatisticsState
   readonly upgradeState: UpgradeState
+  readonly deathReview: PlayerDeathReviewState
   readonly input: InputState
   readonly glyphStore: GlyphStore
   readonly glyphDamageQueue: GlyphDamageQueue
@@ -192,12 +202,14 @@ export function createWorldState(
 
   return {
     seed,
+    seedHash: hashSeed(seed),
     content,
     rng: createSeededRng(seed),
     player: createPlayer(),
     weaponLoadout,
     runStatistics,
     upgradeState: createUpgradeState(seed, unlockedWeaponDefinitionIds),
+    deathReview: createPlayerDeathReviewState(),
     input: {
       horizontal: 0,
       vertical: 0,
