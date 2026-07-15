@@ -72,6 +72,7 @@ export type GameMachineEvent =
   | UpgradeCommandRejectedEvent
   | { readonly type: 'PLAYER_DIED' }
   | { readonly type: 'RESTART'; readonly seed?: string | number }
+  | { readonly type: 'RETURN_TO_MAIN_MENU' }
   | { readonly type: 'DISPOSE' }
 
 function createInitialContext(): GameMachineContext {
@@ -402,6 +403,10 @@ export const gameMachine = gameMachineSetup.createMachine({
     },
     [GAME_PHASE.GAME_OVER]: {
       on: {
+        RETURN_TO_MAIN_MENU: {
+          target: GAME_PHASE.READY,
+          actions: 'resetRunContext',
+        },
         RESTART: {
           target: GAME_PHASE.RUNNING,
           actions: 'resetRunContext',

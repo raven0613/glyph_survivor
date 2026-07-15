@@ -215,6 +215,40 @@ test('enters game over before accepting further upgrade offers and can restart',
   assert.equal(actor.getSnapshot().context.seed, 'run-002')
 })
 
+test('returns from game over to a clean ready context and ignores repeated commands', () => {
+  const actor = startRunningActor()
+  actor.send({
+    type: 'UPGRADE_OFFERED',
+    offerId: 'invalid-offer',
+    choices: [upgradeChoices[0], upgradeChoices[0], upgradeChoices[2]],
+  })
+  assert.ok(actor.getSnapshot().context.recoverableError)
+
+  actor.send({ type: 'PLAYER_DIED' })
+  actor.send({ type: 'RETURN_TO_MAIN_MENU' })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.READY)
+  assert.deepEqual(actor.getSnapshot().context, {
+    seed: null,
+    upgradeChoices: [],
+    pendingUpgradeCount: 0,
+    activeUpgradeOfferId: null,
+    recoverableError: null,
+  })
+
+  actor.send({ type: 'RETURN_TO_MAIN_MENU' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.READY)
+})
+
+test('does not return to the main menu while a run is active', () => {
+  const actor = startRunningActor()
+
+  actor.send({ type: 'RETURN_TO_MAIN_MENU' })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
+  assert.equal(actor.getSnapshot().context.seed, 'test-seed')
+})
+
 test('dispose is final and idempotent from an active run', () => {
   const actor = startRunningActor()
   actor.send({ type: 'DISPOSE' })

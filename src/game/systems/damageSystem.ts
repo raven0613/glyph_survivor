@@ -18,6 +18,7 @@ import type {
 } from '../runtime/worldEntities.ts'
 import { isEnemyOutlineCollisionPhase } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import { recordWeaponDamage } from '../runtime/runStatistics.ts'
 import { getDamageSpreadBandIndex } from './damageSpreadGeometry.ts'
 import {
   selectGlyphDamage,
@@ -273,8 +274,9 @@ function collectSpreadDamage(
   }
 }
 
-function applyDamageClaims(world: WorldState): void {
+function applyDamageClaims(world: WorldState): number {
   const scratch = world.damageResolutionScratch
+  let totalAppliedDamage = 0
   for (let index = 0; index < scratch.claimCount; index += 1) {
     const claim = scratch.claims[index]
     const glyph = world.glyphStore.getById(claim.glyphId)
@@ -283,6 +285,7 @@ function applyDamageClaims(world: WorldState): void {
     }
     const wasLiving = isGlyphLivingState(glyph.state)
     const appliedDamage = world.glyphStore.applyDamage(glyph.id, claim.amount)
+    totalAppliedDamage += appliedDamage
     if (claim.isSpread && appliedDamage > 0) {
       if (claim.spreadVisualRoleId === null) {
         throw new Error('Spread damage claim is missing its visual role.')
@@ -301,6 +304,7 @@ function applyDamageClaims(world: WorldState): void {
       world.topologyDirtyOwnerIds.add(glyph.ownerId)
     }
   }
+  return totalAppliedDamage
 }
 
 function resolveDamageEvent(
@@ -340,7 +344,12 @@ function resolveDamageEvent(
     return
   }
   collectSpreadDamage(world, event, shape, candidates)
-  applyDamageClaims(world)
+  const totalAppliedDamage = applyDamageClaims(world)
+  recordWeaponDamage(
+    world.runStatistics,
+    event.sourceWeaponInstanceId,
+    totalAppliedDamage,
+  )
 
   if (lockedOwner) {
     applyWholeBodyKnockback(

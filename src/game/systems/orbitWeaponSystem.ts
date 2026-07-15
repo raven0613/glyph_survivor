@@ -193,6 +193,7 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
     )
     world.glyphDamageQueue.enqueue({
       attackEventId: getNextDamageEventId(world),
+      sourceWeaponInstanceId: orbit.sourceWeaponInstanceId,
       visualRoleId: orbit.visualRoleId,
       primaryScope: DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER,
       ownerId: enemy.id,

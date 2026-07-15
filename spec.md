@@ -61,6 +61,26 @@
 
 ---
 
+# 玩家生存
+
+玩家擁有由 Game Runtime 權威管理的生命值、最大生命值、護盾層數與最大護盾層數。這套狀態只屬於玩家，不使用 Enemy／Elite／Boss 的 Glyph Durability 模型。
+
+- 一般受擊先由護盾處理；每層護盾完整承受一次被接受的攻擊事件，不把同一次攻擊的剩餘傷害穿透到生命值。
+- 系統保留可直接傷害生命值的明確 damage route，供未來怪物能力使用；它不能靠臨時條件偷偷繞過護盾。
+- 護盾在一段沒有被接受受擊的 Gameplay simulation time 後逐層回復。選單暫停、升級暫停與結算期間不推進回復或無敵時間。
+- 目前玩家因碰觸具戰鬥碰撞的怪物完整 Glyph 輪廓而受傷；敵方投射物延後實作，但未來必須走同一套 incoming-player-damage 契約。
+- 無論還有多少護盾，只要生命值歸零，玩家就死亡並進入 `GAME_OVER`。
+
+死亡結算顯示本場 Gameplay simulation time、正式完成的怪物擊殺數、最終玩家等級，以及死亡當下仍裝備的 Weapon Instances。每把顯示其 Module Slots 與各 Module Rank、實際造成的 Glyph Durability 總傷害、該 Weapon Instance 的裝備中 Gameplay time，及由兩者計算的裝備期間平均 DPS。被替換武器不顯示，新 Weapon Instance 不繼承舊 Instance 的傷害或時間。最高總傷害武器取得金色裝飾與小皇冠；全部沒有造成傷害時不頒發皇冠。
+
+結算畫面使用與首頁一致的 React UI 風格，提供回到主畫面的操作，並保留未來可插入廣告版位的結構；目前不接入廣告 SDK。
+
+所有可調的玩家生存數值只由集中、可驗證的 config 提供；怪物接觸傷害則只由各自的 validated creature content 提供。產品文件只保存語意與約束，不複製 config default。未來生命可由藥水與自動回復卡片恢復，也可由卡片增加 maximum Health；護盾層數、回復與破裂效果也可形成其他 Build。這些卡片未納入目前里程碑；未來它們仍是占用指定 Weapon Instance ordered Module Slot 的 Module 卡。
+
+完整的受傷、護盾、無敵、死亡優先序、統計歸屬、DPS、結算與回主畫面契約見 [`docs/content/player-survival.md`](docs/content/player-survival.md)。生存 Module 的 Slot transaction 同時遵守 [`docs/content/weapon-system.md`](docs/content/weapon-system.md)。
+
+---
+
 # World
 
 整個世界都由文字組成。
@@ -605,14 +625,14 @@ GOLEM
 
 這應成為整款遊戲最具辨識度的特色。
 
-7. 任何新戰鬥功能都應先回答「它如何作用於 Glyph Cell」，而不是「它如何修改 Entity HP」。例如：
+7. 任何作用於 Enemy、Elite 或 Boss 的新戰鬥功能，都應先回答「它如何作用於 Glyph Cell」，而不是「它如何修改 Entity HP」。例如：
    - 火焰：持續降低 Glyph Durability。
    - 冰凍：改變 Glyph Material 反應，使 Glyph 不易飛散。
    - 腐蝕：持續降低 Durability，並讓受影響的 Glyph 逐步變淡。
    - 雷電：沿鄰接關係同時傷害多個 Glyph Cell。
    - 黑洞：吸引、位移並扭曲 Glyph Cell。
 
-8. 血量來自 Glyph Cell，傷害作用於 Glyph Cell，武器使 Glyph Cell 逐步劣化為 `HUSK`，Boss 分裂只重新分配 Glyph Cell；生命體在全部 Glyph Cell 成為 `HUSK` 後進入整體崩解，崩解完成才死亡與清理。
+8. Enemy、Elite 與 Boss 的血量來自 Glyph Cell，對它們的傷害作用於 Glyph Cell，武器使 Glyph Cell 逐步劣化為 `HUSK`，Boss 分裂只重新分配 Glyph Cell；生命體在全部 Glyph Cell 成為 `HUSK` 後進入整體崩解，崩解完成才死亡與清理。
 
 # 企劃補充案：代碼概念升級與視覺可讀性優化
 

@@ -1,4 +1,6 @@
-export const GAME_CONFIG = Object.freeze({
+import { assertValidPlayerSurvivalConfig } from './playerSurvival.ts'
+
+const gameConfig = {
   worldWidth: 4_000,
   worldHeight: 4_000,
   fixedStepMs: 1_000 / 60,
@@ -13,4 +15,13 @@ export const GAME_CONFIG = Object.freeze({
   renderMargin: 120,
   spatialHashCellSize: 96,
   targetSearchBudgetPerStep: 64,
-})
+  initialPlayerHealth: 2,
+  initialPlayerShieldLayers: 1,
+  shieldRechargeIntervalMs: 4_000,
+  playerDamageInvulnerabilityMs: 500,
+  playerCollisionRadius: 14,
+}
+
+assertValidPlayerSurvivalConfig(gameConfig)
+
+export const GAME_CONFIG = Object.freeze(gameConfig)

@@ -32,6 +32,18 @@ import type {
   SpawnSide,
 } from './worldEntities.ts'
 import { createUpgradeState, type UpgradeState } from './upgradeState.ts'
+import {
+  createPlayerDamageStepOutcome,
+  createPlayerSurvivalState,
+  type PlayerDamageCandidate,
+  type PlayerDamageStepOutcome,
+} from './playerSurvival.ts'
+import type { RunResult } from './runResult.ts'
+import {
+  createRunStatisticsState,
+  synchronizeEquippedWeaponStatistics,
+  type RunStatisticsState,
+} from './runStatistics.ts'
 
 export interface WorldDiagnostics {
   droppedSimulationTimeMs: number
@@ -62,6 +74,7 @@ export interface WorldState {
   readonly rng: SeededRng
   readonly player: PlayerState
   readonly weaponLoadout: WeaponLoadoutState
+  readonly runStatistics: RunStatisticsState
   readonly upgradeState: UpgradeState
   readonly input: InputState
   readonly glyphStore: GlyphStore
@@ -85,6 +98,9 @@ export interface WorldState {
   readonly obstacles: Bounds[]
   readonly enemySpatialHash: SpatialHash<EnemyState>
   readonly collisionCandidates: EnemyState[]
+  readonly playerContactCandidates: EnemyState[]
+  readonly playerDamageCandidates: PlayerDamageCandidate[]
+  readonly playerDamageStepOutcome: PlayerDamageStepOutcome
   readonly spawnCandidates: EnemyState[]
   readonly targetCandidates: EnemyState[]
   readonly diagnostics: WorldDiagnostics
@@ -97,6 +113,8 @@ export interface WorldState {
   nextOrbitAttackId: number
   nextDamageEventId: number
   nextDamageTransferLinkId: number
+  nextPlayerDamageEventId: number
+  playerDamageCandidateCount: number
   collectedXpThisStep: number
   targetSearchCursor: number
   activeEnemyCount: number
@@ -105,6 +123,7 @@ export interface WorldState {
   firstWaveStarted: boolean
   pendingBossSpawnSide: SpawnSide | null
   slimeBossSpawned: boolean
+  runResult: Readonly<RunResult> | null
 }
 
 function createPlayer(): PlayerState {
@@ -122,6 +141,7 @@ function createPlayer(): PlayerState {
     lastProcessedPointerRevision: 0,
     xpIntoLevel: 0,
     level: 1,
+    survival: createPlayerSurvivalState(GAME_CONFIG),
   }
 }
 
@@ -162,6 +182,8 @@ export function createWorldState(
     weaponLoadout,
     getWeaponDefinition(content, initialWeaponDefinitionId),
   )
+  const runStatistics = createRunStatisticsState()
+  synchronizeEquippedWeaponStatistics(runStatistics, weaponLoadout)
 
   return {
     seed,
@@ -169,6 +191,7 @@ export function createWorldState(
     rng: createSeededRng(seed),
     player: createPlayer(),
     weaponLoadout,
+    runStatistics,
     upgradeState: createUpgradeState(seed, unlockedWeaponDefinitionIds),
     input: {
       horizontal: 0,
@@ -204,6 +227,9 @@ export function createWorldState(
     obstacles: [],
     enemySpatialHash: createSpatialHash(GAME_CONFIG.spatialHashCellSize),
     collisionCandidates: [],
+    playerContactCandidates: [],
+    playerDamageCandidates: [],
+    playerDamageStepOutcome: createPlayerDamageStepOutcome(),
     spawnCandidates: [],
     targetCandidates: [],
     diagnostics,
@@ -216,6 +242,8 @@ export function createWorldState(
     nextOrbitAttackId: 1,
     nextDamageEventId: 1,
     nextDamageTransferLinkId: 1,
+    nextPlayerDamageEventId: 1,
+    playerDamageCandidateCount: 0,
     collectedXpThisStep: 0,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
@@ -224,6 +252,7 @@ export function createWorldState(
     firstWaveStarted: false,
     pendingBossSpawnSide: null,
     slimeBossSpawned: false,
+    runResult: null,
   }
 }
 
@@ -236,6 +265,12 @@ export function getNextEntityId(world: WorldState): number {
 export function getNextDamageEventId(world: WorldState): number {
   const id = world.nextDamageEventId
   world.nextDamageEventId += 1
+  return id
+}
+
+export function getNextPlayerDamageEventId(world: WorldState): number {
+  const id = world.nextPlayerDamageEventId
+  world.nextPlayerDamageEventId += 1
   return id
 }
 

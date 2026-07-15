@@ -1,8 +1,8 @@
 # SLIME Boss Content Sheet
 
-> 狀態：M4 已完成 Slime Phase、分體、重新聚合與 Encounter Death；本文已納入全怪物共用的 `HEALTHY → DAMAGED → HUSK` 契約。暗色基礎 palette 與 Boss 發亮階級分離的 `SLIME_BOSS` Appearance Profile 已實作；集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。PlayerHealth 與 Boss 主動攻擊仍屬後續里程碑。
+> 狀態：M4 已完成 Slime Phase、分體、重新聚合與 Encounter Death；本文已納入全怪物共用的 `HEALTHY → DAMAGED → HUSK` 契約。暗色基礎 palette 與 Boss 發亮階級分離的 `SLIME_BOSS` Appearance Profile 已實作；集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。玩家生存契約已移至 [`player-survival.md`](player-survival.md)，Runtime implementation 尚未完成；Boss 主動攻擊仍屬後續里程碑。
 
-本文是第一隻 Boss `SLIME` 的專屬內容設定。跨怪物共用的生命、Glyph、分裂守恆與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；不要把本文的史萊姆數值搬進 `AGENTS.md`。
+本文是第一隻 Boss `SLIME` 的專屬內容設定。跨怪物共用的生命、Glyph、分裂守恆與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；玩家接觸受傷、護盾與死亡則以 [`player-survival.md`](player-survival.md) 為準。不要把本文的史萊姆數值搬進 `AGENTS.md`。
 
 本文中的欄位名稱是預定的內容契約名稱。正式實作時可依 TypeScript 型別微調命名，但不得改變其語意或把它們變成第二套可變 HP。
 
@@ -22,7 +22,7 @@
 | 預設 Material | `SLIME` |
 | Appearance Profile | `SLIME_BOSS` semantic role |
 | 最大移動速度 | 60 world units/s |
-| 接觸傷害 | 每次被接受的接觸命中為 1 Player HP |
+| 接觸傷害 | 由 prepared Boss Definition 的 `contactDamage` 提供 |
 | 分體固定基準 | 根史萊姆最初設定的 50 Cells |
 | 獨立分體門檻 | `ceil(50 × 0.30) = 15` 個 Living Cells；15 格也算通過 |
 
@@ -189,9 +189,9 @@ M3 首版 `SLIME` Material 數值為：
 - 史萊姆不走普通怪 director 的一般生成路徑。首版在第一波同側、鏡頭外的合法位置生成；找不到合法位置時延後 Boss request，不得強塞進視野或障礙物。
 - 史萊姆使用 seeded 0.3–0.5 秒文字聚合生成階段；Runtime 決定何時轉為 Active，renderer 只顯示狀態。
 
-`contactDamage = 1 Player HP` 是已固定的內容值。PlayerHealth 尚未實作，因此本階段只保留契約，不加入無法正確執行的 dormant damage code。未來一次接觸事件只造成一次 1 HP，不按接觸 Glyph 數量或每個 fixed step 重複扣血；重複命中的 invulnerability／cooldown 由 PlayerHealth 契約定義。
+Prepared Slime definition 的 `contactDamage` 是此 Boss 接觸傷害的唯一可調來源，本文不複製其 default。一次 owner contact 只產生一個候選 incoming-damage event，不按接觸 Glyph 數量或每個 fixed step 直接重複扣血；事件是否被接受、護盾 routing、global invulnerability 與回復計時均由 [`player-survival.md`](player-survival.md) 定義。
 
-未來的接觸判定必須使用 Living 與 Husk 共同構成的完整史萊姆輪廓；不得因局部 Cells 進入 Husk 而縮小玩家面對的接觸 hitbox。只有 Encounter 進入 `COLLAPSING` 後才停用 Gameplay collision。
+玩家接觸判定只在 Slime body 處於 `ACTIVE` 或 `REASSEMBLING` 時啟用，並使用 Living 與 Husk 共同構成的完整史萊姆輪廓；文字聚合生成期間不造成玩家接觸傷害，也不得因局部 Cells 進入 Husk 而縮小玩家面對的接觸 hitbox。Encounter 進入 `COLLAPSING` 後停用 Gameplay collision。
 
 ## 10. 分體與重新聚合
 
@@ -289,7 +289,6 @@ every original glyphId has exactly one owner
 
 以下項目尚未被硬寫成產品規則，應在對應實作階段先完成可視或 headless prototype，再回填本文：
 
-- 生成聚合期間是否可受傷、可碰撞，以及 Active 切換當步的精確順序。
+- 生成聚合期間是否可被玩家武器鎖定／傷害，以及 Active 切換當步的精確順序；對玩家的接觸傷害已明確關閉，不在此待定項目內。
 - Boss spawn 的每次候選上限、retry cadence，以及第一波同側在世界邊界無合法點時的 seeded fallback side。
-- PlayerHealth 的接觸無敵時間／重複命中 cooldown。
 - Boss 主動攻擊、`COLLAPSING` 的演出時長／視覺調校，以及獎勵內容；`ACTIVE → COLLAPSING → DEFEATED → reward／cleanup` 的順序已固定，不在此列。

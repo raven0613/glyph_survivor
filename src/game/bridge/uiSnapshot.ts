@@ -43,9 +43,40 @@ export interface UiEquippedWeapon {
   readonly moduleSlots: readonly (Readonly<UiWeaponModuleSlot> | null)[]
 }
 
+export interface UiRunResultModuleSlot {
+  readonly slotIndex: number
+  readonly moduleDefinitionId: string
+  readonly title: string
+  readonly rank: number
+}
+
+export interface UiRunResultWeapon {
+  readonly instanceId: number
+  readonly definitionId: string
+  readonly title: string
+  readonly identityGlyph: string
+  readonly moduleSlots: readonly (Readonly<UiRunResultModuleSlot> | null)[]
+  readonly totalDamage: number
+  readonly equippedGameplayTimeMs: number
+  readonly averageEquippedDps: number | null
+  readonly isHighestDamage: boolean
+}
+
+export interface UiRunResult {
+  readonly gameplayTimeMs: number
+  readonly killCount: number
+  readonly finalPlayerLevel: number
+  readonly weapons: readonly Readonly<UiRunResultWeapon>[]
+}
+
 export interface UiSnapshot {
   readonly phase: string
   readonly seed: string | number | null
+  readonly currentHealth: number
+  readonly maximumHealth: number
+  readonly currentShieldLayers: number
+  readonly maximumShieldLayers: number
+  readonly runResult: Readonly<UiRunResult> | null
   readonly xp: number
   readonly xpToNext: number
   readonly level: number
@@ -61,6 +92,11 @@ export interface UiSnapshot {
 }
 
 export interface GameplayUiData {
+  readonly currentHealth: number
+  readonly maximumHealth: number
+  readonly currentShieldLayers: number
+  readonly maximumShieldLayers: number
+  readonly runResult: Readonly<UiRunResult> | null
   readonly xp: number
   readonly xpToNext: number
   readonly level: number
@@ -69,6 +105,11 @@ export interface GameplayUiData {
 }
 
 const EMPTY_GAMEPLAY_UI: Readonly<GameplayUiData> = Object.freeze({
+  currentHealth: 0,
+  maximumHealth: 0,
+  currentShieldLayers: 0,
+  maximumShieldLayers: 0,
+  runResult: null,
   xp: 0,
   xpToNext: 5,
   level: 1,
@@ -95,6 +136,11 @@ interface MachineSnapshotForUi {
 export const INITIAL_UI_SNAPSHOT: Readonly<UiSnapshot> = Object.freeze({
   phase: 'BOOT',
   seed: null,
+  currentHealth: 0,
+  maximumHealth: 0,
+  currentShieldLayers: 0,
+  maximumShieldLayers: 0,
+  runResult: null,
   xp: 0,
   xpToNext: 5,
   level: 1,
@@ -167,10 +213,34 @@ export function createUiSnapshot(
       }),
     ),
   )
+  const copiedRunResult = gameplayUi.runResult
+    ? Object.freeze({
+        gameplayTimeMs: gameplayUi.runResult.gameplayTimeMs,
+        killCount: gameplayUi.runResult.killCount,
+        finalPlayerLevel: gameplayUi.runResult.finalPlayerLevel,
+        weapons: Object.freeze(
+          gameplayUi.runResult.weapons.map((weapon) =>
+            Object.freeze({
+              ...weapon,
+              moduleSlots: Object.freeze(
+                weapon.moduleSlots.map((slot) =>
+                  slot ? Object.freeze({ ...slot }) : null,
+                ),
+              ),
+            }),
+          ),
+        ),
+      })
+    : null
 
   return Object.freeze({
     phase: machineSnapshot.value,
     seed: machineSnapshot.context.seed,
+    currentHealth: gameplayUi.currentHealth,
+    maximumHealth: gameplayUi.maximumHealth,
+    currentShieldLayers: gameplayUi.currentShieldLayers,
+    maximumShieldLayers: gameplayUi.maximumShieldLayers,
+    runResult: copiedRunResult,
     xp: gameplayUi.xp,
     xpToNext: gameplayUi.xpToNext,
     level: gameplayUi.level,

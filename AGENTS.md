@@ -6,6 +6,8 @@ Read `spec.md` before designing or changing gameplay. `spec.md` is the product s
 
 Before designing or changing weapons, run loadouts, upgrade cards, Module Slots, Module Rank, weapon replacement, or the related UI flow, also read [`docs/content/weapon-system.md`](docs/content/weapon-system.md). That file is the detailed weapon-system content and transaction contract; `spec.md` still wins on product intent, and this file still wins on cross-layer architecture.
 
+Before designing or changing player health, shields, incoming player damage, player contact collision, player death, run results or statistics, the game-over flow, return to the main menu, or related survival Module cards, also read [`docs/content/player-survival.md`](docs/content/player-survival.md). That file is the detailed player-survival and run-settlement contract; survival Module cards are additionally subject to [`docs/content/weapon-system.md`](docs/content/weapon-system.md). `spec.md` still wins on product intent, and this file still wins on cross-layer architecture.
+
 ## 1. Project status
 
 - The repository currently contains the default Vite/React starter UI.
@@ -21,7 +23,7 @@ These rules come directly from `spec.md` and must survive refactors:
 - Player, enemies, bosses, projectiles, explosions, particles, drops, effects, and UI should use text/ASCII as the primary visual language.
 - A Glyph is an independently controllable gameplay Cell, not merely a decorative character.
 - Every Enemy, Elite, and Boss is composed of Glyph Cells. Glyph Cells are the smallest authoritative units of creature life and combat.
-- Damage always changes Glyph Cell durability. Creature HP and max HP are read-only aggregates derived from Glyph durability, never independent mutable combat state.
+- Damage dealt to an Enemy, Elite, or Boss always changes Glyph Cell durability. Creature HP and max HP are read-only aggregates derived from Glyph durability, never independent mutable combat state.
 - Every Enemy, Elite, and Boss Glyph follows the same `HEALTHY → DAMAGED → HUSK` life cycle. A Husk has zero current durability and cannot take further durability damage, but remains an authoritative, dimly rendered Cell in the creature's full gameplay outline and hitbox.
 - A creature starts `COLLAPSING` only when all of its Glyph Cells are Husks. Rewards and cleanup happen only after that whole-body collapse resolves.
 - Primary hit effects remain local to the DamageShape's actual Impact Cells, including Husks. Direct durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk. An explicit Damage Spread profile may additionally damage living Cells in exterior spatial bands and give those Cells spread-specific feedback whose tint follows the source attack's `PLAYER_ATTACK_VISUAL_ROLE` accent family; a frontier-only direct target may receive a faint rendering-only transfer link, but neither case inherits the primary Material impulse implicitly.
@@ -72,7 +74,7 @@ The ownership rules are:
 
 ### MUST
 
-- Keep React limited to UI, menus, settings, HUD, upgrade choices, pause overlays, and game-over screens.
+- Keep React limited to UI, menus, settings, HUD, choices, overlays, and React-owned non-gameplay DOM screens.
 - Implement the game loop, gameplay state, systems, and PixiJS canvas code as ordinary ESM modules under `src/game/**`.
 - Use `.ts` for every project-authored executable source/config module and `.tsx` for React components that contain JSX. Do not add `.js` files outside dependencies or generated artifacts.
 - Use TypeScript types for module contracts and runtime validation at important cross-boundary entry points.
@@ -92,7 +94,7 @@ The ownership rules are:
 - Do not import React from `src/game/**`.
 - Do not import PixiJS outside `src/game/rendering/**` or a narrowly scoped asset/bootstrap adapter.
 - Do not import DOM APIs into gameplay core modules.
-- Do not store HP, damage rules, AI state, or authoritative positions on Pixi display objects.
+- Do not store authoritative gameplay state, damage rules, AI state, or authoritative positions on Pixi display objects.
 - Do not read a Sprite/Particle position back into gameplay state.
 - Do not embed species-, weapon-, drop-, effect-, obstacle-, or background-specific battle-canvas colors in gameplay definitions, render adapters, or React SCSS. Authoring `#RRGGBB` literals belong only to the centralized theme config; prepared numeric tints are derived data and must not be duplicated as hand-authored product colors.
 - Do not create one expensive `Text` or `HTMLText` object per Glyph for large enemy bodies.
@@ -106,7 +108,7 @@ Create only the directories required by the current milestone, but preserve thes
 src/
   app/                         React-only application shell
     components/                Reusable UI components
-    screens/                   Menu, Settings, Upgrade, GameOver
+    screens/                   React-owned non-gameplay DOM screens
     hooks/                     useGameCommands, useGameUiSnapshot
 
   game/                        Plain ESM TypeScript; never imports React
@@ -221,7 +223,6 @@ Recommended responsibilities:
   <InitialWeaponScreen /> visible in READY before startRun
   <UpgradeScreen />    visible only in PAUSED_UPGRADE
   <PauseMenu />
-  <GameOverScreen />
 ```
 
 The bridge API should remain small and explicit. A representative shape is:
@@ -244,7 +245,6 @@ gameHost.acquireWeapon({
   replacedWeaponInstanceId,
 })
 gameHost.updateSettings(settings)
-gameHost.restart()
 gameHost.dispose()
 
 const unsubscribe = gameHost.subscribeUi((uiSnapshot) => {})
@@ -252,7 +252,7 @@ const unsubscribe = gameHost.subscribeUi((uiSnapshot) => {})
 
 Rules:
 
-- `subscribeUi` publishes only UI-sized data: phase, HP, max HP, XP, level, timer, initial weapon choices, upgrade choices, equipped-weapon and Module-Slot summaries, target eligibility, boss summary, and recoverable errors.
+- `subscribeUi` publishes only UI-sized data: phase, feature-defined HUD and end-of-run summaries, initial weapon choices, upgrade choices, equipped-weapon and Module-Slot summaries, target eligibility, boss summaries, and recoverable errors. Feature-specific fields belong to their detailed content contracts.
 - Do not include entity arrays, Glyph arrays, projectiles, particles, Pixi objects, or mutable WorldState references.
 - Publish when relevant UI values change or on a low-frequency throttle. Do not publish at display refresh rate by default.
 - React StrictMode may mount, clean up, and mount again. GameHost initialization and disposal must not leak a ticker, RAF, event listener, canvas, or asset subscription.
@@ -264,15 +264,11 @@ Rules:
 Use an explicit phase/state machine rather than scattered booleans:
 
 ```text
-BOOT
-  → LOADING
-  → READY
-  → RUNNING
-  ↔ PAUSED_MENU
-  → PAUSED_UPGRADE
-  → RUNNING
-  → GAME_OVER
-  → DISPOSED
+BOOT → LOADING → READY → RUNNING
+                         ↔ PAUSED_MENU
+                         → PAUSED_UPGRADE → RUNNING
+                         → GAME_OVER → READY
+any non-final phase      → DISPOSED
 ```
 
 Required behavior:
@@ -787,11 +783,12 @@ publishes weapon-specific Range previews without letting React derive combat val
 Before changing code:
 
 1. Read the relevant section of `spec.md`.
-2. For weapon, loadout, Module, upgrade-card, or replacement work, read `docs/content/weapon-system.md` completely.
-3. Inspect nearby code and the current repository structure.
-4. Identify the owning layer and verify dependency direction.
-5. State assumptions only when the spec and relevant content document are silent.
-6. Prefer the smallest vertical slice that proves the architecture.
+2. For player health, shields, incoming player damage, player death, run results, or game-over／return-to-menu work, read `docs/content/player-survival.md` completely.
+3. For weapon, loadout, Module, upgrade-card, or replacement work, read `docs/content/weapon-system.md` completely.
+4. Inspect nearby code and the current repository structure.
+5. Identify the owning layer and verify dependency direction.
+6. State assumptions only when the spec and relevant content document are silent.
+7. Prefer the smallest vertical slice that proves the architecture.
 
 When adding a feature:
 
@@ -808,7 +805,7 @@ Before declaring completion, check:
 - Is authoritative state still outside Pixi objects?
 - Are all project-authored executable source/config modules still `.ts` or `.tsx`, with no new `.js` files outside dependencies or generated artifacts?
 - Can the gameplay behavior run headlessly?
-- Are pause, restart, and disposal correct?
+- Are pause, reset, and disposal correct?
 - Are temporary objects pooled when they are high frequency?
 - Do local damage and Boss split invariants still hold?
 - Did the change add a reverse or circular dependency?

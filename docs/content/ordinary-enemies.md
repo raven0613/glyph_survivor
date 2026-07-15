@@ -2,7 +2,7 @@
 
 > 狀態：首版 multi-enemy progression、權威 Body Motion、rotation rendering、`BO` 直向 Body Blueprint，以及暗色基礎 palette／發亮階級分離的 Appearance Profile 皆已實作。集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。本文列出的首輪數值是可調 content defaults，不是永久產品不變量。
 
-本文定義首批普通敵人 `Z`、`BO`、`BAT` 的文字身分、Body Blueprint、色系、首次出場順序、權威 Body Motion 與效能契約。跨怪物共用的 Glyph 生命、Husk、碰撞、視覺階級與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準。
+本文定義首批普通敵人 `Z`、`BO`、`BAT` 的文字身分、Body Blueprint、色系、首次出場順序、權威 Body Motion 與效能契約。跨怪物共用的 Glyph 生命、Husk、碰撞、視覺階級與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；玩家接觸受傷的接受、護盾與無敵規則見 [`player-survival.md`](player-survival.md)。
 
 ## 1. 共用 Body Motion 契約
 
@@ -163,7 +163,7 @@ Body Motion 的首要目標是保留節奏辨識度，同時讓成本在 many-ce
 
 ## 9. 後續調校項目
 
-- `Z`／`BO`／`BAT` 目前 maximum speed 分別為 `40／56／72`，contact damage 都是 `1`；仍需依實際手感調校。
+- `Z`／`BO`／`BAT` 目前 maximum speed 分別為 `40／56／72`；各 Creature Definition 的 `contactDamage` 是獨立可調 content，本文不複製其 default。
 - Stage 1／2／3 目前以 successful spawn count `0／8／16` 切換且互斥；是否改用時間、事件門檻或解鎖後混合先前種類仍可調整。
 - 各動作目前使用 `620／440／360 ms` cycle；position amplitude、rotation angle、hold 長度與 movement-intensity curve 仍需實機微調。
 - 是否需要依 profiling 將 rotation-enabled Glyph views 分到獨立 batch；未量測前不增加額外 scene layers。

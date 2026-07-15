@@ -11,6 +11,7 @@ import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 export interface RenderAdapter {
   getViewportSize(): { readonly width: number; readonly height: number }
   render(snapshot: Readonly<RenderSnapshot>): void
+  clear(): void
   dispose(): void
 }
 
@@ -66,6 +67,7 @@ export async function createRenderAdapter(
         return
       }
 
+      scene.player.visible = true
       scene.worldRoot.position.set(
         snapshot.viewportWidth / 2 - snapshot.cameraX,
         snapshot.viewportHeight / 2 - snapshot.cameraY,
@@ -78,6 +80,24 @@ export async function createRenderAdapter(
       orbitViews.sync(snapshot.orbits)
       dropViews.sync(snapshot.drops)
       flameViews.sync(snapshot.flameEmitters)
+      application.render()
+    },
+
+    clear() {
+      if (isDisposed) {
+        return
+      }
+
+      // Empty syncs release active views back to reusable pools without
+      // destroying Pixi resources retained by the GameHost.
+      enemyViews.sync([])
+      effectViews.sync([])
+      damageTransferLinkViews.sync([])
+      projectileViews.sync([])
+      orbitViews.sync([])
+      dropViews.sync([])
+      flameViews.sync([])
+      scene.player.visible = false
       application.render()
     },
 

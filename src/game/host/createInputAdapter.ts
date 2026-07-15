@@ -9,6 +9,7 @@ export interface ViewportSize {
 export interface InputAdapter {
   sample(target: InputState): void
   clearMovement(): void
+  reset(): void
   dispose(): void
 }
 
@@ -71,6 +72,14 @@ export function createInputAdapter(
     pressedKeys.clear()
   }
 
+  function resetInputState(): void {
+    pressedKeys.clear()
+    pointerScreenX = 0
+    pointerScreenY = 0
+    hasPointer = false
+    pointerRevision = 0
+  }
+
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', handleBlur)
@@ -92,12 +101,16 @@ export function createInputAdapter(
       pressedKeys.clear()
     },
 
+    reset() {
+      resetInputState()
+    },
+
     dispose() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
       canvas.removeEventListener('pointermove', handlePointerMove)
-      pressedKeys.clear()
+      resetInputState()
     },
   })
 }

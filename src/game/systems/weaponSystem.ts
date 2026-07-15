@@ -66,6 +66,7 @@ function emitConeAttack(
       player.y + directionY * profile.attackPattern.muzzleDistance
     world.glyphDamageQueue.enqueue({
       attackEventId: getNextDamageEventId(world),
+      sourceWeaponInstanceId: weaponId,
       visualRoleId: profile.flamePresentation.visualRoleId,
       primaryScope: DAMAGE_PRIMARY_SCOPE.ALL_INTERSECTING_OWNERS,
       shapeKind: LOCAL_DAMAGE_SHAPE.CONE,

@@ -91,6 +91,7 @@ export function runCollisionSystem(world: WorldState): void {
           : projectile.launchDirectionY
       world.glyphDamageQueue.enqueue({
         attackEventId: getNextDamageEventId(world),
+        sourceWeaponInstanceId: projectile.sourceWeaponInstanceId,
         visualRoleId: projectile.visualRoleId,
         primaryScope: DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER,
         ownerId: glyph.ownerId,

@@ -16,6 +16,7 @@ import {
   type GlyphStore,
   type OwnerDurability,
 } from './glyphCell.ts'
+import { normalizeNonNegativeGameplayNumber } from '../core/gameplayNumber.ts'
 
 export { GLYPH_MATERIAL } from './glyphMaterial.ts'
 export type { GlyphMaterialId } from './glyphMaterial.ts'
@@ -33,17 +34,6 @@ export type {
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] }
 type MutableGlyphCell = Mutable<GlyphCell>
 type MutableOwnerDurability = Mutable<OwnerDurability>
-
-const DURABILITY_ZERO_EPSILON = 1e-9
-const DURABILITY_DECIMAL_SCALE = 1e12
-
-function normalizeDurability(value: number): number {
-  if (value <= DURABILITY_ZERO_EPSILON) {
-    return 0
-  }
-  return Math.round(value * DURABILITY_DECIMAL_SCALE) /
-    DURABILITY_DECIMAL_SCALE
-}
 
 function requirePositiveSafeInteger(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -227,13 +217,14 @@ export function createGlyphStore({
 
     const previousDurability = cell.currentDurability
     const rawRemainingDurability = Math.max(0, previousDurability - amount)
-    cell.currentDurability = normalizeDurability(rawRemainingDurability)
+    cell.currentDurability =
+      normalizeNonNegativeGameplayNumber(rawRemainingDurability)
     const appliedDamage = previousDurability - cell.currentDurability
     const rawOwnerDurability = Math.max(
       0,
       ownerDurability.currentDurability - appliedDamage,
     )
-    ownerDurability.currentDurability = normalizeDurability(
+    ownerDurability.currentDurability = normalizeNonNegativeGameplayNumber(
       rawOwnerDurability,
     )
     if (cell.currentDurability === 0) {

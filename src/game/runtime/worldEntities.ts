@@ -9,6 +9,7 @@ import type {
 import type { PlayerAttackVisualRoleId } from '../content/visuals/combatVisualTheme.ts'
 import type { DamageTargetMode } from '../glyph/localDamage.ts'
 import type { DamageSpreadProfile } from '../glyph/localDamage.ts'
+import type { PlayerSurvivalState } from './playerSurvival.ts'
 
 export type EnemyPhase =
   | 'MATERIALIZING'
@@ -41,6 +42,7 @@ export interface PlayerState {
   lastProcessedPointerRevision: number
   xpIntoLevel: number
   level: number
+  readonly survival: PlayerSurvivalState
 }
 
 export interface FlameEmitterState {

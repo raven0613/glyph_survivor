@@ -1,4 +1,5 @@
 import type { BossEncounterState } from '../runtime/worldEntities.ts'
+import { recordFormalKill } from '../runtime/runStatistics.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 
 function getEncounterCurrentDurability(
@@ -40,6 +41,7 @@ function resolveEncounterDeath(
     }
 
     encounter.phase = 'DEFEATED'
+    recordFormalKill(world.runStatistics)
     for (const enemy of world.enemies) {
       if (enemy.encounterId !== encounter.id) {
         continue
@@ -88,6 +90,7 @@ export function runDeathSystem(world: WorldState, deltaMs = 0): void {
       )
       if (enemy.collapseRemainingMs === 0) {
         enemy.phase = 'DEAD'
+        recordFormalKill(world.runStatistics)
       }
       continue
     }

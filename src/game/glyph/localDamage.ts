@@ -29,6 +29,7 @@ export interface DamageSpreadProfile {
 
 interface BaseGlyphDamageEvent {
   readonly attackEventId: number
+  readonly sourceWeaponInstanceId: number
   readonly visualRoleId: PlayerAttackVisualRoleId
   readonly shapeKind: LocalDamageShapeKind
   readonly shapeX: number
@@ -91,6 +92,7 @@ export function createDamageResolutionScratch(): DamageResolutionScratch {
 
 type MutableGlyphDamageEvent = {
   attackEventId: number
+  sourceWeaponInstanceId: number
   visualRoleId: PlayerAttackVisualRoleId
   primaryScope: DamagePrimaryScope
   ownerId?: number
@@ -152,6 +154,14 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
       }
       if (activeEventIds.has(input.attackEventId)) {
         throw new Error(`Duplicate active attackEventId ${input.attackEventId}.`)
+      }
+      if (
+        !Number.isSafeInteger(input.sourceWeaponInstanceId) ||
+        input.sourceWeaponInstanceId <= 0
+      ) {
+        throw new RangeError(
+          'sourceWeaponInstanceId must be a positive safe integer.',
+        )
       }
       if (!isPlayerAttackVisualRoleId(input.visualRoleId)) {
         throw new TypeError('Damage visualRoleId must be registered.')

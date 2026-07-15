@@ -40,6 +40,7 @@ function enqueueCircleAttack(
 ): void {
   world.glyphDamageQueue.enqueue({
     attackEventId: options.attackEventId,
+    sourceWeaponInstanceId: world.weaponLoadout.equipped[0].id,
     visualRoleId:
       options.visualRoleId ??
       PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
@@ -103,6 +104,12 @@ test('damages living spread targets and follows the latest successful attack rol
   )
   assert.equal(spreadGlyph.velocityX, 0)
   assert.equal(spreadGlyph.velocityY, 0)
+  assert.equal(
+    world.runStatistics.weaponByInstanceId.get(
+      world.weaponLoadout.equipped[0].id,
+    )?.totalDamage,
+    1.2,
+  )
 
   runGlyphMaterialSystem(world, 50)
   enqueueCircleAttack(world, {
@@ -122,6 +129,12 @@ test('damages living spread targets and follows the latest successful attack rol
   assert.equal(
     spreadGlyph.spreadFeedbackVisualRoleId,
     PLAYER_ATTACK_VISUAL_ROLE.FLAMETHROWER,
+  )
+  assert.equal(
+    world.runStatistics.weaponByInstanceId.get(
+      world.weaponLoadout.equipped[0].id,
+    )?.totalDamage,
+    1.4,
   )
 
   const snapshot = createRenderSnapshot()
@@ -167,6 +180,12 @@ test('keeps direct topology damage at full strength and emits a transfer link', 
   assert.equal(world.damageTransferLinks.length, 1)
   assert.equal(world.damageTransferLinks[0].sourceGlyphId, glyphs[0].id)
   assert.equal(world.damageTransferLinks[0].targetGlyphId, glyphs[1].id)
+  assert.equal(
+    world.runStatistics.weaponByInstanceId.get(
+      world.weaponLoadout.equipped[0].id,
+    )?.totalDamage,
+    1,
+  )
 
   const snapshot = createRenderSnapshot()
   writeRenderSnapshot(world, snapshot, 1)

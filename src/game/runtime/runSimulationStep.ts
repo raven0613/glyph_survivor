@@ -21,10 +21,27 @@ import { runGlyphMaterialSystem } from '../systems/glyphMaterialSystem.ts'
 import { runGlyphDiagnosticsSystem } from '../systems/glyphDiagnosticsSystem.ts'
 import { runSlimeSplitSystem } from '../systems/slimeSplitSystem.ts'
 import { runOrbitWeaponSystem } from '../systems/orbitWeaponSystem.ts'
+import { runPlayerContactSystem } from '../systems/playerContactSystem.ts'
+import { runPlayerSurvivalSystem } from '../systems/playerSurvivalSystem.ts'
+import { runStatisticsSystem } from '../systems/runStatisticsSystem.ts'
+import { finalizeRunResult } from './runResult.ts'
 import type { WorldState } from './worldState.ts'
 
-export function runSimulationStep(world: WorldState, deltaMs: number): boolean {
+export const SIMULATION_STEP_RESULT = Object.freeze({
+  CONTINUE: 'CONTINUE',
+  UPGRADE_OFFERED: 'UPGRADE_OFFERED',
+  PLAYER_DIED: 'PLAYER_DIED',
+} as const)
+
+export type SimulationStepResult =
+  (typeof SIMULATION_STEP_RESULT)[keyof typeof SIMULATION_STEP_RESULT]
+
+export function runSimulationStep(
+  world: WorldState,
+  deltaMs: number,
+): SimulationStepResult {
   world.runTimeMs += deltaMs
+  runStatisticsSystem(world, deltaMs)
   world.diagnostics.simulationStepCount += 1
   runAimSystem(world)
   runMovementSystem(world, deltaMs)
@@ -43,9 +60,17 @@ export function runSimulationStep(world: WorldState, deltaMs: number): boolean {
   runDamageSystem(world)
   runSlimeSplitSystem(world)
   runDeathSystem(world, deltaMs)
+  runPlayerContactSystem(world)
+  if (runPlayerSurvivalSystem(world)) {
+    finalizeRunResult(world)
+    runGlyphDiagnosticsSystem(world)
+    return SIMULATION_STEP_RESULT.PLAYER_DIED
+  }
   runDropSystem(world)
   const upgradeOfferCreated = runUpgradeSystem(world)
   runCleanupSystem(world)
   runGlyphDiagnosticsSystem(world)
   return upgradeOfferCreated
+    ? SIMULATION_STEP_RESULT.UPGRADE_OFFERED
+    : SIMULATION_STEP_RESULT.CONTINUE
 }

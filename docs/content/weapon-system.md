@@ -2,7 +2,7 @@
 
 > 狀態：本文記錄已確認的武器、單局裝備、升級卡與 Module Slot 產品／工程契約。首三把武器身分、Damage Spread、Projectile Count、Range、XP 曲線、XP 掉落物呈現、集中戰場 visual theme、怪物暗色基礎 palette／發亮階級分離，以及切片 1～10 已實作。集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。Damage Spread 跟隨來源 `PLAYER_ATTACK_VISUAL_ROLE` accent 色系的契約亦已實作。永久解鎖條件、卡片權重與後期內容仍待 content tuning。
 
-本文是武器系統工作的詳細入口。跨系統的產品方向以 [`spec.md`](../../spec.md) 為準，依賴方向、Runtime 權威與 Glyph 傷害規則以 [`AGENTS.md`](../../AGENTS.md) 為準。若修改武器、升級、裝備欄、Module、卡片抽選或相關 UI，必須同時閱讀這三份文件。
+本文是武器系統工作的詳細入口。跨系統的產品方向以 [`spec.md`](../../spec.md) 為準，依賴方向、Runtime 權威與 Glyph 傷害規則以 [`AGENTS.md`](../../AGENTS.md) 為準。若修改武器、升級、裝備欄、Module、卡片抽選或相關 UI，必須同時閱讀這三份文件。若工作涉及玩家生命、護盾、生存 Module、武器統計或死亡結算，還必須閱讀 [`player-survival.md`](player-survival.md)。
 
 ## 1. 核心目標
 
@@ -12,7 +12,7 @@
 2. 玩家升級時，從三張混合卡片中選擇一張；卡片可能是新武器，也可能是通用 Module。
 3. 新武器擴充或替換本局裝備；Module 則投資到指定武器的 Module Slot。
 4. 相同 Module 再次投資會在原 Slot 升階；不同 Module 可以覆蓋既有 Slot，使後期 Build 仍能調整方向。
-5. 每次投資都必須改變武器的明確能力軸或策略，並保留該武器自己的 TargetStrategy、AttackPattern、DamageShape 與 DestructionProfile 身分。
+5. 每次投資都必須改變武器或玩家生存的明確能力軸或策略；武器戰鬥類 Module 仍須保留該武器自己的 TargetStrategy、AttackPattern、DamageShape 與 DestructionProfile 身分。
 
 不要把此系統實作成全域的 `Damage +10%` 清單，也不要讓 Module 直接修改 Enemy／Boss Entity HP。所有傷害仍必須經過 Glyph Cell、Impact Cells、Damage Targets 與 Material 規則。
 
@@ -92,7 +92,7 @@
 
 替換不得退款、轉移或重新分配舊武器的 Module。未來若加入「保留部分投資」能力，必須以明確 replacement policy 選取要保留的 Slot state；不得讓一般 replacement 隱性保留效果。
 
-已經生成的獨立 gameplay projectile／attack object 使用生成瞬間的 resolved combat snapshot，武器被替換後仍可自然完成。Beam、orbit 或其他必須持續依附 Weapon Instance 的攻擊，則在 owner weapon 被替換時依其明確 lifecycle rule 結束；不得留下查不到 owner 的懸空狀態。
+已經生成的獨立 gameplay projectile／attack object 使用生成瞬間的 resolved combat snapshot，武器被替換後仍可自然完成。該 snapshot 必須保留來源 Weapon Instance ID；替換後才命中的在途攻擊仍歸屬舊 Instance，不能轉嫁或繼承到新 Instance。Beam、orbit 或其他必須持續依附 Weapon Instance 的攻擊，則在 owner weapon 被替換時依其明確 lifecycle rule 結束；不得留下查不到 owner 的懸空狀態。死亡結算只列當下裝備 Instance 的詳細歸屬規則見 [`player-survival.md`](player-survival.md)。
 
 ## 6. Module Slot 安裝、覆蓋與升階
 
@@ -126,6 +126,12 @@ Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內�
 | Knockback | `×1.25` | `×1.60` | `×2.00` | 武器 impact／root knockback strength 的總 multiplier |
 
 每個 Damage Spread Rank 的數列已包含該階完整效果；Rank III 不是在 Rank II 之外再疊加另一組第一、二圈傷害。Range III 的 `×1.50` 也代表相對於該武器 base reach 的完整總倍率，不得在 Range II 的 `×1.30` 上再次乘算。Module effect schema 必須允許 discriminated rank payload，例如 spread 的完整 band ratios，不能假設所有 Module 都只有一個 `totalMultiplier`。這些倍率／比例集中在 content，可經 playtest 替換，不是不可改動的產品常數。其他 Module 可以有不同最大 Rank 或非線性 rank table。
+
+### 6.1 未來 Player Survival Modules
+
+生命、最大生命、護盾層數、護盾回復與護盾破裂相關升級，未來仍以 `MODULE` choice 進入相同交易流程：玩家選擇 Weapon Instance、占用其 ordered Module Slot、同類升 Rank，並受覆蓋與武器替換摧毀規則約束。玩家生存效果可以由 Runtime 從目前裝備的 Module Slots 編譯成獨立 survival profile，不得為了沿用武器熱路徑而硬塞進 `ResolvedWeaponProfile`；Module Slots 仍是唯一投資來源。
+
+本里程碑不建立這些 Module definitions、Rank tables、card-pool entries、preview 或 transaction 分支，也不自行決定最大生命／護盾效果被覆蓋或替換時的 current-value 調整規則。已確認範圍與仍待決策項目集中在 [`player-survival.md`](player-survival.md)。
 
 ## 7. 混合三選一卡池
 
@@ -233,7 +239,7 @@ DamageSpreadProfile  disabled, exterior bands with per-band damage ratios
 DestructionProfile   knockback, pierce, explosion, split, erosion
 ```
 
-Module 不直接散落修改 projectile、collision 或 damage system。每個 Weapon Instance 以 definition 加上目前 Slot contents 編譯出 `ResolvedWeaponProfile`：
+武器戰鬥效果的 Module 不直接散落修改 projectile、collision 或 damage system。每個 Weapon Instance 以 definition 加上目前武器戰鬥類 Slot contents 編譯出 `ResolvedWeaponProfile`：
 
 - 只有 Slot 或 Rank 改變時增加 revision 並重新編譯。
 - fixed-step firing hot path 讀取 prepared profile，不得每步建立 modifier arrays 或重做 Rank reduction。
@@ -493,5 +499,6 @@ React 只接收 UI-sized immutable summaries，例如：
 - 元素共存、互斥或組合規則；
 - 武器成熟、進化與少量專屬 Module 的出現條件；
 - 未來是否以明確能力修改 `maximumEquippedWeapons` 或 replacement retention policy。
+- Player Survival Modules 的 Rank tables、跨武器聚合、current-value 調整與效果移除語意；確認前不得加入 card pool，詳見 [`player-survival.md`](player-survival.md)。
 
 本文件已列出的武器傷害、cadence、幾何尺寸、Module 倍率／band ratios 與 XP curve 仍是易於替換、必須驗證的 prototype defaults；實作不得把它們複製成散落的系統常數。上述尚未確認項目則不得由工程自行補完或提升成 `spec.md`／`AGENTS.md` 的永久規則。

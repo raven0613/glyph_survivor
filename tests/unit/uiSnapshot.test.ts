@@ -45,3 +45,55 @@ test('deeply copies weapon-specific upgrade previews for React', () => {
     true,
   )
 })
+
+test('publishes player survival and a deeply immutable run result', () => {
+  const snapshot = createUiSnapshot(
+    {
+      value: 'GAME_OVER',
+      context: {
+        seed: 'survival-hud',
+        upgradeChoices: [],
+        pendingUpgradeCount: 0,
+        activeUpgradeOfferId: null,
+        recoverableError: null,
+      },
+    },
+    {
+      xp: 2,
+      xpToNext: 5,
+      level: 1,
+      runTimeMs: 1_000,
+      enemyCount: 3,
+      currentHealth: 7,
+      maximumHealth: 10,
+      currentShieldLayers: 1,
+      maximumShieldLayers: 2,
+      runResult: {
+        gameplayTimeMs: 1_000,
+        killCount: 3,
+        finalPlayerLevel: 1,
+        weapons: [
+          {
+            instanceId: 1,
+            definitionId: 'weapon.assisted-o',
+            title: 'Assisted o',
+            identityGlyph: 'o',
+            moduleSlots: [null],
+            totalDamage: 8,
+            equippedGameplayTimeMs: 1_000,
+            averageEquippedDps: 8,
+            isHighestDamage: true,
+          },
+        ],
+      },
+    },
+  )
+
+  assert.equal(snapshot.currentHealth, 7)
+  assert.equal(snapshot.maximumHealth, 10)
+  assert.equal(snapshot.currentShieldLayers, 1)
+  assert.equal(snapshot.maximumShieldLayers, 2)
+  assert.equal(snapshot.runResult?.weapons[0].totalDamage, 8)
+  assert.equal(Object.isFrozen(snapshot.runResult), true)
+  assert.equal(Object.isFrozen(snapshot.runResult?.weapons[0]), true)
+})

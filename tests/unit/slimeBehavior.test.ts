@@ -225,6 +225,7 @@ test('keeps the eye accent while using the Slime hit color family', () => {
 
   world.glyphDamageQueue.enqueue({
     attackEventId: 1,
+    sourceWeaponInstanceId: world.weaponLoadout.equipped[0].id,
     visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
     primaryScope: 'LOCKED_OWNER',
     ownerId: slime.id,

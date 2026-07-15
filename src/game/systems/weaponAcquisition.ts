@@ -7,6 +7,7 @@ import {
   type WeaponLoadoutState,
 } from '../runtime/weaponLoadout.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import { synchronizeEquippedWeaponStatistics } from '../runtime/runStatistics.ts'
 import {
   completeUpgradeTransaction,
   getQueuedUpgradeOfferError,
@@ -131,6 +132,10 @@ export function acquireWeaponFromOffer(
   }
 
   commitLoadout(world.weaponLoadout, provisionalLoadout)
+  synchronizeEquippedWeaponStatistics(
+    world.runStatistics,
+    world.weaponLoadout,
+  )
   if (command.replacedWeaponInstanceId !== undefined) {
     removeOrbitAttacksForWeapon(world, command.replacedWeaponInstanceId)
   }

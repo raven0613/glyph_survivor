@@ -9,6 +9,7 @@ import {
   createRenderSnapshot,
   writeRenderSnapshot,
 } from '../bridge/renderSnapshot.ts'
+import { clearRenderSnapshot } from '../bridge/renderSnapshotLifecycle.ts'
 import {
   prepareGameContent,
   type PreparedGameContent,
@@ -16,7 +17,10 @@ import {
 import { createRenderAdapter } from '../rendering/createRenderAdapter.ts'
 import { createGameLoop } from '../runtime/createGameLoop.ts'
 import { GAME_PHASE, gameMachine } from '../runtime/gameMachine.ts'
-import { runSimulationStep } from '../runtime/runSimulationStep.ts'
+import {
+  SIMULATION_STEP_RESULT,
+  runSimulationStep,
+} from '../runtime/runSimulationStep.ts'
 import type { UpgradeOffer } from '../runtime/upgradeState.ts'
 import { createWorldState, type WorldState } from '../runtime/worldState.ts'
 import { getXpToNextLevel } from '../content/upgrades/levelProgression.ts'
@@ -48,6 +52,7 @@ export interface GameHost {
   startRun(options: StartRunOptions): void
   acquireWeapon(options: AcquireWeaponCommand): void
   installModule(options: InstallModuleCommand): void
+  returnToMainMenu(): void
   subscribeUi(listener: UiSnapshotListener): () => void
   getUiSnapshot(): Readonly<UiSnapshot>
   dispose(): void
@@ -71,6 +76,11 @@ function isValidSeed(seed: unknown): seed is string | number {
 function getGameplayUi(world: WorldState | null): GameplayUiData {
   return world
     ? {
+        currentHealth: world.player.survival.currentHealth,
+        maximumHealth: world.player.survival.maximumHealth,
+        currentShieldLayers: world.player.survival.currentShieldLayers,
+        maximumShieldLayers: world.player.survival.maximumShieldLayers,
+        runResult: world.runResult,
         xp: world.player.xpIntoLevel,
         xpToNext: getXpToNextLevel(
           world.content.levelProgression,
@@ -80,7 +90,18 @@ function getGameplayUi(world: WorldState | null): GameplayUiData {
         runTimeMs: world.runTimeMs,
         enemyCount: world.enemies.length,
       }
-    : { xp: 0, xpToNext: 5, level: 1, runTimeMs: 0, enemyCount: 0 }
+    : {
+        currentHealth: 0,
+        maximumHealth: 0,
+        currentShieldLayers: 0,
+        maximumShieldLayers: 0,
+        runResult: null,
+        xp: 0,
+        xpToNext: 5,
+        level: 1,
+        runTimeMs: 0,
+        enemyCount: 0,
+      }
 }
 
 /** Owns browser adapters, authoritative runtime state, and lifecycle commands. */
@@ -154,8 +175,19 @@ export async function createGameHost({
       }
 
       inputAdapter.sample(world.input)
-      const upgradeOfferCreated = runSimulationStep(world, fixedStepMs)
-      if (upgradeOfferCreated && world.upgradeState.activeOffer) {
+      const stepResult = runSimulationStep(world, fixedStepMs)
+      if (stepResult === SIMULATION_STEP_RESULT.PLAYER_DIED) {
+        inputAdapter.clearMovement()
+        world.input.horizontal = 0
+        world.input.vertical = 0
+        gameActor.send({ type: 'PLAYER_DIED' })
+        publishUi()
+        return
+      }
+      if (
+        stepResult === SIMULATION_STEP_RESULT.UPGRADE_OFFERED &&
+        world.upgradeState.activeOffer
+      ) {
         inputAdapter.clearMovement()
         world.input.horizontal = 0
         world.input.vertical = 0
@@ -289,6 +321,23 @@ export async function createGameHost({
       }
 
       publishUpgradeCommandResult(installModuleFromOffer(world, options))
+    },
+
+    returnToMainMenu() {
+      if (
+        isDisposed ||
+        !world ||
+        gameActor.getSnapshot().value !== GAME_PHASE.GAME_OVER
+      ) {
+        return
+      }
+
+      inputAdapter.reset()
+      clearRenderSnapshot(renderSnapshot)
+      renderAdapter.clear()
+      world = null
+      lastUiPublishTimeMs = 0
+      gameActor.send({ type: 'RETURN_TO_MAIN_MENU' })
     },
 
     subscribeUi(listener: UiSnapshotListener) {

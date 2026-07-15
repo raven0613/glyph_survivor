@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { InitialWeaponScreen } from './app/screens/InitialWeaponScreen.tsx'
+import { GameOverScreen } from './app/screens/GameOverScreen.tsx'
 import { UpgradeScreen } from './app/screens/UpgradeScreen.tsx'
 import type { UpgradeCommitCommand } from './app/screens/upgradeDecision.ts'
 import { INITIAL_UI_SNAPSHOT } from './game/bridge/uiSnapshot.ts'
@@ -26,6 +27,7 @@ function App() {
   )
   const isReady = uiSnapshot.phase === 'READY'
   const isUpgradePaused = uiSnapshot.phase === 'PAUSED_UPGRADE'
+  const isGameOver = uiSnapshot.phase === 'GAME_OVER'
   const hasStarted = !['BOOT', 'LOADING', 'READY'].includes(uiSnapshot.phase)
 
   useEffect(() => {
@@ -105,6 +107,10 @@ function App() {
     })
   }
 
+  function handleReturnToMainMenu(): void {
+    gameHostRef.current?.returnToMainMenu()
+  }
+
   return (
     <div className={`game-page${hasStarted ? ' game-page--started' : ''}`}>
       <header className="site-header">
@@ -148,8 +154,13 @@ function App() {
           />
         )}
 
-        {hasStarted && (
+        {hasStarted && !isGameOver && (
           <aside className="game-hud" aria-label="Run status">
+            <span>HP {uiSnapshot.currentHealth}/{uiSnapshot.maximumHealth}</span>
+            <span>
+              SHIELD {uiSnapshot.currentShieldLayers}/
+              {uiSnapshot.maximumShieldLayers}
+            </span>
             <span>LV.{uiSnapshot.level}</span>
             <span>XP {uiSnapshot.xp}/{uiSnapshot.xpToNext}</span>
             <span>ENEMIES {uiSnapshot.enemyCount}</span>
@@ -167,6 +178,13 @@ function App() {
             pendingUpgradeCount={uiSnapshot.pendingUpgradeCount}
             recoverableError={uiSnapshot.recoverableError}
             onCommit={handleUpgradeCommit}
+          />
+        )}
+
+        {isGameOver && uiSnapshot.runResult && (
+          <GameOverScreen
+            result={uiSnapshot.runResult}
+            onReturnToMainMenu={handleReturnToMainMenu}
           />
         )}
       </main>
