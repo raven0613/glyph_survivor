@@ -1,131 +1,25 @@
-import type { GlyphBodySlotRole } from '../../glyph/glyphLayout.ts'
+import {
+  GLYPH_APPEARANCE_PROFILE,
+  GLYPH_BRIGHTNESS_TIER,
+  PLAYER_ATTACK_VISUAL_ROLE,
+  type CombatVisualTheme,
+  type CombatVisualThemeAuthoring,
+  type GlyphAppearanceProfile,
+  type GlyphAppearanceProfileId,
+  type GlyphBrightnessTier,
+  type GlyphBrightnessTierId,
+  type HexColor,
+  type PlayerAttackAppearance,
+  type PlayerAttackVisualRoleId,
+  type VisualColor,
+} from './combatVisualThemeTypes.ts'
+import {
+  preparePlayerSurvivalVisualTheme,
+  validateAndFreezePlayerSurvivalVisualTheme,
+} from './playerSurvivalVisualTheme.ts'
 
-export const GLYPH_APPEARANCE_PROFILE = Object.freeze({
-  ZOMBIE: 'ZOMBIE',
-  BONE: 'BONE',
-  BAT: 'BAT',
-  SLIME_BOSS: 'SLIME_BOSS',
-} as const)
-
-export type GlyphAppearanceProfileId =
-  (typeof GLYPH_APPEARANCE_PROFILE)[keyof typeof GLYPH_APPEARANCE_PROFILE]
-
-export function isGlyphAppearanceProfileId(
-  value: unknown,
-): value is GlyphAppearanceProfileId {
-  return Object.values(GLYPH_APPEARANCE_PROFILE).some(
-    (profileId) => profileId === value,
-  )
-}
-
-export const GLYPH_BRIGHTNESS_TIER = Object.freeze({
-  ORDINARY: 'ORDINARY',
-  BOSS: 'BOSS',
-} as const)
-
-export type GlyphBrightnessTierId =
-  (typeof GLYPH_BRIGHTNESS_TIER)[keyof typeof GLYPH_BRIGHTNESS_TIER]
-
-export const PLAYER_ATTACK_VISUAL_ROLE = Object.freeze({
-  ASSISTED_PROJECTILE: 'ASSISTED_PROJECTILE',
-  FLAMETHROWER: 'FLAMETHROWER',
-  ORBIT_ENERGY: 'ORBIT_ENERGY',
-} as const)
-
-export type PlayerAttackVisualRoleId =
-  (typeof PLAYER_ATTACK_VISUAL_ROLE)[keyof typeof PLAYER_ATTACK_VISUAL_ROLE]
-
-export function isPlayerAttackVisualRoleId(
-  value: unknown,
-): value is PlayerAttackVisualRoleId {
-  return Object.values(PLAYER_ATTACK_VISUAL_ROLE).some(
-    (roleId) => roleId === value,
-  )
-}
-
-export type HexColor = `#${string}`
-
-export interface VisualColor<ColorValue = number> {
-  readonly tint: ColorValue
-  readonly alpha: number
-}
-
-export interface GlyphAppearanceProfile<ColorValue = number> {
-  readonly id: GlyphAppearanceProfileId
-  readonly brightnessTierId: GlyphBrightnessTierId
-  readonly durabilityBaseTints: readonly ColorValue[]
-  readonly eyeDurabilityBaseTints: readonly ColorValue[] | null
-  readonly impactBaseTint: ColorValue
-  readonly huskBaseTint: ColorValue
-}
-
-export interface GlyphBrightnessTier {
-  readonly id: GlyphBrightnessTierId
-  readonly activeGain: number
-  readonly damagedGainFloor: number
-  readonly impactGain: number
-  readonly huskGain: number
-  readonly healthyAlpha: number
-  readonly damagedAlphaFloor: number
-  readonly impactAlphaFloor: number
-  readonly huskAlpha: number
-}
-
-export interface PlayerAttackAppearance<ColorValue = number> {
-  readonly core: VisualColor<ColorValue>
-  readonly accent: VisualColor<ColorValue>
-}
-
-export interface ExperienceDropAppearance<ColorValue = number> {
-  readonly scale: number
-  readonly fresh: VisualColor<ColorValue>
-  readonly settled: VisualColor<ColorValue>
-  readonly flash: VisualColor<ColorValue>
-  readonly freshDurationMs: number
-  readonly settleTransitionMs: number
-  readonly flashIntervalMs: number
-  readonly flashDurationMs: number
-}
-
-export interface CombatVisualTheme<ColorValue = number> {
-  readonly map: {
-    readonly canvasBackground: VisualColor<ColorValue>
-    readonly backgroundGlyph: VisualColor<ColorValue>
-    readonly obstacle: VisualColor<ColorValue>
-  }
-  readonly glyphAtlas: {
-    readonly sourceFillTint: ColorValue
-    readonly outlineTint: ColorValue
-    readonly outlineWidth: number
-  }
-  readonly player: VisualColor<ColorValue>
-  readonly playerAttacks: Readonly<
-    Record<PlayerAttackVisualRoleId, PlayerAttackAppearance<ColorValue>>
-  >
-  readonly glyphAppearances: Readonly<
-    Record<GlyphAppearanceProfileId, GlyphAppearanceProfile<ColorValue>>
-  >
-  readonly glyphBrightnessTiers: Readonly<
-    Record<GlyphBrightnessTierId, GlyphBrightnessTier>
-  >
-  readonly drops: {
-    readonly experience: ExperienceDropAppearance<ColorValue>
-    readonly other: VisualColor<ColorValue>
-  }
-  readonly effects: {
-    readonly spreadFeedbackAlpha: number
-    readonly spreadFeedbackScaleBonus: number
-    readonly spreadFeedbackDurationMs: number
-    readonly transferLink: VisualColor<ColorValue>
-  }
-}
-
-export type CombatVisualThemeAuthoring = CombatVisualTheme<HexColor>
-
-export interface GlyphPresentation {
-  readonly alpha: number
-  readonly tint: number
-}
+export * from './combatVisualThemeTypes.ts'
+export * from './glyphAppearancePresentation.ts'
 
 const ORDINARY_PROFILE_IDS = Object.freeze([
   GLYPH_APPEARANCE_PROFILE.ZOMBIE,
@@ -218,6 +112,10 @@ function prepareCombatVisualTheme(
       outlineWidth: input.glyphAtlas.outlineWidth,
     },
     player: prepareVisualColor(input.player, 'player'),
+    playerSurvival: preparePlayerSurvivalVisualTheme(
+      input.playerSurvival,
+      prepareVisualColor,
+    ),
     playerAttacks,
     glyphAppearances,
     glyphBrightnessTiers: input.glyphBrightnessTiers,
@@ -274,20 +172,6 @@ function validateVisualColor(color: VisualColor, name: string): void {
 
 function freezeVisualColor(color: VisualColor): VisualColor {
   return Object.freeze({ ...color })
-}
-
-function applyGainToChannel(channel: number, gain: number): number {
-  return Math.min(255, Math.round(channel * gain))
-}
-
-/** Applies render brightness without changing the configured base-palette role. */
-export function applyGlyphBrightnessGain(tint: number, gain: number): number {
-  requireTint(tint, 'brightness source tint')
-  requirePositiveFinite(gain, 'brightness gain')
-  const red = applyGainToChannel((tint >> 16) & 0xff, gain)
-  const green = applyGainToChannel((tint >> 8) & 0xff, gain)
-  const blue = applyGainToChannel(tint & 0xff, gain)
-  return (red << 16) | (green << 8) | blue
 }
 
 function validateGlyphBrightnessTier(
@@ -415,6 +299,14 @@ function validateAndFreezeCombatVisualTheme(
   requireTint(input.glyphAtlas.outlineTint, 'glyph atlas outline')
   requirePositiveFinite(input.glyphAtlas.outlineWidth, 'glyph atlas outlineWidth')
   validateVisualColor(input.player, 'player')
+  const playerSurvival = validateAndFreezePlayerSurvivalVisualTheme(
+    input.playerSurvival,
+    {
+      validateColor: validateVisualColor,
+      positive: requirePositiveFinite,
+      range: requireFiniteRange,
+    },
+  )
   validateVisualColor(input.drops.other, 'other drop')
   validateVisualColor(input.effects.transferLink, 'transfer link')
   requireFiniteRange(
@@ -498,6 +390,7 @@ function validateAndFreezeCombatVisualTheme(
     }),
     glyphAtlas: Object.freeze({ ...input.glyphAtlas }),
     player: freezeVisualColor(input.player),
+    playerSurvival,
     playerAttacks: Object.freeze(playerAttacks),
     glyphBrightnessTiers: Object.freeze(glyphBrightnessTiers),
     glyphAppearances: Object.freeze(glyphAppearances),
@@ -526,85 +419,4 @@ export function defineCombatVisualTheme(
   input: CombatVisualThemeAuthoring,
 ): CombatVisualTheme {
   return validateAndFreezeCombatVisualTheme(prepareCombatVisualTheme(input))
-}
-
-export function getGlyphAppearance(
-  theme: CombatVisualTheme,
-  profileId: GlyphAppearanceProfileId,
-): GlyphAppearanceProfile {
-  return theme.glyphAppearances[profileId]
-}
-
-export function getPlayerAttackAppearance(
-  theme: CombatVisualTheme,
-  roleId: PlayerAttackVisualRoleId,
-): PlayerAttackAppearance {
-  return theme.playerAttacks[roleId]
-}
-
-function resolveGlyphPaletteTint(
-  appearance: GlyphAppearanceProfile,
-  currentDurability: number,
-  role: GlyphBodySlotRole,
-): number {
-  const durabilityBaseTints =
-    role === 'EYE' && appearance.eyeDurabilityBaseTints
-      ? appearance.eyeDurabilityBaseTints
-      : appearance.durabilityBaseTints
-  const durabilityTier = Math.max(1, Math.ceil(currentDurability))
-  return durabilityBaseTints[
-    Math.min(durabilityTier - 1, durabilityBaseTints.length - 1)
-  ]
-}
-
-export function resolveGlyphBasePresentation(
-  theme: CombatVisualTheme,
-  profileId: GlyphAppearanceProfileId,
-  currentDurability: number,
-  maxDurability: number,
-  role: GlyphBodySlotRole = 'BODY',
-): GlyphPresentation {
-  const appearance = getGlyphAppearance(theme, profileId)
-  const tier = theme.glyphBrightnessTiers[appearance.brightnessTierId]
-  const paletteTint = resolveGlyphPaletteTint(
-    appearance,
-    currentDurability,
-    role,
-  )
-  if (currentDurability <= 0) {
-    return {
-      alpha: tier.huskAlpha,
-      tint: applyGlyphBrightnessGain(
-        appearance.huskBaseTint,
-        tier.huskGain,
-      ),
-    }
-  }
-  const durabilityRatio = Math.min(1, currentDurability / maxDurability)
-  const gain =
-    tier.damagedGainFloor +
-    (tier.activeGain - tier.damagedGainFloor) * durabilityRatio
-  const alpha =
-    tier.damagedAlphaFloor +
-    (tier.healthyAlpha - tier.damagedAlphaFloor) *
-      durabilityRatio
-  return {
-    alpha,
-    tint: applyGlyphBrightnessGain(paletteTint, gain),
-  }
-}
-
-export function resolveGlyphImpactPresentation(
-  theme: CombatVisualTheme,
-  profileId: GlyphAppearanceProfileId,
-): GlyphPresentation {
-  const appearance = getGlyphAppearance(theme, profileId)
-  const tier = theme.glyphBrightnessTiers[appearance.brightnessTierId]
-  return {
-    alpha: tier.impactAlphaFloor,
-    tint: applyGlyphBrightnessGain(
-      appearance.impactBaseTint,
-      tier.impactGain,
-    ),
-  }
 }

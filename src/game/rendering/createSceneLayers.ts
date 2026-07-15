@@ -18,6 +18,7 @@ export interface SceneLayers {
   readonly projectileLayer: ParticleContainer<Particle>
   readonly orbitLayer: ParticleContainer<Particle>
   readonly dropLayer: ParticleContainer<Particle>
+  readonly playerRoot: Container
   readonly player: Sprite
 }
 
@@ -151,6 +152,10 @@ export function createSceneLayers(
   })
   player.eventMode = 'none'
   player.scale.set(0.88)
+  const playerRoot = new Container({ label: 'player-root' })
+  playerRoot.eventMode = 'none'
+  playerRoot.interactiveChildren = false
+  playerRoot.addChild(player)
 
   worldRoot.addChild(
     backgroundLayer,
@@ -161,7 +166,7 @@ export function createSceneLayers(
     flameLayer,
     projectileLayer,
     orbitLayer,
-    player,
+    playerRoot,
   )
   stage.addChild(worldRoot)
 
@@ -174,6 +179,7 @@ export function createSceneLayers(
     projectileLayer,
     orbitLayer,
     dropLayer,
+    playerRoot,
     player,
   })
 }

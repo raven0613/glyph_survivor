@@ -10,6 +10,7 @@ import type { PlayerAttackVisualRoleId } from '../content/visuals/combatVisualTh
 import type { DamageTargetMode } from '../glyph/localDamage.ts'
 import type { DamageSpreadProfile } from '../glyph/localDamage.ts'
 import type { PlayerSurvivalState } from './playerSurvival.ts'
+import type { PlayerSurvivalPresentationState } from './playerSurvivalPresentation.ts'
 
 export type EnemyPhase =
   | 'MATERIALIZING'
@@ -43,6 +44,7 @@ export interface PlayerState {
   xpIntoLevel: number
   level: number
   readonly survival: PlayerSurvivalState
+  readonly survivalPresentation: PlayerSurvivalPresentationState
 }
 
 export interface FlameEmitterState {

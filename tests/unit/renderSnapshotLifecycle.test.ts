@@ -11,6 +11,11 @@ test('clears all run-owned render data before returning to ready', () => {
   snapshot.cameraY = 200
   snapshot.playerX = 300
   snapshot.playerY = 400
+  snapshot.playerSurvivalPresentation.currentShieldLayers = 3
+  snapshot.playerSurvivalPresentation.eventRevision = 4
+  snapshot.playerSurvivalPresentation.eventKind = 'SHIELD_HIT'
+  snapshot.playerSurvivalPresentation.eventElapsedMs = 20
+  snapshot.playerSurvivalPresentation.eventSeed = 9
   snapshot.enemies.push({
     id: 1,
     glyphFrame: 1,
@@ -56,6 +61,13 @@ test('clears all run-owned render data before returning to ready', () => {
   assert.equal(snapshot.cameraY, 0)
   assert.equal(snapshot.playerX, 0)
   assert.equal(snapshot.playerY, 0)
+  assert.deepEqual(snapshot.playerSurvivalPresentation, {
+    currentShieldLayers: 0,
+    eventRevision: 0,
+    eventKind: null,
+    eventElapsedMs: 0,
+    eventSeed: 0,
+  })
   assert.equal(snapshot.enemies.length, 0)
   assert.equal(snapshot.effects.length, 0)
   assert.equal(snapshot.projectiles.length, 0)

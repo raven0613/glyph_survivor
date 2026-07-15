@@ -30,6 +30,66 @@ test('converts readable #RRGGBB authoring colors to runtime tints once', () => {
     prepared.drops.experience.flash.tint,
     parseExpectedTint(authoring.drops.experience.flash.tint),
   )
+  assert.equal(
+    prepared.playerSurvival.shield.base.tint,
+    parseExpectedTint(authoring.playerSurvival.shield.base.tint),
+  )
+  assert.equal(
+    prepared.playerSurvival.healthDamage.fragment.tint,
+    parseExpectedTint(authoring.playerSurvival.healthDamage.fragment.tint),
+  )
+})
+
+test('rejects invalid player survival animation tuning', () => {
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      playerSurvival: {
+        ...theme.playerSurvival,
+        healthDamage: {
+          ...theme.playerSurvival.healthDamage,
+          fragmentCount: -1,
+        },
+      },
+    }),
+  )
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      playerSurvival: {
+        ...theme.playerSurvival,
+        shield: {
+          ...theme.playerSurvival.shield,
+          restoreDurationMs: 0,
+        },
+      },
+    }),
+  )
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      playerSurvival: {
+        ...theme.playerSurvival,
+        shield: {
+          ...theme.playerSurvival.shield,
+          glowBlurKernelSize: 6,
+        },
+      },
+    }),
+  )
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      playerSurvival: {
+        ...theme.playerSurvival,
+        shield: {
+          ...theme.playerSurvival.shield,
+          glowRadiusX: 0,
+        },
+      },
+    }),
+  )
 })
 
 test('rejects non-#RRGGBB authoring color formats', () => {

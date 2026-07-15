@@ -1,13 +1,9 @@
 import type { RenderSnapshot } from './renderSnapshot.ts'
+import { clearRenderPlayerState } from './playerRenderSnapshot.ts'
 
 /** Releases references to every view owned by the completed run. */
 export function clearRenderSnapshot(snapshot: RenderSnapshot): void {
-  snapshot.cameraX = 0
-  snapshot.cameraY = 0
-  snapshot.viewportWidth = 1
-  snapshot.viewportHeight = 1
-  snapshot.playerX = 0
-  snapshot.playerY = 0
+  clearRenderPlayerState(snapshot)
   snapshot.enemies.length = 0
   snapshot.effects.length = 0
   snapshot.projectiles.length = 0

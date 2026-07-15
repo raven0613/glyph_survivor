@@ -13,6 +13,11 @@ import {
   resolveGlyphImpactPresentation,
 } from '../content/visuals/combatVisualTheme.ts'
 import { resolveExperienceDropPresentation } from '../content/visuals/experienceDropPresentation.ts'
+import {
+  createRenderPlayerState,
+  writeRenderPlayerState,
+  type RenderPlayerState,
+} from './playerRenderSnapshot.ts'
 
 const COLLAPSE_SCATTER_DISTANCE = 42
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
@@ -57,13 +62,7 @@ export interface RenderDamageTransferLink {
   alpha: number
 }
 
-export interface RenderSnapshot {
-  cameraX: number
-  cameraY: number
-  viewportWidth: number
-  viewportHeight: number
-  playerX: number
-  playerY: number
+export interface RenderSnapshot extends RenderPlayerState {
   readonly enemies: RenderGlyph[]
   readonly effects: RenderGlyph[]
   readonly projectiles: RenderGlyph[]
@@ -125,12 +124,7 @@ function isVisible(
 
 export function createRenderSnapshot(): RenderSnapshot {
   return {
-    cameraX: GAME_CONFIG.worldWidth / 2,
-    cameraY: GAME_CONFIG.worldHeight / 2,
-    viewportWidth: 1,
-    viewportHeight: 1,
-    playerX: GAME_CONFIG.worldWidth / 2,
-    playerY: GAME_CONFIG.worldHeight / 2,
+    ...createRenderPlayerState(),
     enemies: [],
     effects: [],
     projectiles: [],
@@ -234,28 +228,7 @@ export function writeRenderSnapshot(
   snapshot: RenderSnapshot,
   interpolationAlpha: number,
 ): void {
-  const playerX = interpolate(
-    world.player.previousX,
-    world.player.x,
-    interpolationAlpha,
-  )
-  const playerY = interpolate(
-    world.player.previousY,
-    world.player.y,
-    interpolationAlpha,
-  )
-  const camera = calculateCameraView(
-    playerX,
-    playerY,
-    world.viewportWidth,
-    world.viewportHeight,
-  )
-  snapshot.cameraX = playerX
-  snapshot.cameraY = playerY
-  snapshot.viewportWidth = world.viewportWidth
-  snapshot.viewportHeight = world.viewportHeight
-  snapshot.playerX = playerX
-  snapshot.playerY = playerY
+  const camera = writeRenderPlayerState(world, snapshot, interpolationAlpha)
 
   let enemyCount = 0
   let effectCount = 0

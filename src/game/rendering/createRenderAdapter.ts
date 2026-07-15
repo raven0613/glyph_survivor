@@ -7,6 +7,7 @@ import { createFlameEmitterPool } from './flameEmitterPool.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
 import { createDamageTransferLinkPool } from './damageTransferLinkPool.ts'
 import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
+import { createPlayerSurvivalView } from './createPlayerSurvivalView.ts'
 
 export interface RenderAdapter {
   getViewportSize(): { readonly width: number; readonly height: number }
@@ -23,6 +24,12 @@ export async function createRenderAdapter(
   const application = await createPixiApp(canvas, visualTheme, signal)
   const atlas = createGlyphAtlas(visualTheme)
   const scene = createSceneLayers(application.stage, atlas, visualTheme)
+  const playerSurvivalView = createPlayerSurvivalView(
+    scene.playerRoot,
+    scene.player,
+    atlas,
+    visualTheme,
+  )
   const enemyViews = createParticleLayerPool(
     scene.enemyLayer,
     atlas.printableFrames,
@@ -67,12 +74,13 @@ export async function createRenderAdapter(
         return
       }
 
-      scene.player.visible = true
+      scene.playerRoot.visible = true
       scene.worldRoot.position.set(
         snapshot.viewportWidth / 2 - snapshot.cameraX,
         snapshot.viewportHeight / 2 - snapshot.cameraY,
       )
-      scene.player.position.set(snapshot.playerX, snapshot.playerY)
+      scene.playerRoot.position.set(snapshot.playerX, snapshot.playerY)
+      playerSurvivalView.sync(snapshot.playerSurvivalPresentation)
       enemyViews.sync(snapshot.enemies)
       effectViews.sync(snapshot.effects)
       damageTransferLinkViews.sync(snapshot.damageTransferLinks)
@@ -97,7 +105,8 @@ export async function createRenderAdapter(
       orbitViews.sync([])
       dropViews.sync([])
       flameViews.sync([])
-      scene.player.visible = false
+      playerSurvivalView.clear()
+      scene.playerRoot.visible = false
       application.render()
     },
 

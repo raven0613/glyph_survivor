@@ -39,6 +39,7 @@ import {
   type PlayerDamageStepOutcome,
 } from './playerSurvival.ts'
 import type { RunResult } from './runResult.ts'
+import { createPlayerSurvivalPresentationState } from './playerSurvivalPresentation.ts'
 import {
   createRunStatisticsState,
   synchronizeEquippedWeaponStatistics,
@@ -128,6 +129,7 @@ export interface WorldState {
 
 function createPlayer(): PlayerState {
   const center = GAME_CONFIG.worldWidth / 2
+  const survival = createPlayerSurvivalState(GAME_CONFIG)
 
   return {
     x: center,
@@ -141,7 +143,10 @@ function createPlayer(): PlayerState {
     lastProcessedPointerRevision: 0,
     xpIntoLevel: 0,
     level: 1,
-    survival: createPlayerSurvivalState(GAME_CONFIG),
+    survival,
+    survivalPresentation: createPlayerSurvivalPresentationState(
+      survival.currentShieldLayers,
+    ),
   }
 }
 

@@ -1,6 +1,6 @@
 # Player Survival — Health, Shields, Death, and Run Results
 
-> 狀態：產品與工程契約已確認，三階段均已實作：生存／接觸／死亡流程、run statistics 與 immutable run result，以及 React 結算畫面和回主畫面的 lifecycle transaction。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
+> 狀態：生存、死亡、統計、結算、回主畫面，以及玩家生命／護盾受擊 presentation 契約均已實作。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
 
 本文是玩家生命、護盾、incoming damage、接觸碰撞、死亡、單局統計、結算畫面與回主畫面流程的唯一詳細入口。跨系統產品意圖以 [`spec.md`](../../spec.md) 為準，依賴方向與 lifecycle 架構以 [`AGENTS.md`](../../AGENTS.md) 為準；未來生存 Module 的 ordered Slot transaction 另須遵守 [`weapon-system.md`](weapon-system.md)。
 
@@ -11,6 +11,7 @@
 - Runtime-owned Player Survival state 與集中 config；
 - Health、Shield Layers、shield recharge 與 global damage invulnerability；
 - 玩家和普通怪／Boss 權威 Glyph 輪廓的接觸受傷；
+- 生命受擊、護盾常駐／受擊／回復的 rendering-only 玩家 presentation；
 - 玩家死亡、`GAME_OVER`、不可變 run result 與停止 simulation；
 - 每局時間、正式擊殺數、Weapon Instance 傷害／裝備時間／平均 DPS 統計；
 - React HUD、結算畫面與回到主畫面的完整流程。
@@ -47,7 +48,7 @@ React 只讀取 UI-sized immutable summaries 並送出明確 command。Renderer 
 | `playerDamageInvulnerabilityMs` | 一次受擊被接受後的 global incoming-damage gate 時長；必須是有限正值 |
 | `playerCollisionRadius` | 玩家權威圓形接觸判定半徑；必須是有限正值 |
 
-Creature contact damage 保留在各 validated Creature Definition 的 `contactDamage`，不搬入 Player config，也不在本文、Boss sheet 或 enemy sheet 複製。未來 hostile projectile 的 damage／routing 由 projectile content authoring。戰鬥色彩、alpha 與 hit feedback timing 仍由集中 combat visual theme 管理。
+Creature contact damage 保留在各 validated Creature Definition 的 `contactDamage`，不搬入 Player config，也不在本文、Boss sheet 或 enemy sheet 複製。未來 hostile projectile 的 damage／routing 由 projectile content authoring。戰鬥色彩、alpha、光暈、粒子、震動與 hit feedback timing 仍由集中 combat visual theme 管理；本文只保存淺藍護盾等語意身份，不保存色碼、時間、數量、距離、速度或強度 default。
 
 任何後續新增的可調生存數值，都必須先成為有名稱、可驗證的 config／content field；不得寫在 system magic number、React component、renderer 或文件範例中。
 
@@ -102,7 +103,39 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - 目前只有明確具戰鬥碰撞的 active creature phases 會造成接觸候選。文字聚合生成、`COLLAPSING`、`INACTIVE`、`DEAD`／`DEFEATED` 不造成玩家傷害；Slime `REASSEMBLING` 沿用其已確認的 Gameplay collision 契約。
 - 接觸查詢在 fixed step 內必須位於權威 root movement、Body Motion 與 deformation position 更新之後。
 
-## 8. 玩家死亡與 phase 優先序
+## 8. 玩家受擊 Presentation
+
+玩家受擊 presentation 只能回應 Runtime 已接受並解析完成的 incoming-damage outcome，不得從 HUD 數值差、Sprite overlap、物種名稱或 renderer 自行碰撞推測。Runtime／render snapshot 必須提供足以區分 Health damage、Shield absorb、Shield depleted 與 Shield restored 的 stable presentation identity／revision；同一 outcome 不得因重複 render snapshot 再觸發一次。
+
+### 生命受擊
+
+- 只有實際降低 current Health 的 accepted hit 才觸發生命受擊效果。被 global invulnerability 忽略、被 Shield 完整吸收或無效的 candidate 都不觸發。
+- 生命受擊由玩家 Glyph 短暫閃爍、rendering-only 的 `.` Glyph 碎片，以及玩家 Glyph 的局部小震動組成。
+- `.` 碎片不具 collision、damage、targeting、drop 或其他 Gameplay identity，也不得進入 WorldState entity stores。其數量可由 visual config 設為零，以便完整停用而不留下 dormant Gameplay branch。
+- 局部震動只能疊加在玩家的 render position；不得改寫玩家權威座標、camera、hitbox、aim origin 或後續攻擊位置。
+
+### 護盾常駐外觀
+
+- current Shield Layers 大於零時，玩家周圍只顯示一對括號，組成 `(@)` 的語意外觀；括號是獨立於玩家 `@` 的 rendering-only Glyph views。
+- 無論 current Shield Layers 是一層或多層，都只顯示一對括號。精確 current／maximum 層數仍由 HUD 表達，不以重疊括號編碼。
+- 護盾具有淺藍色語意身份與輕微光暈。具體 base／glow color、alpha 與其他數值只存在集中 combat visual theme authoring config，不得複製到本文、Runtime system、render adapter 或 React SCSS。
+
+### 護盾受擊與回復
+
+- 只有實際消耗一層 Shield 的 accepted hit 才觸發護盾受擊效果；它不播放生命受擊的閃爍、`.` 碎片或玩家 Glyph 震動。
+- 消耗後仍有至少一層 Shield 時，只讓常駐括號短暫震動。括號不得 fade out，且不得生成第二對常駐括號。
+- 消耗最後一層 Shield 時，括號先短暫震動，再各自向玩家外側位移並 fade out；左括號向左、右括號向右。效果完成後不再保留括號 view。
+- current Shield Layers 由零回復為正值時，左右括號由玩家中心開始，在淡入的同時向外展開至各自常駐位置。已經有常駐括號時，其他層數回復不疊加第二對括號或重播出現動畫。
+- 未來 `HEALTH_ONLY` hit 即使在 Shield 尚存時成立，也只播放生命受擊效果；既有護盾括號保持不變。
+
+### Presentation config 與生命週期
+
+- Health flash、`.` 碎片、Health shake、Shield base、Shield glow、Shield hit shake、depletion fade／offset 與 restore fade／offset 的全部可調參數，都必須是集中 visual theme 的具名、可驗證欄位。不得在 renderer hot path 或本文加入 magic number。
+- 所有 authoring color literal 仍只允許存在於集中 theme config，並遵守既有嚴格色彩格式；文件只描述語意色彩身份與相對用途。
+- Renderer 可以 pool／reuse 括號、碎片與光暈 views，但不能讓上一局的 active effect 或 revision 穿過 `returnToMainMenu`。下一局必須從 initial Shield state 重新建立正確外觀。
+- Presentation 可以在不影響 Gameplay 的範圍內插值與 easing；是否受擊、扣除哪種資源、剩餘 Shield Layers 與何時回復仍完全由 Runtime 決定。
+
+## 9. 玩家死亡與 phase 優先序
 
 - Health 歸零只提交一次 player-death transition，建立死亡當下的 immutable run result，並把全域 phase 轉為 `GAME_OVER`。
 - 一旦 transition 成立，不再開始下一個 fixed simulation step；同一 RAF callback 尚未執行的 catch-up steps 必須停止，pause boundary 不得留下可在回主畫面後洩漏的 accumulator time。
@@ -112,7 +145,7 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - 重複 damage、phase publication 或 React remount 不得建立第二份 result、重複計入統計或再次執行死亡 side effects。
 - `GAME_OVER` phase 與已存在的 immutable run result 可以作為 transition／side-effect idempotency guard，但不得成為能否決 Health 歸零死亡條件的第二份 combat truth。
 
-## 9. Run Statistics
+## 10. Run Statistics
 
 ### Gameplay time 與擊殺
 
@@ -142,7 +175,7 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - Total Damage 相同時，較早正式取得／commit 的 Instance 勝出；若 acquisition order 仍相同，以 stable Weapon Instance ID 決定。
 - 所有可比較武器都沒有造成傷害時不頒皇冠。
 
-## 10. Run Result、HUD 與結算 UI
+## 11. Run Result、HUD 與結算 UI
 
 Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary：current／maximum Health、current／maximum Shield Layers、phase 與既有 HUD values。只在值改變或既有低頻 publication cadence 發布，不能為此每個 render frame 更新 React state。
 
@@ -159,7 +192,7 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 
 結算是 React-owned DOM screen，視覺語言、字體、panel、按鈕與動態風格應延續首頁。它可以覆蓋已停止的 Canvas，但不得從 render snapshot 反推統計。畫面結構預留未來廣告版位的 extension point；本里程碑不載入 SDK、不發請求，也不顯示偽造廣告。
 
-## 11. 回到主畫面
+## 12. 回到主畫面
 
 結算頁的按鈕送出明確 `returnToMainMenu` command。Runtime／Host 只在合法 phase 接受，並以一個 lifecycle transaction：
 
@@ -170,7 +203,7 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 
 下一局建立全新的 Weapon Instance IDs／counters 與生存狀態。舊局的傷害、擊殺、時間、invulnerability deadline 或 shield recharge progress 都不得洩漏。重複 command 必須有定義且不得重複 dispose 資源。
 
-## 12. 未來生命／護盾 Module 卡
+## 13. 未來生命／護盾 Module 卡
 
 以下只是已確認的擴充方向，不是本里程碑 content：治療／自動回復、增加 maximum Health、增加 maximum Shield Layers、縮短護盾回復時間、shield hit／shield broken 觸發效果，以及其他護盾 Build。
 
@@ -178,7 +211,7 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 
 正式實作前仍需由產品定案：各 Module Definition／Rank table、同類與跨武器疊加、maximum Health／Shield 降低時 current values 的調整、shield broken event timing，以及效果覆蓋／替換與死亡同一步的優先序。在這些規則確認前，不得把卡加入 offer pool、建立 UI preview，或先做 dormant Runtime branch。
 
-## 13. 必要驗證
+## 14. 必要驗證
 
 純規則與高風險 deterministic tests 應覆蓋：
 
@@ -196,5 +229,10 @@ Bridge 的 immutable `UiSnapshot` 在遊戲中提供 UI-sized survival summary�
 - equipped time 包含 RUNNING 中沒有目標的時間，但排除所有 pause／result time；
 - average DPS、tie-break、all-zero no-crown 與 immutable result snapshot；
 - `returnToMainMenu` 清除舊 World／result 並讓下一局從乾淨狀態開始。
+- global invulnerability 忽略的 hit 不產生 Health／Shield presentation revision，重複 render snapshot 也不重播已消費的 revision；
+- Health damage 只觸發 flash、可停用的 `.` 碎片與 render-local shake，且不改變權威玩家／camera 座標；
+- Shield 尚有剩餘層數時只有括號震動、沒有 fade out；最後一層消耗時才震動並向兩側 fade out；
+- 任意正 Shield Layers 都只保留一對常駐括號，零到正值的回復由中心淡入展開，正值間的層數回復不疊出另一對；
+- `HEALTH_ONLY` hit 在 Shield 尚存時不破壞或重播護盾括號，回主畫面與下一局也不殘留 presentation views。
 
-瀏覽器實機驗收另外確認 HUD 可讀性、接觸受傷手感、首頁與結算頁視覺一致、responsive layout、keyboard／pointer 操作，以及 reduced-motion 路徑。任何實機調整出的數值仍只回填 config／content，不回填本文。
+瀏覽器實機驗收另外確認 HUD 可讀性、生命受擊辨識度、`.` 碎片密度、玩家局部震動手感、護盾光暈與括號在常駐／受擊／耗盡／回復時的可讀性、首頁與結算頁視覺一致、responsive layout、keyboard／pointer 操作，以及 reduced-motion 路徑。任何實機調整出的數值仍只回填 config／content，不回填本文。
