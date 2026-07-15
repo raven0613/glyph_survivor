@@ -6,11 +6,16 @@ import {
   writeRenderSnapshot,
 } from '../../src/game/bridge/renderSnapshot.ts'
 import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
+import {
+  PLAYER_ATTACK_VISUAL_ROLE,
+  type PlayerAttackVisualRoleId,
+} from '../../src/game/content/visuals/combatVisualTheme.ts'
 import { DAMAGE_TARGET_MODE } from '../../src/game/glyph/localDamage.ts'
 import { createWorldState, spawnEnemy } from '../../src/game/runtime/worldState.ts'
 import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
 import { runDamagePresentationSystem } from '../../src/game/systems/damagePresentationSystem.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
+import { runGlyphMaterialSystem } from '../../src/game/systems/glyphMaterialSystem.ts'
 
 function createDamageWorld() {
   return createWorldState(
@@ -30,10 +35,14 @@ function enqueueCircleAttack(
     readonly x: number
     readonly y: number
     readonly bandWidth?: number
+    readonly visualRoleId?: PlayerAttackVisualRoleId
   },
 ): void {
   world.glyphDamageQueue.enqueue({
     attackEventId: options.attackEventId,
+    visualRoleId:
+      options.visualRoleId ??
+      PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
     primaryScope: 'LOCKED_OWNER',
     ownerId: options.ownerId,
     shapeKind: 'CIRCLE',
@@ -56,7 +65,7 @@ function enqueueCircleAttack(
   })
 }
 
-test('damages every living Glyph in spread bands across owners but excludes Husks', () => {
+test('damages living spread targets and follows the latest successful attack role', () => {
   const world = createDamageWorld()
   const x = world.player.x
   const y = world.player.y
@@ -88,8 +97,46 @@ test('damages every living Glyph in spread bands across owners but excludes Husk
   assert.equal(world.glyphStore.getOwnerGlyphs(outside.id)[0].currentDurability, 1)
   const spreadGlyph = world.glyphStore.getOwnerGlyphs(spreadTarget.id)[0]
   assert.ok(spreadGlyph.spreadFlashRemainingMs > 0)
+  assert.equal(
+    spreadGlyph.spreadFeedbackVisualRoleId,
+    PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
+  )
   assert.equal(spreadGlyph.velocityX, 0)
   assert.equal(spreadGlyph.velocityY, 0)
+
+  runGlyphMaterialSystem(world, 50)
+  enqueueCircleAttack(world, {
+    attackEventId: 2,
+    ownerId: primary.id,
+    x,
+    y,
+    visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.FLAMETHROWER,
+  })
+  runDamageSystem(world)
+
+  assert.equal(spreadGlyph.currentDurability, 0.6)
+  assert.equal(
+    spreadGlyph.spreadFlashRemainingMs,
+    world.content.combatVisualTheme.effects.spreadFeedbackDurationMs,
+  )
+  assert.equal(
+    spreadGlyph.spreadFeedbackVisualRoleId,
+    PLAYER_ATTACK_VISUAL_ROLE.FLAMETHROWER,
+  )
+
+  const snapshot = createRenderSnapshot()
+  writeRenderSnapshot(world, snapshot, 1)
+  assert.equal(
+    snapshot.enemies.find(({ id }) => id === spreadGlyph.id)?.tint,
+    world.content.combatVisualTheme.playerAttacks.FLAMETHROWER.accent.tint,
+  )
+
+  runGlyphMaterialSystem(
+    world,
+    world.content.combatVisualTheme.effects.spreadFeedbackDurationMs,
+  )
+  assert.equal(spreadGlyph.spreadFlashRemainingMs, 0)
+  assert.equal(spreadGlyph.spreadFeedbackVisualRoleId, null)
 })
 
 test('keeps direct topology damage at full strength and emits a transfer link', () => {
@@ -107,7 +154,7 @@ test('keeps direct topology damage at full strength and emits a transfer link', 
   runEnemySpatialIndexSystem(world)
 
   enqueueCircleAttack(world, {
-    attackEventId: 2,
+    attackEventId: 3,
     ownerId: bat.id,
     x: bat.x + glyphs[0].localX,
     y: bat.y + glyphs[0].localY,

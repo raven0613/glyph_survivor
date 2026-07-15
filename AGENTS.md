@@ -24,9 +24,13 @@ These rules come directly from `spec.md` and must survive refactors:
 - Damage always changes Glyph Cell durability. Creature HP and max HP are read-only aggregates derived from Glyph durability, never independent mutable combat state.
 - Every Enemy, Elite, and Boss Glyph follows the same `HEALTHY → DAMAGED → HUSK` life cycle. A Husk has zero current durability and cannot take further durability damage, but remains an authoritative, dimly rendered Cell in the creature's full gameplay outline and hitbox.
 - A creature starts `COLLAPSING` only when all of its Glyph Cells are Husks. Rewards and cleanup happen only after that whole-body collapse resolves.
-- Primary hit effects remain local to the DamageShape's actual Impact Cells, including Husks. Direct durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk. An explicit Damage Spread profile may additionally damage living Cells in exterior spatial bands and give those Cells spread-specific feedback; a frontier-only direct target may receive a faint rendering-only transfer link, but neither case inherits the primary Material impulse implicitly.
+- Primary hit effects remain local to the DamageShape's actual Impact Cells, including Husks. Direct durability damage prefers living Cells inside that shape, then advances through the struck body's topology frontier when the local region has already become Husk. An explicit Damage Spread profile may additionally damage living Cells in exterior spatial bands and give those Cells spread-specific feedback whose tint follows the source attack's `PLAYER_ATTACK_VISUAL_ROLE` accent family; a frontier-only direct target may receive a faint rendering-only transfer link, but neither case inherits the primary Material impulse implicitly.
 - Creature-specific Body Motion is a deterministic Runtime-owned pose, not renderer-only decoration. Any positional pose offset participates in the authoritative Glyph hitbox, and active Husks follow the same slot motion as living Cells until collapse takes over.
 - The first ordinary-enemy appearances progress in the fixed order `ZOMBIE (Z) → BONE (BO) → BAT`; exact stage thresholds, post-unlock mixing, weights, and speeds remain validated content parameters.
+- `BO` uses a vertical two-slot Body Blueprint with `O` above `B`. Body layout and Body Motion are independent contracts: this layout keeps the existing BONE motion profile and deterministic per-instance phase variation.
+- The confirmed ordinary-enemy palette identities are dark green-family `Z`, dark bone-white／neutral-family `BO`, and deep, moderately saturated purple-family `BAT`. Their base palettes should read as dark rather than pale, pastel, or washed out. Equivalent `Z`／`BO`／`BAT` presentation states use the same ordinary-enemy brightness-emphasis tier, but that tier describes shared role ordering and highlight strength—not equal base-color lightness or narrowly equal effective luminance across hues. Primary hit feedback brightens only within the struck creature's own palette; Damage Spread secondary feedback follows the source player-attack role's accent palette. The green-family `SLIME` Boss also keeps a dark, saturated base palette; its Boss-tier emphasis is stronger than the ordinary tier at corresponding active／impact roles but remains below player attacks.
+- A newly spawned XP drop begins in a fresh-yellow state, shortly settles into dark gold, and thereafter flashes only occasionally with a low duty cycle and deterministic per-drop staggering. Its configured fresh and flash peaks must remain below every player-attack core brightness tier.
+- One structurally validated combat visual theme is the sole authoring source of truth for combat-world base palettes, alpha, brightness-emphasis tiers, outlines, and XP palette-transition／flash timing. Every tunable color literal in that authoring config uses strict `#RRGGBB` string form; alpha remains a separate numeric field. Product documents preserve semantic color identities and ordering targets, but Runtime preparation must not reject a valid color because of its hue, saturation, lightness, or effective luminance. Content, systems, render adapters, and React styles must not duplicate battle-canvas color values.
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
 - Weapon identity comes from target logic, attack shape, and destruction shape—not only numeric damage.
 - The confirmed first three weapon identities are the assisted single-target `o`, a short-range approximately 90-degree aimed flamethrower Cone, and a Runtime-owned orbiting `O` with whole-body outward knockback. Their tunable prototype values live in `docs/content/weapon-system.md`.
@@ -76,6 +80,8 @@ The ownership rules are:
 - Communicate from React to the game through explicit commands.
 - Communicate from the game to React through small, immutable UI snapshots or discrete events.
 - Let the renderer consume render snapshots; never let it decide gameplay outcomes.
+- Prepare and validate one immutable combat visual theme during loading, then inject it through the GameHost into rendering instead of importing mutable presentation globals.
+- Keep Glyph Material and appearance identity orthogonal: Material owns gameplay／physical response, while an appearance profile selects semantic palette and brightness roles resolved by the prepared visual theme.
 - Make creation, start, pause, reset, and disposal explicit lifecycle operations.
 
 ### MUST NOT
@@ -88,6 +94,7 @@ The ownership rules are:
 - Do not import DOM APIs into gameplay core modules.
 - Do not store HP, damage rules, AI state, or authoritative positions on Pixi display objects.
 - Do not read a Sprite/Particle position back into gameplay state.
+- Do not embed species-, weapon-, drop-, effect-, obstacle-, or background-specific battle-canvas colors in gameplay definitions, render adapters, or React SCSS. Authoring `#RRGGBB` literals belong only to the centralized theme config; prepared numeric tints are derived data and must not be duplicated as hand-authored product colors.
 - Do not create one expensive `Text` or `HTMLText` object per Glyph for large enemy bodies.
 - Do not introduce a large ECS framework until measured requirements justify it.
 
@@ -149,6 +156,9 @@ src/
       weapons/
       bosses/
       upgrades/
+      visuals/
+        combatVisualTheme.ts  Types, validation, and prepared theme contract
+        prototypeCombatVisualTheme.ts
 
     rendering/                 The only normal PixiJS dependency boundary
       createPixiApp.ts
@@ -377,6 +387,7 @@ interface GlyphCell {
   maxDurability: number
   alpha: number
   material: GlyphMaterialId
+  appearanceProfileId: GlyphAppearanceProfileId
   state: GlyphCellState
   rotation: number
   offsetX: number
@@ -388,7 +399,7 @@ interface GlyphCell {
 }
 ```
 
-This is a conceptual contract; `GlyphMaterialId` and `GlyphCellState` are domain types whose concrete representation belongs to the Glyph model. Optimize storage after measurement. Encoded characters, enum values, and parallel typed arrays are acceptable as long as the logical fields and behavior remain intact. For high counts, prefer packed arrays, struct-of-arrays, or paged typed arrays over thousands of class instances.
+This is a conceptual contract; `GlyphMaterialId`, `GlyphAppearanceProfileId`, and `GlyphCellState` are domain types whose concrete representation belongs to the Glyph model. Optimize storage after measurement. Encoded characters, enum values, and parallel typed arrays are acceptable as long as the logical fields and behavior remain intact. For high counts, prefer packed arrays, struct-of-arrays, or paged typed arrays over thousands of class instances.
 
 Preserve the distinction between:
 
@@ -396,9 +407,10 @@ Preserve the distinction between:
 - Body Motion offset/rotation: the deterministic, species-specific pose layered over the current anchor;
 - offset/velocity: temporary deformation, knockback, scattering, and recovery;
 - current/max durability: authoritative local life and its initial capacity;
-- material: local hit response, displacement, recovery, and destruction rules;
+- material: local durability／impulse／displacement／recovery／destruction behavior, not creature hue;
+- appearance profile: the semantic species／role palette identity that survives damage, Husk state, morph, reassembly, and split ownership changes unless an explicit content rule replaces it;
 - state: exactly the living progression `HEALTHY`, `DAMAGED`, or `HUSK` for active creature Glyphs;
-- render alpha/tint: visual output derived from gameplay state.
+- render alpha/tint: presentation resolved from Glyph state, appearance profile, transient response state, and the prepared combat visual theme.
 
 The state and durability invariants are:
 
@@ -408,7 +420,7 @@ DAMAGED: 0 < currentDurability < maxDurability
 HUSK: currentDurability === 0
 ```
 
-`currentDurability`, `maxDurability`, and damage amounts are finite non-negative gameplay numbers; current durability and damage may be fractional. Do not round damage to integers or impose a hidden minimum damage of `1`. Clamp subtraction to zero and use one documented precision normalization so tiny floating-point residues cannot prevent `HUSK` or collapse transitions. A Glyph with `maxDurability === 1` transitions directly from `HEALTHY` to `HUSK` only when an effective hit is at least its remaining durability; a smaller hit produces fractional `DAMAGED` durability. Do not create hidden durability merely to force a visible state step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at deliberately low alpha/tint so the creature silhouette does not shrink as it is consumed.
+`currentDurability`, `maxDurability`, and damage amounts are finite non-negative gameplay numbers; current durability and damage may be fractional. Do not round damage to integers or impose a hidden minimum damage of `1`. Clamp subtraction to zero and use one documented precision normalization so tiny floating-point residues cannot prevent `HUSK` or collapse transitions. A Glyph with `maxDurability === 1` transitions directly from `HEALTHY` to `HUSK` only when an effective hit is at least its remaining durability; a smaller hit produces fractional `DAMAGED` durability. Do not create hidden durability merely to force a visible state step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at the theme-defined low Husk tier so the creature silhouette does not shrink as it is consumed.
 
 The authoritative pose composition is:
 
@@ -424,6 +436,7 @@ Root movement, structural layout/morph, Body Motion, and hit/material deformatio
 ### Creature Body Motion
 
 - Creature content selects a validated Body Motion strategy/profile; do not grow a central species `switch` in `movementSystem`.
+- Body Blueprint anchors／topology and Body Motion strategy are orthogonal. In particular, the vertical `O`-above-`B` BONE layout retains the existing BONE motion groups and per-instance phase variation; row／column arrangement must not implicitly select another motion behavior.
 - Evaluate Body Motion during fixed simulation steps after root movement and structural layout. Ordinary `Z`, `BO`, and `BAT` motion runs only while the owner is `ACTIVE`; other lifecycle phases require an explicit content rule.
 - All active outline Cells assigned to a motion slot participate regardless of `HEALTHY`, `DAMAGED`, or `HUSK` state. Collapse presentation is a separate lifecycle behavior.
 - Derive every step from the stable current layout anchor plus normalized phase. Never accumulate the previous step's pose offset or rotation.
@@ -451,7 +464,7 @@ Any cached aggregate is disposable derived data and must never diverge into a se
 
 Local damage flow separates impact visualization from durability targets:
 
-1. Weapon emits one stable attack event with an ID, primary `DamageShape`, damage amount, impact parameters, and an optional prepared `DamageSpreadProfile`.
+1. Weapon emits one stable attack event with an ID, primary `DamageShape`, damage amount, impact parameters, its semantic `PlayerAttackVisualRoleId`, and an optional prepared `DamageSpreadProfile`. The visual role is snapshotted with the attack and must survive projectile travel or other delayed contact.
 2. Spatial index returns candidate outline Glyphs; entity-level collision may be used only as a broad phase.
 3. A precise shape test produces the **Impact Cells**: every distinct `HEALTHY`, `DAMAGED`, or `HUSK` Cell intersecting the DamageShape.
 4. If there are no Impact Cells, the attack misses. If there are Impact Cells, local hit flash, particles, material displacement, and other impact effects apply only to those Cells, regardless of their life state.
@@ -460,7 +473,7 @@ Local damage flow separates impact visualization from durability targets:
 7. If a spread profile exists, query exterior bands around the original whole DamageShape. Band width is a centralized validated content value; classify positive distance `d` with `(n - 1)w < d <= nw`. A Cone uses the exterior of the whole Cone, never one band per particle, sample, or Impact Cell.
 8. Spread candidates may belong to any owner but must be living/damageable Cells. Never include a Husk, fill a spread quota through topology, or transfer spread damage to another Cell. Select every living Cell precisely intersecting a configured band.
 9. Consolidate primary Damage Targets and spread candidates by `attackEventId` and stable Glyph ID before mutation. Each Cell takes at most one durability change from that event, using the highest applicable amount; direct damage wins over lower spread damage. All internal samples of one Cone share an event, while Projectile Count creates separate Cone events that may each damage an overlapping Cell once.
-10. Apply primary local hit flash, particles, and Material response only to Impact Cells. A remote frontier-only direct target receives none of those, but Runtime may emit a short-lived source-to-target transfer-link summary for rendering. A spread target receives explicit spread feedback, not the primary impulse, local Material response, or whole-body knockback unless content defines such propagation separately.
+10. Apply primary local hit flash, particles, and Material response only to Impact Cells. Primary feedback continues to use the struck creature's own Appearance Profile. A remote frontier-only direct target receives none of those, but Runtime may emit a short-lived source-to-target transfer-link summary for rendering. A spread target receives explicit spread feedback tinted from the source attack role's configured `accent`, not the creature's primary-impact tint and not one global spread tint. It does not inherit the primary impulse, local Material response, or whole-body knockback unless content defines such propagation separately. Runtime records the source role only when spread damage is actually applied; a later successful spread hit refreshes the duration and replaces the remembered role in stable attack-processing order.
 11. Clamp and normalize durability after subtraction. A Glyph whose durability reaches zero enters `HUSK`, keeps its gameplay outline footprint, and becomes immune to further durability damage.
 12. When an affected owner has no living Glyphs, transition the creature to `COLLAPSING`; only after collapse resolution may death rewards and cleanup occur.
 
@@ -485,10 +498,10 @@ Material examples:
 
 - `SLIME`: high displacement, spring-like recovery, can redistribute Glyphs when splitting.
 - `GOLEM`: low knockback, slow erosion, rigid recovery.
-- `GHOST`: low alpha, easy dispersal, strong reassembly behavior.
+- `GHOST`: easy dispersal, low resistance to displacement, strong reassembly behavior.
 - `SNAKE`: segment ownership, breakable connectivity, independent segment motion.
 
-Materials belong to Glyph Cells, even when a creature definition supplies one default material for its whole body. A material must affect the hit Glyphs' durability or physical response; it cannot be only a renderer-wide effect.
+Materials belong to Glyph Cells, even when a creature definition supplies one default material for its whole body. A material must affect the hit Glyphs' durability or physical response; it cannot be only a renderer-wide effect. Appearance profiles are separate content references: do not clone an otherwise identical Material merely to give another species a different hue. Hit tint and brightness stay in the struck Glyph's appearance family, while Material continues to control its local physical response.
 
 For every split operation, test these invariants:
 
@@ -548,7 +561,7 @@ Every damaging attack defines a stable attack-event identity, a `DamageShape`, i
 
 Gameplay projectiles are the only projectile-like objects that participate in damage/collision. Visual particles are rendering-only and never cause damage.
 
-- The flamethrower's authoritative damage comes from fixed-step Cone DamageShape pulses. One Cone stream pulse is one attack event: all internal geometry samples share its deduplication scope, while additional Cone streams created by Projectile Count use independent event IDs. Its orange／yellow `.`, `*`, and related sparks only visualize that shape; changing their density must not change gameplay or spread.
+- The flamethrower's authoritative damage comes from fixed-step Cone DamageShape pulses. One Cone stream pulse is one attack event: all internal geometry samples share its deduplication scope, while additional Cone streams created by Projectile Count use independent event IDs. Its `.`, `*`, and related sparks use the configured fire-spectrum palette and only visualize that shape; changing their configured color or density must not change gameplay or spread.
 - An orbiting ball that damages enemies is an instance-attached authoritative attack. Runtime owns its deterministic orbit phase, world position, collision radius, per-owner re-hit gating, pause behavior, and cleanup when its Weapon Instance disappears. Renderer-owned halo and trail particles do not collide.
 - When a weapon explicitly applies whole-body knockback, Runtime displaces the creature root in an authoritative, bounded way so every active outline Glyph, including Husks, follows it. Local Material impulse and hit presentation remain restricted to actual Impact Cells; topology-frontier-only Damage Targets receive neither.
 
@@ -573,6 +586,15 @@ New combat features must first define their Glyph interaction instead of modifyi
 
 ## 13. PixiJS rendering rules
 
+### Battlefield visual-theme contract
+
+- `src/game/content/visuals/prototypeCombatVisualTheme.ts` is the one routinely tuned authoring source for battle-canvas base palettes, alpha, brightness-emphasis tiers, outlines, and XP transition／flash timing values. Every color field in this authoring config uses a `#RRGGBB` string; short hex, alpha-bearing hex, CSS color names, missing `#`, and non-hex characters are invalid. Alpha stays explicit beside the color instead of being packed into the string. `combatVisualTheme.ts` owns distinct authoring and prepared types, structural validation, one-time conversion, and the immutable prepared representation; neither file imports PixiJS or React. Material-, weapon-, and collapse-specific behavior durations remain with their owning validated content unless the timing belongs to the XP presentation lifecycle.
+- The theme covers semantic roles for the player, every player-attack family, ordinary-enemy appearance profiles and their shared emphasis ladder, Elite／Boss tiers, XP and other drops, hit／spread／transfer effects, Husk states, backgrounds, obstacles, and other battlefield elements. Base-palette hue／saturation／lightness and presentation brightness emphasis are separate concerns: sharing a tier must never force differently hued creatures toward the same pale tint. React-only menu／HUD styling remains a separate UI concern.
+- Creature and weapon content selects stable appearance／effect role IDs. It does not contain color literals, and the renderer must not grow a species or weapon `switch`. During `LOADING`, `prepareGameContent()` strictly validates every authoring color string, converts each one exactly once into a 24-bit numeric tint, validates non-aesthetic structure and numeric ranges, and freezes the prepared theme into `PreparedGameContent`. The GameHost passes that same prepared theme to Runtime and rendering instead of creating a second copy. Fixed steps, per-Glyph resolution, render snapshots, and Pixi synchronization consume only prepared numeric tints and must never parse color strings.
+- Do not reject a valid `#RRGGBB` authoring color because it violates a configured saturation／lightness bound, an inferred state-luminance order, or a cross-role brightness ceiling. Those are art-direction targets for browser visual tuning, not Runtime startup invariants. Structural role IDs, required non-empty palettes, alpha ranges, tier assignments, and non-color timing／gain relationships remain validated. Automated tests may verify conversion and structural behavior, but must not pin exact palette literals or prevent deliberate color experimentation.
+- XP presentation age derives from simulation／gameplay presentation time. Occasional flashes are deterministically staggered by stable drop ID, consume no gameplay RNG, never synchronize the whole drop field, and freeze across any complete gameplay pause. Pickup radius, reward value, and collection timing are independent of presentation state.
+- Render snapshots may carry semantic presentation roles plus the minimum simulation-time fields needed to resolve them, or already-resolved immutable presentation values. Whichever boundary is chosen, there is one resolution path and no second set of literals in adapters.
+
 Recommended scene layers:
 
 ```text
@@ -596,13 +618,14 @@ Rendering rules:
 - `BitmapText` is suitable for frequently changing counters or longer text whose characters do not need independent gameplay ownership.
 - For high-volume independent Glyph views, use atlas frames with pooled `Particle`/`Sprite` views according to required features.
 - `ParticleContainer` is appropriate only when particles share a base texture and do not require per-particle filters, masks, events, or blend modes.
-- Set only actually animated `dynamicProperties` on `ParticleContainer`.
+- Set only actually animated `dynamicProperties` on `ParticleContainer`. Any pooled layer whose tint or alpha changes by appearance state must enable and reset its color property explicitly.
 - Synchronize authoritative Glyph rotation through the render snapshot when a motion profile uses it. Before enabling rotation uploads on a shared high-population layer, measure the cost; if it is material, partition rotating and non-rotating Glyph batches without creating per-creature containers or display objects.
 - Set `boundsArea` when using `ParticleContainer`, especially with culling.
 - Group similar object types, base textures, and blend modes to preserve batching.
 - Use object pools for projectiles, Glyph fragments, damage particles, and short-lived effects.
-- Runtime chooses every topology-transfer link endpoint and spread-feedback target. Render snapshots may carry only short-lived immutable effect summaries; the renderer may interpolate／fade them but must never search Glyph topology, choose a damage target, or extend their gameplay lifetime.
-- Render faint transfer links with a bounded pool of small line views (for example pooled PixiJS `Graphics` or a batched line-sprite representation) and render spread feedback through the existing atlas／effect pools where practical. Do not create one `Text`, `Graphics`, or `Container` per active Glyph or per frame.
+- Reset every pooled view's semantic role, tint, alpha, presentation age, and flash phase before reuse; a recycled XP view must not inherit the prior drop's settled or flashing state.
+- Runtime chooses every topology-transfer link endpoint and spread-feedback target and retains the snapshotted source `PlayerAttackVisualRoleId` for active spread feedback. Render snapshots may carry only the resolved prepared numeric tint or the minimum immutable semantic role needed by the shared theme resolver; the renderer may interpolate／fade them but must never search Glyph topology, infer a weapon from entity IDs, choose a damage target, or extend their gameplay lifetime.
+- Render faint transfer links with a bounded pool of small line views (for example pooled PixiJS `Graphics` or a batched line-sprite representation) and render spread feedback through the existing atlas／effect pools where practical. Spread tint resolves from `playerAttacks[visualRoleId].accent`; shared spread-effect config may control alpha, scale, and timing but must not provide one weapon-agnostic tint. Do not create one `Text`, `Graphics`, or `Container` per active Glyph or per frame.
 - Disable interaction (`eventMode = 'none'`) on non-interactive world subtrees.
 - Use culling only after profiling; it trades CPU bounds checks for less rendering.
 - Do not enable high resolution or antialiasing without target-device profiling.
@@ -718,6 +741,13 @@ rejects spawn positions inside the camera viewport
 converts pointer coordinates through the inverse camera transform
 selects the same spawn region with the same seed and movement vector
 preserves the first-appearance progression from Z to BO to BAT
+keeps O above B without changing the BONE motion profile or phase variation
+converts every valid #RRGGBB authoring color exactly once during content preparation
+rejects short hex, alpha-bearing hex, CSS names, missing #, and invalid hex characters before READY
+accepts any valid #RRGGBB palette without aesthetic hue, saturation, lightness, or luminance rejection
+publishes only prepared numeric tints to Runtime, render snapshots, and PixiJS
+staggers XP flashes by stable drop ID and freezes their presentation age while paused
+resets pooled XP presentation state before reuse
 returns body motion to the same pose without accumulating drift
 keeps active husks on the same body-motion track as living glyphs
 keeps the zombie bottom pivot stable while its glyph center moves
@@ -738,6 +768,8 @@ damages every living glyph in a spread band across owners without damaging or tr
 applies at most the highest direct or spread amount once per glyph and attack event
 deduplicates all samples inside one cone but lets independent cone events overlap
 emits spread feedback without inheriting the primary material impulse
+colors spread feedback from each source attack role's accent without a renderer weapon switch
+lets the latest successful spread hit deterministically replace the active feedback role and refresh its duration
 emits only a rendering transfer link for a frontier-only direct target
 emits one centered assisted volley from one target query
 lets separate centered cone streams apply independent overlap damage

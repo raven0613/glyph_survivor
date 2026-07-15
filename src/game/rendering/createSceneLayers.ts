@@ -7,6 +7,7 @@ import {
 } from 'pixi.js'
 import type { GlyphAtlas } from './createGlyphAtlas.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
+import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 
 export interface SceneLayers {
   readonly worldRoot: Container
@@ -24,7 +25,10 @@ function createWorldBounds(): Rectangle {
   return new Rectangle(0, 0, GAME_CONFIG.worldWidth, GAME_CONFIG.worldHeight)
 }
 
-function createBackground(atlas: GlyphAtlas): ParticleContainer<Particle> {
+function createBackground(
+  atlas: GlyphAtlas,
+  visualTheme: CombatVisualTheme,
+): ParticleContainer<Particle> {
   const particles: Particle[] = []
   const spacing = 160
 
@@ -39,7 +43,8 @@ function createBackground(atlas: GlyphAtlas): ParticleContainer<Particle> {
           scaleY: 0.28,
           anchorX: 0.5,
           anchorY: 0.5,
-          tint: 0x252525,
+          tint: visualTheme.map.backgroundGlyph.tint,
+          alpha: visualTheme.map.backgroundGlyph.alpha,
         }),
       )
     }
@@ -66,15 +71,23 @@ function createBackground(atlas: GlyphAtlas): ParticleContainer<Particle> {
 export function createSceneLayers(
   stage: Container,
   atlas: GlyphAtlas,
+  visualTheme: CombatVisualTheme,
 ): SceneLayers {
   const worldRoot = new Container({ label: 'world-root' })
   worldRoot.eventMode = 'none'
   worldRoot.interactiveChildren = false
 
-  const backgroundLayer = createBackground(atlas)
+  const backgroundLayer = createBackground(atlas, visualTheme)
   const dropLayer = new ParticleContainer<Particle>({
     texture: atlas.frames.experience,
     boundsArea: createWorldBounds(),
+    dynamicProperties: {
+      position: true,
+      rotation: false,
+      vertex: false,
+      uvs: false,
+      color: true,
+    },
   })
   const enemyLayer = new ParticleContainer<Particle>({
     texture: atlas.printableFrames[0],
@@ -132,7 +145,8 @@ export function createSceneLayers(
   const player = new Sprite({
     texture: atlas.frames.player,
     anchor: 0.5,
-    tint: 0x00ff88,
+    tint: visualTheme.player.tint,
+    alpha: visualTheme.player.alpha,
     label: 'player-glyph',
   })
   player.eventMode = 'none'

@@ -1,4 +1,5 @@
 import { Application } from 'pixi.js'
+import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 
 function createAbortError(): Error {
   const error = new Error('Game initialization was aborted.')
@@ -8,6 +9,7 @@ function createAbortError(): Error {
 
 export async function createPixiApp(
   canvas: HTMLCanvasElement,
+  visualTheme: CombatVisualTheme,
   signal?: AbortSignal,
 ): Promise<Application> {
   if (signal?.aborted) {
@@ -23,8 +25,8 @@ export async function createPixiApp(
     resolution: 1,
     autoDensity: true,
     antialias: false,
-    background: '#050505',
-    backgroundAlpha: 1,
+    background: visualTheme.map.canvasBackground.tint,
+    backgroundAlpha: visualTheme.map.canvasBackground.alpha,
     powerPreference: 'high-performance',
     gcActive: true,
   })

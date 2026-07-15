@@ -1,8 +1,8 @@
-# Ordinary Enemies — Spawn Progression and Body Motion
+# Ordinary Enemies — Spawn Progression, Body Identity, and Motion
 
-> 狀態：首版 multi-enemy progression、權威 Body Motion 與 rotation rendering 已實作。本文列出的首輪數值是可調 content defaults，不是永久產品不變量。
+> 狀態：首版 multi-enemy progression、權威 Body Motion、rotation rendering、`BO` 直向 Body Blueprint，以及暗色基礎 palette／發亮階級分離的 Appearance Profile 皆已實作。集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。本文列出的首輪數值是可調 content defaults，不是永久產品不變量。
 
-本文定義首批普通敵人 `Z`、`BO`、`BAT` 的文字身分、首次出場順序、權威 Body Motion 與效能契約。跨怪物共用的 Glyph 生命、Husk、碰撞與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準。
+本文定義首批普通敵人 `Z`、`BO`、`BAT` 的文字身分、Body Blueprint、色系、首次出場順序、權威 Body Motion 與效能契約。跨怪物共用的 Glyph 生命、Husk、碰撞、視覺階級與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準。
 
 ## 1. 共用 Body Motion 契約
 
@@ -73,7 +73,15 @@ Stage 3: BAT
 
 ### Body
 
-- 顯示文字：`BO`
+- 內容身分：`BO`
+- 顯示排列：
+
+  ```text
+  O
+  B
+  ```
+
+- `O` 在上作為頭部，`B` 在下作為軀幹；兩格以直向 canonical adjacency 相連，並以各自的 Layout Anchor 參與權威 hitbox 與 topology。
 - Glyph Cell 數：2
 - 動態觸發：Creature 正在移動時
 - 首版 maximum speed：56 world units/s
@@ -84,6 +92,7 @@ Stage 3: BAT
 - `B`、`O` 使用錯開的短促節拍，各自做很小的 position／rotation 點動。
 - 主節奏採雙擊感：一個 Cell 先碰一下，另一個 Cell 回應，再留出短暫空拍。
 - 兩個 Cells 不做完全相同、同方向、同時間的連續搖擺，避免整個單字像果凍。
+- 直向排列只改變穩定 Layout Anchors 與 topology；既有 BONE motion groups、錯拍方式與每隻 instance 的 deterministic phase variation 都保持不變。
 - 移動強度降到零時兩個 Cells 都回到中性姿態。
 
 ## 5. `BAT`
@@ -103,7 +112,27 @@ Stage 3: BAT
 - `B` 保持主體穩定，只允許很小的反向補償，不能跟著 `A`、`T` 做同振幅上下晃動。
 - Cell 進入 `HUSK` 後仍跟隨相同 slot motion，直到整隻 BAT 進入 `COLLAPSING`。
 
-## 6. Runtime 熱路徑限制
+## 6. 暗色基礎色系與發亮階級
+
+首批普通敵人使用不同 Appearance Profile。每個 profile 的暗色基礎色獨立，共用的則是 ordinary-enemy 發亮／視覺強調階級：
+
+本文所稱「明度」是基礎 palette 從暗到淺的色調屬性；「亮度／發亮階級」是受 Gameplay state 控制的視覺強調程度。普通怪應降低前者並以適度彩度保留物種辨識，同階級只共用後者。
+
+| 物種 | 基礎色系身分 | 發亮階級 |
+| --- | --- | --- |
+| `Z` | 偏暗綠色系 | Ordinary |
+| `BO` | 暗骨白／中性灰色系 | Ordinary |
+| `BAT` | 偏暗、彩度稍高的深紫色系 | Ordinary |
+
+- 基礎色相、彩度與明度屬於物種 palette；發亮強度屬於 presentation tier。兩者不得再用一個最終 tint 混成同一概念。
+- `HEALTHY`、`DAMAGED`、`HUSK` 與短暫受擊峰值分別是 semantic presentation roles；三個物種在對應 role 使用相同 ordinary 發亮階級與狀態順序，不代表其基礎色或疊加背景後的有效亮度必須接近一致。
+- 普通怪的常態基礎色應維持偏暗。有色色系可使用稍高彩度保留辨識度；`BO` 以暗骨白／中性灰建立白色系身分，不靠大面積淺灰或純白取得辨識度。不得為了通過跨物種亮度誤差而把 `BAT` 或其他後期怪物洗成淺色、粉彩或低彩度。
+- 直接受擊發亮、局部粒子與其他 primary impact feedback 必須從被擊中物種自己的色系解析。`Z` 保持綠色系、`BO` 保持白色系、`BAT` 保持紫色系，不切換成一個全域共用的命中色。Damage Spread 是 secondary feedback 的明確例外：只在擴散實際造成傷害的目標上，改用來源 `PLAYER_ATTACK_VISUAL_ROLE` 的 accent 色系；它不改寫該怪物後續的 base／primary palette。
+- 色系不屬於 Glyph Material。不同色系不得靠複製只改 tint、物理參數完全相同的 Material 實作。
+- `SLIME` 使用暗而飽和的綠色基底與 Boss 發亮階級；相同 role 的強調程度比普通怪稍高，但仍低於玩家攻擊，且不得靠淺綠色基底偽造 Boss 階級。
+- 精確 color、alpha、基礎色範圍、發亮強度、狀態曲線與受擊峰值只由 `src/game/content/visuals/prototypeCombatVisualTheme.ts` 的集中設定提供，本文、creature definitions 與 renderer 不重複數值。該 authoring config 的所有顏色使用 `#RRGGBB`；prepared content 才保存一次轉換後的 numeric tint。
+
+## 7. Runtime 熱路徑限制
 
 Body Motion 的首要目標是保留節奏辨識度，同時讓成本在 many-cell 場景中可預測：
 
@@ -118,19 +147,21 @@ Body Motion 的首要目標是保留節奏辨識度，同時讓成本在 many-ce
 
 效能驗證沿用 `AGENTS.md` 的 ordinary-combat 與 Boss-stress populations，並觀察 body-motion simulation time、animated Glyph count、render sync time 與 frame p95。若需要降級，先降低純視覺粒子或非 Gameplay effect；不得關閉權威姿態、縮小 hitbox，或讓 renderer 與碰撞採用不同位置。
 
-## 7. 必要驗證
+## 8. 必要驗證
 
 純規則測試至少覆蓋：
 
 - 同一 phase、movement intensity 與 instance offset 永遠產生相同 transform。
 - 跨越多個 cycle 後仍回到相同基準，不累積 position／rotation 漂移。
 - `Z` 的底部支點在允許誤差內保持固定，且停止移動時回正。
-- `BO` 的兩個 Cells 使用不同節拍，停止移動時都回到中性姿態。
+- `BO` 的 `O` 永遠位於 `B` 上方並形成直向 topology；排列更新後兩個 Cells 仍使用既有不同節拍，停止移動時都回到中性姿態。
 - `BAT` 的 `A`／`T` 執行主要拍翼，`B` 只做較小反向補償。
 - Active Husk 與 Living Cell 使用同一 slot motion；`COLLAPSING` 不再執行戰鬥用 Body Motion。
 - 相同 seed／progression state 產生相同 eligible enemy selection，且首次出場順序不可能跳過 `Z → BO → BAT`。
 
-## 8. 後續調校項目
+色系身分、暗色基底、受擊 feedback 與跨角色亮度上限改由瀏覽器實機調校確認，不作為 Runtime content preparation 或單元測試拒絕合法 `#RRGGBB` 色碼的條件。
+
+## 9. 後續調校項目
 
 - `Z`／`BO`／`BAT` 目前 maximum speed 分別為 `40／56／72`，contact damage 都是 `1`；仍需依實際手感調校。
 - Stage 1／2／3 目前以 successful spawn count `0／8／16` 切換且互斥；是否改用時間、事件門檻或解鎖後混合先前種類仍可調整。

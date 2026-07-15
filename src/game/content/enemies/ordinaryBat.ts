@@ -8,6 +8,7 @@ import {
 } from '../creatures/creatureDefinition.ts'
 import { defineGlyphBody, type GlyphBodyInput } from '../../glyph/glyphLayout.ts'
 import { GLYPH_MATERIAL } from '../../glyph/glyphMaterial.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../visuals/combatVisualTheme.ts'
 
 const BAT_GLYPH_SPACING = 24
 const BAT_GLYPH_COLLISION_RADIUS = 12
@@ -39,6 +40,7 @@ export function prepareOrdinaryBatDefinition(): CreatureDefinition {
   return defineCreature({
     id: 'enemy.bat',
     category: 'ORDINARY',
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.BAT,
     body: defineGlyphBody(ORDINARY_BAT_BODY_INPUT),
     maximumSpeed: 72,
     movementBehaviorId: CREATURE_MOVEMENT_BEHAVIOR.DIRECT_PURSUIT,

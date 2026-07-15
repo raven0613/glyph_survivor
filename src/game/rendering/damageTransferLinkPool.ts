@@ -13,11 +13,12 @@ export interface DamageTransferLinkPool {
 
 export function createDamageTransferLinkPool(
   container: Container,
+  tint: number,
 ): DamageTransferLinkPool {
   const lineContext = new GraphicsContext()
     .moveTo(0, 0)
     .lineTo(1, 0)
-    .stroke({ color: 0x8ff7ff, width: 1, alpha: 1, pixelLine: true })
+    .stroke({ color: tint, width: 1, alpha: 1, pixelLine: true })
   const activeViews = new Map<number, ActiveDamageTransferLinkView>()
   const recycledGraphics: Graphics[] = []
   let frameNumber = 0

@@ -7,6 +7,10 @@ import {
   type DamageTargetMode,
 } from '../../glyph/localDamage.ts'
 import type { ProjectileTrackingProfile } from './projectileTracking.ts'
+import {
+  isPlayerAttackVisualRoleId,
+  type PlayerAttackVisualRoleId,
+} from '../visuals/combatVisualTheme.ts'
 
 export const TARGET_STRATEGY = Object.freeze({
   AIM_ASSISTED: 'AIM_ASSISTED',
@@ -84,8 +88,7 @@ export interface CircleDamageShape {
 export interface ProjectilePresentation {
   readonly glyphFrame: number
   readonly scale: number
-  readonly alpha: number
-  readonly tint: number
+  readonly visualRoleId: PlayerAttackVisualRoleId
 }
 
 interface BaseWeaponCombatProfile {
@@ -105,8 +108,7 @@ export interface ProjectileWeaponCombatProfile extends BaseWeaponCombatProfile {
 export interface FlamePresentation {
   readonly durationMs: number
   readonly particleCount: number
-  readonly innerTint: number
-  readonly outerTint: number
+  readonly visualRoleId: PlayerAttackVisualRoleId
 }
 
 export interface ConeWeaponCombatProfile extends BaseWeaponCombatProfile {
@@ -193,16 +195,8 @@ function validateGlyphPresentation(
 ): void {
   getPrintableAsciiCharacter(presentation.glyphFrame)
   requireFiniteGreaterThanZero(presentation.scale, `${name} scale`)
-  requireFiniteAtLeast(presentation.alpha, 0, `${name} alpha`)
-  if (presentation.alpha > 1) {
-    throw new RangeError(`${name} alpha must be between 0 and 1.`)
-  }
-  requireFiniteAtLeast(presentation.tint, 0, `${name} tint`)
-  if (
-    !Number.isSafeInteger(presentation.tint) ||
-    presentation.tint > 0xffffff
-  ) {
-    throw new RangeError(`${name} tint must be a 24-bit color.`)
+  if (!isPlayerAttackVisualRoleId(presentation.visualRoleId)) {
+    throw new TypeError(`${name} visualRoleId must be registered.`)
   }
 }
 
@@ -275,10 +269,8 @@ export function defineWeapon(input: WeaponDefinitionInput): WeaponDefinition {
     if (!Number.isSafeInteger(profile.flamePresentation.particleCount) || profile.flamePresentation.particleCount <= 0) {
       throw new RangeError('flame particleCount must be a positive safe integer.')
     }
-    for (const tint of [profile.flamePresentation.innerTint, profile.flamePresentation.outerTint]) {
-      if (!Number.isSafeInteger(tint) || tint < 0 || tint > 0xffffff) {
-        throw new RangeError('flame tint must be a 24-bit color.')
-      }
+    if (!isPlayerAttackVisualRoleId(profile.flamePresentation.visualRoleId)) {
+      throw new TypeError('flame visualRoleId must be registered.')
     }
     preparedProfile = Object.freeze({
       ...profile,

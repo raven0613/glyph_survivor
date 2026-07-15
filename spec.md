@@ -109,8 +109,10 @@ SLIMESLIMESLIME...
 首批普通敵人的文字與動態身分為：
 
 - `Z` 代表 `ZOMBIE`：移動時以字形底部為軸心做小幅、不對稱的蹣跚；停止移動時回到中性姿態。
-- `BO` 代表 `BONE`：移動時 `B`、`O` 以錯開節拍分別顫動，形成短促的骨頭碰撞感；停止移動時回到中性姿態。
+- `BO` 代表 `BONE`：身體以直向兩格排列，`O` 在上作為頭部、`B` 在下作為軀幹；移動時 `B`、`O` 仍以錯開節拍分別顫動，形成短促的骨頭碰撞感，停止移動時回到中性姿態。排列方式不得改寫既有的 Body Motion 策略或每隻 instance 的 deterministic phase offset。
 - `BAT`：`A`、`T` 以近乎同拍的上下點動表現拍翼，`T` 稍晚，`B` 只做很小的反向補償，避免整個單字像柔軟布條一起晃動。
+
+首批普通敵人同屬一個發亮／視覺優先階級，但各自使用可辨識的暗色基礎色系：`Z` 使用偏暗綠色系、`BO` 使用暗骨白／中性灰色系、`BAT` 使用偏暗且彩度稍高的深紫色系。正常、直接受擊的 primary feedback 與 `HUSK` 都必須沿用該物種自己的色系；Damage Spread 的專屬 secondary feedback 是明確例外，改為沿用來源玩家攻擊的色系。這裡的「同階級」是指各狀態使用相同的發亮強度與優先順序，不是要求不同色相具有相同的基礎明度或接近一致的最終有效亮度；不得為了數值對齊而把後期怪物調成淺色、粉彩或低彩度。`SLIME` 使用暗而飽和的綠色基底並採 Boss 發亮階級，其亮度強調應比普通敵人稍強，但仍低於玩家攻擊，也不需要把本體調成淺綠。精確 color、alpha、基礎色範圍與發亮強度只存在集中管理且可驗證的 Battlefield Visual Theme config，不在產品文件重複固定數值。
 
 一局開始後，普通敵人的首次出場順序固定為：
 
@@ -190,11 +192,7 @@ Entity HP 是唯讀的衍生摘要，不是另一份可獨立修改的權威狀�
 
 Boss：
 
-Boss 的 Glyph 可以具有較高 Durability。例如某個 Max Durability 為 5 的 Cell，其受傷亮度階段可以是：
-
-100% `HEALTHY` → 80% `DAMAGED` → 60% → 40% → 20% → `HUSK`
-
-因此 Boss 的耐久來自 Glyph Cell 本身，可以非常耐打，同時仍然保持「慢慢被蠶食」的視覺效果。
+Boss 的 Glyph 可以具有較高 Durability。較高 Max Durability 的 Cell 應依剩餘 Durability 呈現逐步降低的亮度階段，最後進入 `HUSK`；階段映射由集中 Battlefield Visual Theme config 決定，不在本文固定百分比。因此 Boss 的耐久來自 Glyph Cell 本身，可以非常耐打，同時仍然保持「慢慢被蠶食」的視覺效果。
 
 當 Glyph Cell 的 Current Durability 降至零時，它進入 `HUSK` 狀態。`HUSK` 必須保留極低亮度、Gameplay Glyph ID、Owner、Max Durability、Layout Anchor、變形資料與原本的輪廓位置。`HUSK` 不接受更多 Durability 傷害，但仍是生命體完整輪廓 hitbox 的一部分，也可以對命中播放局部閃光、材質位移與粒子效果。`HEALTHY`／`DAMAGED` Cell 的任何 Durability 恢復都必須來自明確的治療規則，不能偷偷建立額外 HP；`HUSK` 可以隨明確的 body 重組、形變或分裂規則重新排列，但不能恢復 Durability 或復活。
 
@@ -253,7 +251,8 @@ Damage Spread 是附加在一次直接攻擊上的獨立能力軸，不是放大
 - 擴散可以跨越 owner。每個帶狀範圍內所有存活 Glyph Cells 都是候選，不只限於直接命中的生命體；若原本生命體的存活 Cells 都不在範圍內，它不吃擴散，但範圍內其他生命體的存活 Cells 仍會受傷。
 - Rank I 的第一圈承受主傷害 `20%`；Rank II 的第一、二圈分別承受 `20%`、`10%`；Rank III 的第一、二、三圈分別承受 `20%`、`10%`、`5%`。百分比以該次攻擊已解析的主傷害為基準。
 - 同一個 attack event 內，同一 Glyph Cell 最多降低一次 Durability，取所有直接／擴散候選中的最高傷害；直接主傷害與擴散重疊時以主傷害為準。單一 Cone 內部的幾何取樣都共享同一 event，不能讓同一 Cell 重複吃十幾次擴散；Projectile Count 產生的不同 Cone 則是彼此獨立的 attack events，因此重疊區可以各承受一次傷害。
-- Spread Targets 必須有可見但與主要 Impact Material response 可區分的受傷回饋。除非未來另有明確規則，擴散本身不附帶主要攻擊的局部 impulse 或 whole-body knockback。
+- Spread Targets 必須有可見但與主要 Impact Material response 可區分的受傷回饋。直接 Impact feedback 仍沿用被擊中怪物的 Appearance Profile；spread-only feedback 則沿用該 attack event 已 snapshot 的 `PLAYER_ATTACK_VISUAL_ROLE` 色系，使用該 role 在集中 Battlefield Visual Theme 中設定的 `accent` tint。例如噴火槍的擴散回饋應屬火焰的橘黃系，而不是固定藍色。全域 spread effect 設定只控制 alpha、scale 與 timing，不再提供一個所有武器共用的 tint。除非未來另有明確規則，擴散本身不附帶主要攻擊的局部 impulse 或 whole-body knockback。
+- 只有實際成功降低 Spread Target Durability 時才記錄／刷新 spread feedback。若同一 Glyph 在既有回饋尚未結束前又受到不同攻擊 role 的有效擴散傷害，依穩定 attack-event 處理順序由最新一次成功擴散的 role 取代顏色並刷新持續時間；Renderer 不得從 weapon ID、字元或粒子種類反推色系。
 
 ---
 
@@ -275,7 +274,9 @@ Glyph Damage 必須從命中的局部區域開始，並沿著壞死邊界逐步�
 
 # Material System
 
-每個 Glyph Cell 都具有 Material。生命體可以提供預設 Material，但實際受擊反應屬於 Glyph Cell；Material 決定 Durability、擊退、飛散、回彈、聚合、壞死與恢復行為，也必須定義 `HUSK` 的低亮度表現。`HUSK` 不再承受 Durability 傷害，但仍可依其 Material 對局部命中產生位移、回彈與視覺反應。
+每個 Glyph Cell 都具有 Material 與獨立的 Appearance Profile。生命體可以提供預設 Material 與色系，但實際受擊反應仍屬於 Glyph Cell。Material 決定 Durability、擊退、飛散、回彈、聚合、壞死與恢復行為；Appearance Profile 與集中 Battlefield Visual Theme 則決定該物種在正常、直接受擊、受損與 `HUSK` 狀態下的色系與亮度階級。Damage Spread 的 secondary feedback 另外由來源 attack role 決定暫時色系，但不改變 Glyph 的 Appearance Profile。不得為了讓 `Z`、`BO`、`BAT` 顯示不同顏色而複製只改 tint、物理行為完全相同的假 Material。
+
+`HUSK` 不再承受 Durability 傷害，但仍可依其 Material 對局部命中產生位移、回彈與視覺反應；它的低亮度外觀由 Appearance Profile 與視覺階級共同解析，且不得完全隱藏。
 
 例如：
 
@@ -625,7 +626,7 @@ GOLEM
 
 | 卡片名稱 (Concept)      | 遊戲內實際機制效果 (Gameplay Effect)                                                | 戰場中的 PixiJS 視覺回饋 (Visual Feedback)                                                        |
 | :---------------------- | :---------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------ |
-| **【Color: Fire Red】** | **屬性賦予：** 武器獲得「燃燒/熔岩」屬性，攻擊時對 Glyph 造成持續性傷害。           | 子彈與被擊中的敵方文字區塊轉變為熾熱的螢光紅（`#FF3366`），並帶有微弱的灰燼粒子。                 |
+| **【Color: Fire Red】** | **屬性賦予：** 武器獲得「燃燒/熔岩」屬性，攻擊時對 Glyph 造成持續性傷害。           | 子彈與被擊中的敵方文字區塊轉變為由 Battlefield Visual Theme 提供的熾熱紅色系，並帶有微弱的灰燼粒子。 |
 | **【Size: 200%】**      | **體積倍增：** 子彈或武器的判定範圍、體積大幅度增加，傷害等比例提升。               | 調高字型大小（`fontSize`），子彈字母（如 `o` 變成 `O`，甚至巨大的 `0`）體積膨脹，視覺震撼感極強。 |
 | **【Letter Spacing】**  | **散射間距：** 針對多發散射（Spread）或分裂子彈，增加子彈與子彈之間的擴散軌道間距。 | 增大排版間距（`letterSpacing`），彈幕的橫向覆蓋範圍變寬，更容易進行大面積的雜魚清場。             |
 | **【Text Shadow】**     | **殘影連擊：** 子彈後方依附 1-2 個具備延遲判定的「文字影子」，造成二次傷害判定。    | 啟用陰影渲染（`dropShadow`），子彈後方帶有高透明度的色彩殘影，在畫面上拉出漂亮的字體光軌。        |
@@ -643,22 +644,24 @@ GOLEM
 
 ### 1. 顏色對比度與色彩層級 (Color Hierarchy)
 
-不可讓所有文字使用相同亮度。透過色彩飽和度與明度（HSL/RGB）將畫面劃分層級：
+不可讓所有文字使用相同視覺強度。戰場中所有 Canvas／PixiJS 基礎色彩、alpha 與發亮階級由一份集中、可驗證的 Battlefield Visual Theme config 管理；基礎色的色相／彩度／明度與 Gameplay 呈現的發亮強度是兩個分離維度。本文所稱「明度」是 palette 本身由暗到淺的色調性質，「亮度／發亮階級」則是 Gameplay role 的視覺強調程度，兩者不得互相代替。本文只定義相對順序與色彩語意，不保存固定色碼。
 
-- **第一層級（最高亮、最顯眼）：**
-  - **玩家角色** 與 **玩家核心子彈**。永遠使用高飽和度的顏色（如螢光綠 `#00FF66`、電光藍 `#00CCFF`、`#FFFFFF`）。
-- **第二層級（中度醒目）：**
-  - **高價值掉落物**（如 `$`、`*`）與 **升級提示**。採用閃爍（Blinking）或具有微幅呼吸效果的金黃色（`#FFCC00`）。
-- **第三層級（暗色/底層）：**
-  - **普通敵人與 Boss**。平時維持在中等明度的冷色調或特定警示色（如暗紅 `#993333`、鐵灰 `#666666`）。
-  - 這樣能確保即使畫面上有一萬個字母，玩家的眼睛也能直覺捕捉到生存空間。
+為了方便人工調色，Battlefield Visual Theme 的 authoring config 中所有顏色一律使用 `#RRGGBB` 字串，alpha 另以獨立數字設定。遊戲只在 `LOADING／prepareGameContent()` 嚴格驗證字串格式並轉換一次；進入 READY 前即產生 immutable prepared theme，之後 Runtime、render snapshot 與 PixiJS 只接收 24-bit numeric tint。不得在 fixed step、逐 Glyph 或逐幀路徑解析字串，也不得接受縮寫色碼、含 alpha 色碼或 CSS 顏色名稱。只要是合法 `#RRGGBB`，Runtime 不得再因色相、彩度、明度、狀態亮度順序或跨角色亮度上限阻止載入；這些視覺層級屬於瀏覽器實機調校目標。玩家攻擊 role 的 `accent` 同時是該 role 的 Damage Spread 色系來源，因此調整攻擊 palette 時，其擴散回饋必須自動跟隨，不另維護一份 spread tint。
+
+- **最高視覺優先權：玩家與玩家攻擊。** 玩家必須隨時可辨識；玩家攻擊是其他戰場元素不可超越的亮度上限。
+- **經驗值掉落：短暫醒目、長期克制。** 經驗值剛生成時呈黃色，短時間後過渡為暗金色；進入穩定狀態後只以低 duty-cycle、彼此錯開的短促閃爍提醒玩家。新生狀態與閃爍峰值都不得達到或超過玩家攻擊的亮度階級，且大量掉落物不得同步閃爍造成畫面噪音。
+- **Boss：高於普通敵人、低於玩家攻擊。** Boss 的正常與受擊發亮強度都比普通敵人稍高，以保留重量感與威脅辨識，但不能蓋過玩家及其攻擊；較高階級不得靠把基礎色洗成淺色來達成。
+- **普通敵人：同一發亮階級、不同暗色基底。** `Z` 為偏暗綠色系、`BO` 為暗骨白／中性灰色系、`BAT` 為偏暗且彩度稍高的深紫色系。三者共享普通敵人的狀態強調順序與發亮幅度，而不共享絕對明度；直接受擊發亮與 primary 粒子必須留在各自色系內，不得全部閃成同一種白色或紅色，也不得為了對齊亮度而變成粉彩色。Damage Spread 的 secondary feedback 依來源玩家攻擊 role 的 accent 色系呈現，不受這條怪物 primary palette 規則限制。
+- **低優先權元素：** 穩定狀態的暗金經驗值、`HUSK`、背景文字與靜態障礙物依序使用更克制的階級；`HUSK` 仍需保留可讀輪廓，背景則維持全場最低的視覺優先權。
+
+視覺調校仍應分開觀察三件事：基礎色是否符合暗色／彩度語意、同一 profile 內的狀態發亮順序是否清楚，以及最終畫面是否超過全域上限。不得以「同階級」為由要求 `Z`／`BO`／`BAT` 疊加背景後的有效亮度落在狹窄誤差內；同階級只共享發亮強度與角色順序。玩家攻擊上限、XP 新生／閃爍峰值與怪物受擊峰值等跨類別安全界線應在瀏覽器中依實際背景、色彩與 alpha 做視覺確認，但不作為 content preparation 的拒絕條件。精確色值、alpha、發亮強度、過渡時間、閃爍週期與 duty cycle 都屬可調 config，不得複製到本文或其他內容文件。
 
 ### 2. 邊框與字體陰影（Stroke & Drop Shadow）機制
 
-在 PixiJS 渲染層，為關鍵 Gameplay 物件加上一層極微小的單色外框（Stroke）或黑影，將字母與底色背景徹底剝離：
+在 PixiJS 渲染層，為關鍵 Gameplay 物件加上一層由 Battlefield Visual Theme 提供的低亮度中性外框（Stroke）或陰影，將字母與底色背景徹底剝離：
 
-- 玩家文字與核心子彈強制開啟 `stroke: '#000000'` 與 `strokeThickness: 3`。
-- 即使玩家不小心走進由文字組成的 Boss 身體裡，因為玩家字母帶有黑色外框，在視覺上仍會像一個「浮在 Boss 表面」的獨立物件，絕不與 Boss 的字母混在一起。
+- 玩家文字與核心子彈使用集中設定的外框色與厚度，不在文件或 renderer 內重複固定值。
+- 即使玩家不小心走進由文字組成的 Boss 身體裡，因為玩家字母帶有由 Theme 定義的高對比外框，在視覺上仍會像一個「浮在 Boss 表面」的獨立物件，絕不與 Boss 的字母混在一起。
 
 ### 3. 動態動能與粒子淡出 (Velocity-Based Alpha fading)
 
@@ -668,4 +671,4 @@ GOLEM
 ### 4. 相對靜止與動態對比 (Motion Contrast)
 
 - 玩家的移動與子彈的噴射是高頻率的**線型動態**。
-- 地圖背景（如果未來有設計背景文本）或靜態障礙物，必須保持完全靜止且極度暗淡（例如明度低於 15% 的暗灰色），利用「動與靜」的物理視覺差，自然而然地引導玩家的視線焦點。
+- 地圖背景（如果未來有設計背景文本）或靜態障礙物，必須保持完全靜止並使用 Battlefield Visual Theme 的最低亮度階級，利用「動與靜」的物理視覺差，自然而然地引導玩家的視線焦點。

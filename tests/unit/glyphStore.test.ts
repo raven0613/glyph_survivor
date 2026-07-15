@@ -6,9 +6,15 @@ import {
   createGlyphStore,
 } from '../../src/game/glyph/glyphStore.ts'
 import { getPrintableAsciiGlyphFrame } from '../../src/game/glyph/glyphFrame.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../../src/game/content/visuals/combatVisualTheme.ts'
+import { PROTOTYPE_COMBAT_VISUAL_THEME } from '../../src/game/content/visuals/prototypeCombatVisualTheme.ts'
+
+function createTestGlyphStore() {
+  return createGlyphStore({ visualTheme: PROTOTYPE_COMBAT_VISUAL_THEME })
+}
 
 test('derives owner durability only from its glyph cells', () => {
-  const store = createGlyphStore()
+  const store = createTestGlyphStore()
   const outerGlyph = store.createGlyph({
     ownerId: 7,
     bodySlotId: 0,
@@ -23,7 +29,7 @@ test('derives owner durability only from its glyph cells', () => {
     collisionRadius: 12,
     scale: 1,
     material: GLYPH_MATERIAL.BASIC,
-    baseTint: 0xc94b5f,
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
   })
   const innerGlyph = store.createGlyph({
     ownerId: 7,
@@ -39,7 +45,7 @@ test('derives owner durability only from its glyph cells', () => {
     collisionRadius: 12,
     scale: 1,
     material: GLYPH_MATERIAL.BASIC,
-    baseTint: 0xc94b5f,
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
   })
 
   assert.deepEqual(store.getOwnerDurability(7), {
@@ -65,7 +71,7 @@ test('derives owner durability only from its glyph cells', () => {
 })
 
 test('clamps glyph damage at zero and depletes an owner only once all glyphs are husks', () => {
-  const store = createGlyphStore()
+  const store = createTestGlyphStore()
   const glyph = store.createGlyph({
     ownerId: 11,
     bodySlotId: 0,
@@ -80,7 +86,7 @@ test('clamps glyph damage at zero and depletes an owner only once all glyphs are
     collisionRadius: 12,
     scale: 1,
     material: GLYPH_MATERIAL.BASIC,
-    baseTint: 0xc94b5f,
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
   })
 
   const result = store.applyDamage(glyph.id, 5)
@@ -94,7 +100,7 @@ test('clamps glyph damage at zero and depletes an owner only once all glyphs are
 })
 
 test('rejects glyph definitions that cannot produce valid durability', () => {
-  const store = createGlyphStore()
+  const store = createTestGlyphStore()
 
   assert.throws(
     () =>
@@ -112,14 +118,14 @@ test('rejects glyph definitions that cannot produce valid durability', () => {
         collisionRadius: 12,
         scale: 1,
         material: GLYPH_MATERIAL.BASIC,
-        baseTint: 0xc94b5f,
+        appearanceProfileId: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
       }),
     /positive safe integer/,
   )
 })
 
 test('preserves fractional durability and normalizes accumulated damage to zero', () => {
-  const store = createGlyphStore()
+  const store = createTestGlyphStore()
   const glyph = store.createGlyph({
     ownerId: 12,
     bodySlotId: 0,
@@ -134,7 +140,7 @@ test('preserves fractional durability and normalizes accumulated damage to zero'
     collisionRadius: 12,
     scale: 1,
     material: GLYPH_MATERIAL.BASIC,
-    baseTint: 0xc94b5f,
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
   })
 
   store.applyDamage(glyph.id, 0.125)

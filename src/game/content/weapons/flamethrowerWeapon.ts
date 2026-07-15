@@ -1,5 +1,6 @@
 import { DAMAGE_TARGET_MODE } from '../../glyph/localDamage.ts'
 import { WEAPON_DEFINITION_ID } from '../../../shared/weaponIds.ts'
+import { PLAYER_ATTACK_VISUAL_ROLE } from '../visuals/combatVisualTheme.ts'
 import {
   ATTACK_PATTERN,
   DAMAGE_SHAPE,
@@ -36,8 +37,7 @@ export function prepareFlamethrowerWeaponDefinition(): WeaponDefinition {
       flamePresentation: {
         durationMs: 320,
         particleCount: 12,
-        innerTint: 0xffdd33,
-        outerTint: 0xff7a18,
+        visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.FLAMETHROWER,
       },
     },
   })

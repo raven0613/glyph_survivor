@@ -1,0 +1,116 @@
+import {
+  GLYPH_APPEARANCE_PROFILE,
+  GLYPH_BRIGHTNESS_TIER,
+  PLAYER_ATTACK_VISUAL_ROLE,
+  defineCombatVisualTheme,
+  type CombatVisualThemeAuthoring,
+} from './combatVisualTheme.ts'
+
+export const PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING = {
+  map: {
+    canvasBackground: { tint: '#050505', alpha: 1 },
+    backgroundGlyph: { tint: '#252525', alpha: 1 },
+    obstacle: { tint: '#333333', alpha: 1 },
+  },
+  glyphAtlas: {
+    sourceFillTint: '#ffffff',
+    outlineTint: '#000000',
+    outlineWidth: 5,
+  },
+  player: { tint: '#00ff88', alpha: 1 },
+  playerAttacks: {
+    [PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE]: {
+      core: { tint: '#66ddff', alpha: 1 },
+      accent: { tint: '#66ddff', alpha: 0.72 },
+    },
+    [PLAYER_ATTACK_VISUAL_ROLE.FLAMETHROWER]: {
+      core: { tint: '#ffdd33', alpha: 1 },
+      accent: { tint: '#ff7a18', alpha: 0.9 },
+    },
+    [PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY]: {
+      core: { tint: '#66eeff', alpha: 1 },
+      accent: { tint: '#66eeff', alpha: 0.72 },
+    },
+  },
+  glyphBrightnessTiers: {
+    [GLYPH_BRIGHTNESS_TIER.ORDINARY]: {
+      id: GLYPH_BRIGHTNESS_TIER.ORDINARY,
+      activeGain: 1,
+      damagedGainFloor: 0.72,
+      impactGain: 1.42,
+      huskGain: 0.45,
+      healthyAlpha: 1,
+      damagedAlphaFloor: 0.32,
+      impactAlphaFloor: 0.86,
+      huskAlpha: 0.18,
+    },
+    [GLYPH_BRIGHTNESS_TIER.BOSS]: {
+      id: GLYPH_BRIGHTNESS_TIER.BOSS,
+      activeGain: 1.12,
+      damagedGainFloor: 0.8,
+      impactGain: 1.55,
+      huskGain: 0.52,
+      healthyAlpha: 1,
+      damagedAlphaFloor: 0.4,
+      impactAlphaFloor: 0.9,
+      huskAlpha: 0.22,
+    },
+  },
+  glyphAppearances: {
+    [GLYPH_APPEARANCE_PROFILE.ZOMBIE]: {
+      id: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.ORDINARY,
+      durabilityBaseTints: ['#297d42'],
+      eyeDurabilityBaseTints: null,
+      impactBaseTint: '#236b38',
+      huskBaseTint: '#236b38',
+    },
+    [GLYPH_APPEARANCE_PROFILE.BONE]: {
+      id: GLYPH_APPEARANCE_PROFILE.BONE,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.ORDINARY,
+      durabilityBaseTints: ['#918f8a'],
+      eyeDurabilityBaseTints: null,
+      impactBaseTint: '#68645a',
+      huskBaseTint: '#68645a',
+    },
+    [GLYPH_APPEARANCE_PROFILE.BAT]: {
+      id: GLYPH_APPEARANCE_PROFILE.BAT,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.ORDINARY,
+      durabilityBaseTints: ['#8232a4'],
+      eyeDurabilityBaseTints: null,
+      impactBaseTint: '#552277',
+      huskBaseTint: '#552277',
+    },
+    [GLYPH_APPEARANCE_PROFILE.SLIME_BOSS]: {
+      id: GLYPH_APPEARANCE_PROFILE.SLIME_BOSS,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.BOSS,
+      durabilityBaseTints: ['#268d48', '#267a42'],
+      eyeDurabilityBaseTints: ['#805f1e', '#9a7425'],
+      impactBaseTint: '#267a42',
+      huskBaseTint: '#1f6637',
+    },
+  },
+  drops: {
+    experience: {
+      scale: 0.7,
+      fresh: { tint: '#e0b83e', alpha: 0.92 },
+      settled: { tint: '#765d1c', alpha: 0.72 },
+      flash: { tint: '#c99d26', alpha: 0.88 },
+      freshDurationMs: 650,
+      settleTransitionMs: 450,
+      flashIntervalMs: 3_200,
+      flashDurationMs: 220,
+    },
+    other: { tint: '#b08a2e', alpha: 0.8 },
+  },
+  effects: {
+    spreadFeedbackAlpha: 0.72,
+    spreadFeedbackScaleBonus: 0.08,
+    spreadFeedbackDurationMs: 140,
+    transferLink: { tint: '#5ea8b8', alpha: 0.62 },
+  },
+} satisfies CombatVisualThemeAuthoring
+
+export const PROTOTYPE_COMBAT_VISUAL_THEME = defineCombatVisualTheme(
+  PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING,
+)

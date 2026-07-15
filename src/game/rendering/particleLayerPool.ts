@@ -41,7 +41,6 @@ export function createParticleLayerPool(
       texture,
       anchorX: 0.5,
       anchorY: 0.5,
-      tint: 0xffffff,
     })
   }
 

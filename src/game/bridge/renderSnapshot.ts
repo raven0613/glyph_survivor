@@ -3,20 +3,22 @@ import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
-import { DAMAGE_SPREAD_FEEDBACK_DURATION_MS } from '../glyph/localDamage.ts'
 import {
   getGlyphMaterialDefinition,
   type GlyphMaterialDefinition,
 } from '../glyph/glyphMaterial.ts'
 import { calculateGlyphHitPresentation } from './glyphHitPresentation.ts'
+import {
+  getPlayerAttackAppearance,
+  resolveGlyphImpactPresentation,
+} from '../content/visuals/combatVisualTheme.ts'
+import { resolveExperienceDropPresentation } from '../content/visuals/experienceDropPresentation.ts'
 
 const COLLAPSE_SCATTER_DISTANCE = 42
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const MAX_BURST_PARTICLES_PER_GLYPH = 8
 const MAX_ACTIVE_IMPACT_PARTICLES = 192
 const HIT_BURST_SPREAD_RADIANS = 1.4
-const SPREAD_FEEDBACK_TINT = 0x68e7ff
-const SPREAD_FEEDBACK_SCALE_BONUS = 0.08
 
 export interface RenderGlyph {
   id: number
@@ -40,7 +42,9 @@ export interface RenderFlameEmitter {
   progress: number
   particleCount: number
   innerTint: number
+  innerAlpha: number
   outerTint: number
+  outerAlpha: number
   seed: number
 }
 
@@ -144,6 +148,8 @@ function writeSpreadEffect(
   x: number,
   y: number,
   intensity: number,
+  tint: number,
+  alpha: number,
 ): number {
   if (intensity <= 0 || startIndex >= MAX_ACTIVE_IMPACT_PARTICLES) {
     return startIndex
@@ -158,8 +164,8 @@ function writeSpreadEffect(
     x + Math.cos(angle) * distance,
     y + Math.sin(angle) * distance,
     0.4 + intensity * 0.18,
-    intensity * 0.75,
-    SPREAD_FEEDBACK_TINT,
+    intensity * alpha,
+    tint,
   )
   return startIndex + 1
 }
@@ -173,6 +179,7 @@ function writeImpactEffects(
   velocityX: number,
   velocityY: number,
   material: GlyphMaterialDefinition,
+  impactTint: number,
   intensity: number,
 ): number {
   if (intensity <= 0 || startIndex >= MAX_ACTIVE_IMPACT_PARTICLES) {
@@ -214,7 +221,7 @@ function writeImpactEffects(
       y + Math.sin(angle) * distance,
       material.hitBurstScale * (0.75 + intensity * 0.25),
       intensity,
-      material.hitBurstTint,
+      impactTint,
     )
     startIndex += 1
   }
@@ -270,23 +277,35 @@ export function writeRenderSnapshot(
 
     for (const glyph of world.glyphStore.getOwnerGlyphs(enemy.id)) {
       const material = getGlyphMaterialDefinition(glyph.material)
+      const impactPresentation = resolveGlyphImpactPresentation(
+        world.content.combatVisualTheme,
+        glyph.appearanceProfileId,
+      )
       const hitPresentation = calculateGlyphHitPresentation({
         baseAlpha: glyph.alpha,
         baseScale: glyph.scale,
         baseTint: glyph.baseTint,
-        hitTint: material.hitTint,
+        hitTint: impactPresentation.tint,
         hitFlashRemainingMs: glyph.hitFlashRemainingMs,
         hitFlashDurationMs: material.hitFlashDurationMs,
         hitPulseScale: material.hitPulseScale,
-        hitAlphaFloor: material.hitAlphaFloor,
+        hitAlphaFloor: impactPresentation.alpha,
       })
+      const spreadAccent =
+        glyph.spreadFeedbackVisualRoleId === null
+          ? null
+          : getPlayerAttackAppearance(
+              world.content.combatVisualTheme,
+              glyph.spreadFeedbackVisualRoleId,
+            ).accent
       const spreadIntensity =
-        glyph.hitFlashRemainingMs > 0
+        glyph.hitFlashRemainingMs > 0 || spreadAccent === null
           ? 0
           : Math.min(
               1,
               glyph.spreadFlashRemainingMs /
-                DAMAGE_SPREAD_FEEDBACK_DURATION_MS,
+                world.content.combatVisualTheme.effects
+                  .spreadFeedbackDurationMs,
             )
       const collapseAngle = glyph.id * GOLDEN_ANGLE
       const collapseDistance = collapseProgress * COLLAPSE_SCATTER_DISTANCE
@@ -307,12 +326,21 @@ export function writeRenderSnapshot(
         y,
         materializeProgress *
           hitPresentation.scale *
-          (1 + spreadIntensity * SPREAD_FEEDBACK_SCALE_BONUS) *
+          (1 +
+            spreadIntensity *
+              world.content.combatVisualTheme.effects
+                .spreadFeedbackScaleBonus) *
           (1 - collapseProgress * 0.7),
         materializeProgress *
-          Math.max(hitPresentation.alpha, spreadIntensity * 0.72) *
+          Math.max(
+            hitPresentation.alpha,
+            spreadIntensity *
+              world.content.combatVisualTheme.effects.spreadFeedbackAlpha,
+          ) *
           (1 - collapseProgress),
-        spreadIntensity > 0 ? SPREAD_FEEDBACK_TINT : hitPresentation.tint,
+        spreadIntensity > 0 && spreadAccent !== null
+          ? spreadAccent.tint
+          : hitPresentation.tint,
         glyph.rotation,
       )
       enemyCount += 1
@@ -326,6 +354,7 @@ export function writeRenderSnapshot(
         glyph.velocityX,
         glyph.velocityY,
         material,
+        impactPresentation.tint,
         hitPresentation.intensity,
       )
       effectCount = writeSpreadEffect(
@@ -335,6 +364,8 @@ export function writeRenderSnapshot(
         x,
         y,
         spreadIntensity,
+        spreadAccent?.tint ?? hitPresentation.tint,
+        world.content.combatVisualTheme.effects.spreadFeedbackAlpha,
       )
     }
   }
@@ -396,6 +427,11 @@ export function writeRenderSnapshot(
   let dropCount = 0
   for (const drop of world.drops) {
     if (drop.isAlive && isVisible(drop.x, drop.y, camera)) {
+      const presentation = resolveExperienceDropPresentation(
+        world.content.combatVisualTheme,
+        world.runTimeMs - drop.spawnedAtRunTimeMs,
+        drop.id,
+      )
       writeGlyph(
         snapshot.drops,
         dropCount,
@@ -403,9 +439,9 @@ export function writeRenderSnapshot(
         0,
         drop.x,
         drop.y,
-        0.7,
-        1,
-        0xffcc33,
+        presentation.scale,
+        presentation.alpha,
+        presentation.tint,
       )
       dropCount += 1
     }
@@ -428,7 +464,9 @@ export function writeRenderSnapshot(
     output.progress = 1 - emitter.remainingMs / emitter.durationMs
     output.particleCount = emitter.particleCount
     output.innerTint = emitter.innerTint
+    output.innerAlpha = emitter.innerAlpha
     output.outerTint = emitter.outerTint
+    output.outerAlpha = emitter.outerAlpha
     output.seed = emitter.seed
     snapshot.flameEmitters[flameEmitterCount] = output
     flameEmitterCount += 1
@@ -451,7 +489,9 @@ export function writeRenderSnapshot(
     output.sourceY = link.sourceY
     output.targetX = link.targetX
     output.targetY = link.targetY
-    output.alpha = Math.max(0, link.remainingMs / link.durationMs) * 0.62
+    output.alpha =
+      Math.max(0, link.remainingMs / link.durationMs) *
+      world.content.combatVisualTheme.effects.transferLink.alpha
     snapshot.damageTransferLinks[damageTransferLinkCount] = output
     damageTransferLinkCount += 1
   }

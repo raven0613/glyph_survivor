@@ -6,6 +6,7 @@ import type {
   DamageShapeId,
   DestructionProfileId,
 } from '../content/weapons/weaponDefinition.ts'
+import type { PlayerAttackVisualRoleId } from '../content/visuals/combatVisualTheme.ts'
 import type { DamageTargetMode } from '../glyph/localDamage.ts'
 import type { DamageSpreadProfile } from '../glyph/localDamage.ts'
 
@@ -55,7 +56,9 @@ export interface FlameEmitterState {
   remainingMs: number
   particleCount: number
   innerTint: number
+  innerAlpha: number
   outerTint: number
+  outerAlpha: number
   seed: number
 }
 
@@ -79,6 +82,7 @@ export interface OrbitAttackState {
   impactStrengthMultiplier: number
   damageSpreadProfile: Readonly<DamageSpreadProfile> | null
   glyphFrame: number
+  visualRoleId: PlayerAttackVisualRoleId
   visualScale: number
   visualAlpha: number
   visualTint: number
@@ -142,6 +146,7 @@ export interface ProjectileState {
   retargetIntervalMs: number
   nextTargetSearchTimeMs: number
   glyphFrame: number
+  visualRoleId: PlayerAttackVisualRoleId
   visualScale: number
   visualAlpha: number
   visualTint: number
@@ -164,6 +169,7 @@ export interface ExperienceDropState {
   x: number
   y: number
   value: number
+  spawnedAtRunTimeMs: number
   isAlive: boolean
 }
 

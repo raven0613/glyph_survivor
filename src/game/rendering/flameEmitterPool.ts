@@ -70,8 +70,10 @@ export function createFlameEmitterPool(
           const life = Math.max(0, 1 - emitter.progress * (0.7 + distanceRatio * 0.3))
           particle.scaleX = 0.28 + life * 0.28
           particle.scaleY = particle.scaleX
-          particle.alpha = life
-          particle.tint = index % 2 === 0 ? emitter.innerTint : emitter.outerTint
+          const isInnerParticle = index % 2 === 0
+          particle.alpha =
+            life * (isInnerParticle ? emitter.innerAlpha : emitter.outerAlpha)
+          particle.tint = isInnerParticle ? emitter.innerTint : emitter.outerTint
         }
       }
       activeViews.forEach((view, id) => {

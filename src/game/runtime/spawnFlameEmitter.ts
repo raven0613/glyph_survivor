@@ -1,6 +1,7 @@
 import type { ResolvedConeWeaponProfile } from '../systems/resolveWeaponProfile.ts'
 import type { FlameEmitterState } from './worldEntities.ts'
 import type { WorldState } from './worldState.ts'
+import { getPlayerAttackAppearance } from '../content/visuals/combatVisualTheme.ts'
 
 const MAX_ACTIVE_FLAME_EMITTERS = 8
 const MAX_PARTICLES_PER_FLAME_EMITTER = 16
@@ -25,6 +26,10 @@ export function spawnFlameEmitter(
   }
   const emitter = recycled ?? ({} as FlameEmitterState)
   const presentation = profile.flamePresentation
+  const appearance = getPlayerAttackAppearance(
+    world.content.combatVisualTheme,
+    presentation.visualRoleId,
+  )
   Object.assign(emitter, {
     id: world.nextFlameEmitterId,
     sourceWeaponInstanceId,
@@ -40,8 +45,10 @@ export function spawnFlameEmitter(
       presentation.particleCount,
       MAX_PARTICLES_PER_FLAME_EMITTER,
     ),
-    innerTint: presentation.innerTint,
-    outerTint: presentation.outerTint,
+    innerTint: appearance.core.tint,
+    innerAlpha: appearance.core.alpha,
+    outerTint: appearance.accent.tint,
+    outerAlpha: appearance.accent.alpha,
     seed:
       Math.imul(sourceWeaponInstanceId, 65_537) +
       Math.imul(attackSequence, 257) +

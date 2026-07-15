@@ -19,6 +19,11 @@ import { runDirectorSystem } from '../../src/game/systems/directorSystem.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
 import { runGlyphMaterialSystem } from '../../src/game/systems/glyphMaterialSystem.ts'
 import { runMovementSystem } from '../../src/game/systems/movementSystem.ts'
+import {
+  PLAYER_ATTACK_VISUAL_ROLE,
+  resolveGlyphBasePresentation,
+  resolveGlyphImpactPresentation,
+} from '../../src/game/content/visuals/combatVisualTheme.ts'
 
 test('moves and morphs Slime through composed runtime strategies', () => {
   const content = prepareGameContent()
@@ -194,7 +199,7 @@ test('caps simultaneous ASCII impact particles under large area hits', () => {
   assert.equal(snapshot.effects.length, 192)
 })
 
-test('keeps Slime eyes yellow across durability damage and hit flash', () => {
+test('keeps the eye accent while using the Slime hit color family', () => {
   const content = prepareGameContent()
   const world = createWorldState(
     'slime-yellow-eyes',
@@ -209,10 +214,18 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
     .getOwnerGlyphs(slime.id)
     .find((glyph) => glyph.role === 'EYE')
   assert.ok(eye)
-  assert.equal(eye.baseTint, 0xf4d35e)
+  const initialEyePresentation = resolveGlyphBasePresentation(
+    content.combatVisualTheme,
+    eye.appearanceProfileId,
+    eye.currentDurability,
+    eye.maxDurability,
+    eye.role,
+  )
+  assert.equal(eye.baseTint, initialEyePresentation.tint)
 
   world.glyphDamageQueue.enqueue({
     attackEventId: 1,
+    visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
     primaryScope: 'LOCKED_OWNER',
     ownerId: slime.id,
     shapeKind: 'CIRCLE',
@@ -232,13 +245,24 @@ test('keeps Slime eyes yellow across durability damage and hit flash', () => {
   })
   runDamageSystem(world)
 
-  assert.equal(eye.tint, 0xb7e4c7)
+  const damagedEyeImpact = resolveGlyphImpactPresentation(
+    content.combatVisualTheme,
+    eye.appearanceProfileId,
+  )
+  assert.equal(eye.tint, damagedEyeImpact.tint)
   runGlyphMaterialSystem(
     world,
     getGlyphMaterialDefinition(eye.material).hitFlashDurationMs,
   )
-  assert.equal(eye.baseTint, 0xd4a72c)
-  assert.equal(eye.tint, 0xd4a72c)
+  const damagedEyeBase = resolveGlyphBasePresentation(
+    content.combatVisualTheme,
+    eye.appearanceProfileId,
+    eye.currentDurability,
+    eye.maxDurability,
+    eye.role,
+  )
+  assert.equal(eye.baseTint, damagedEyeBase.tint)
+  assert.equal(eye.tint, damagedEyeBase.tint)
 })
 
 test('spawns exactly one Slime boss from the first successful Z wave', () => {

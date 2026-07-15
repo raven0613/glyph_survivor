@@ -13,6 +13,7 @@ import {
   type GlyphPoseAnchorInput,
 } from '../../glyph/glyphLayout.ts'
 import { GLYPH_MATERIAL } from '../../glyph/glyphMaterial.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../visuals/combatVisualTheme.ts'
 
 const SLIME_MASK = Object.freeze([
   '    XXXXXX    ',
@@ -119,6 +120,7 @@ export function prepareSlimeBossDefinition(): CreatureDefinition {
   return defineCreature({
     id: 'boss.slime.prototype',
     category: 'BOSS',
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.SLIME_BOSS,
     body: defineGlyphBody(bodyInput),
     maximumSpeed: 60,
     movementBehaviorId: CREATURE_MOVEMENT_BEHAVIOR.DAMPED_PURSUIT,

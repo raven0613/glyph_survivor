@@ -2,6 +2,7 @@ import type { ResolvedWeaponProfile } from '../systems/resolveWeaponProfile.ts'
 import { TARGET_STRATEGY } from '../content/weapons/weaponDefinition.ts'
 import type { ProjectileState } from './worldEntities.ts'
 import { getNextEntityId, type WorldState } from './worldState.ts'
+import { getPlayerAttackAppearance } from '../content/visuals/combatVisualTheme.ts'
 
 export interface SpawnProjectileInput {
   readonly sourceWeaponInstanceId: number
@@ -30,6 +31,10 @@ export function spawnProjectile(
   const attackPattern = input.profile.attackPattern
   const trackingProfile = input.profile.trackingProfile
   const presentation = input.profile.projectilePresentation
+  const appearance = getPlayerAttackAppearance(
+    world.content.combatVisualTheme,
+    presentation.visualRoleId,
+  )
   const activeProjectile = projectile ?? ({} as ProjectileState)
   Object.assign(activeProjectile, {
     id: getNextEntityId(world),
@@ -66,9 +71,10 @@ export function spawnProjectile(
     retargetIntervalMs: trackingProfile.retargetIntervalMs,
     nextTargetSearchTimeMs: world.runTimeMs,
     glyphFrame: presentation.glyphFrame,
+    visualRoleId: presentation.visualRoleId,
     visualScale: presentation.scale,
-    visualAlpha: presentation.alpha,
-    visualTint: presentation.tint,
+    visualAlpha: appearance.core.alpha,
+    visualTint: appearance.core.tint,
   })
   world.projectiles.push(activeProjectile)
   world.diagnostics.attackEmissionCount += 1

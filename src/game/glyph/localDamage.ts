@@ -22,8 +22,6 @@ export const DAMAGE_PRIMARY_SCOPE = Object.freeze({
 export type DamagePrimaryScope =
   (typeof DAMAGE_PRIMARY_SCOPE)[keyof typeof DAMAGE_PRIMARY_SCOPE]
 
-export const DAMAGE_SPREAD_FEEDBACK_DURATION_MS = 140
-
 export interface DamageSpreadProfile {
   readonly bandWidth: number
   readonly bandDamageRatios: readonly number[]
@@ -31,6 +29,7 @@ export interface DamageSpreadProfile {
 
 interface BaseGlyphDamageEvent {
   readonly attackEventId: number
+  readonly visualRoleId: PlayerAttackVisualRoleId
   readonly shapeKind: LocalDamageShapeKind
   readonly shapeX: number
   readonly shapeY: number
@@ -73,6 +72,7 @@ export interface DamageClaim {
   glyphId: number
   amount: number
   isSpread: boolean
+  spreadVisualRoleId: PlayerAttackVisualRoleId | null
 }
 
 export interface DamageResolutionScratch {
@@ -91,6 +91,7 @@ export function createDamageResolutionScratch(): DamageResolutionScratch {
 
 type MutableGlyphDamageEvent = {
   attackEventId: number
+  visualRoleId: PlayerAttackVisualRoleId
   primaryScope: DamagePrimaryScope
   ownerId?: number
   shapeKind: LocalDamageShapeKind
@@ -151,6 +152,9 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
       }
       if (activeEventIds.has(input.attackEventId)) {
         throw new Error(`Duplicate active attackEventId ${input.attackEventId}.`)
+      }
+      if (!isPlayerAttackVisualRoleId(input.visualRoleId)) {
+        throw new TypeError('Damage visualRoleId must be registered.')
       }
       if (
         input.primaryScope !== DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER &&
@@ -249,3 +253,7 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
     },
   })
 }
+import {
+  isPlayerAttackVisualRoleId,
+  type PlayerAttackVisualRoleId,
+} from '../content/visuals/combatVisualTheme.ts'

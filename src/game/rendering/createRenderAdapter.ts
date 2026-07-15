@@ -6,6 +6,7 @@ import { createSceneLayers } from './createSceneLayers.ts'
 import { createFlameEmitterPool } from './flameEmitterPool.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
 import { createDamageTransferLinkPool } from './damageTransferLinkPool.ts'
+import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 
 export interface RenderAdapter {
   getViewportSize(): { readonly width: number; readonly height: number }
@@ -15,11 +16,12 @@ export interface RenderAdapter {
 
 export async function createRenderAdapter(
   canvas: HTMLCanvasElement,
+  visualTheme: CombatVisualTheme,
   signal?: AbortSignal,
 ): Promise<RenderAdapter> {
-  const application = await createPixiApp(canvas, signal)
-  const atlas = createGlyphAtlas()
-  const scene = createSceneLayers(application.stage, atlas)
+  const application = await createPixiApp(canvas, visualTheme, signal)
+  const atlas = createGlyphAtlas(visualTheme)
+  const scene = createSceneLayers(application.stage, atlas, visualTheme)
   const enemyViews = createParticleLayerPool(
     scene.enemyLayer,
     atlas.printableFrames,
@@ -38,6 +40,7 @@ export async function createRenderAdapter(
   )
   const damageTransferLinkViews = createDamageTransferLinkPool(
     scene.damageTransferLinkLayer,
+    visualTheme.effects.transferLink.tint,
   )
   const dropViews = createParticleLayerPool(
     scene.dropLayer,

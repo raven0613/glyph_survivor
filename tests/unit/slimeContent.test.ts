@@ -6,6 +6,7 @@ import {
   CREATURE_MOVEMENT_BEHAVIOR,
 } from '../../src/game/content/creatures/creatureDefinition.ts'
 import { GLYPH_MATERIAL } from '../../src/game/glyph/glyphMaterial.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../../src/game/content/visuals/combatVisualTheme.ts'
 
 test('compiles the Slime boss as 50 fixed cells with 70 total durability', () => {
   const slime = prepareGameContent().slimeBossDefinition
@@ -25,6 +26,10 @@ test('compiles the Slime boss as 50 fixed cells with 70 total durability', () =>
   assert.equal(
     slime.body.slots.every((slot) => slot.material === GLYPH_MATERIAL.SLIME),
     true,
+  )
+  assert.equal(
+    slime.appearanceProfileId,
+    GLYPH_APPEARANCE_PROFILE.SLIME_BOSS,
   )
 })
 

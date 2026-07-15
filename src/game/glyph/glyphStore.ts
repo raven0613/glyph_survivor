@@ -1,10 +1,12 @@
 import { getPrintableAsciiGlyphFrame } from './glyphFrame.ts'
 import type { GlyphBodySlotRole } from './glyphLayout.ts'
+import type { GlyphMaterialDefinition } from './glyphMaterial.ts'
 import {
-  getGlyphDurabilityTint,
-  getGlyphMaterialDefinition,
-  type GlyphMaterialDefinition,
-} from './glyphMaterial.ts'
+  isPlayerAttackVisualRoleId,
+  resolveGlyphBasePresentation,
+  resolveGlyphImpactPresentation,
+  type PlayerAttackVisualRoleId,
+} from '../content/visuals/combatVisualTheme.ts'
 import {
   GLYPH_CELL_STATE,
   isGlyphLivingState,
@@ -63,8 +65,9 @@ function requireNonNegativeSafeInteger(value: number, name: string): void {
 
 /** Owns all mutable Glyph Cell life state and derived owner aggregates. */
 export function createGlyphStore({
+  visualTheme,
   onPoolMiss,
-}: CreateGlyphStoreOptions = {}): GlyphStore {
+}: CreateGlyphStoreOptions): GlyphStore {
   const cells: MutableGlyphCell[] = []
   const recycledCells: MutableGlyphCell[] = []
   const recycledOwnerCells: MutableGlyphCell[][] = []
@@ -75,6 +78,16 @@ export function createGlyphStore({
   const durabilityByOwner = new Map<number, MutableOwnerDurability>()
   let nextGlyphId = 1
   let poolMisses = 0
+
+  function synchronizeCellTint(cell: MutableGlyphCell): void {
+    cell.tint =
+      cell.hitFlashRemainingMs === 0
+        ? cell.baseTint
+        : resolveGlyphImpactPresentation(
+            visualTheme,
+            cell.appearanceProfileId,
+          ).tint
+  }
 
   function createGlyph(input: CreateGlyphInput): GlyphCell {
     requirePositiveSafeInteger(input.ownerId, 'ownerId')
@@ -114,6 +127,13 @@ export function createGlyphStore({
     const cell = recycledCell ?? ({} as MutableGlyphCell)
     const id = nextGlyphId
     nextGlyphId += 1
+    const presentation = resolveGlyphBasePresentation(
+      visualTheme,
+      input.appearanceProfileId,
+      input.maxDurability,
+      input.maxDurability,
+      input.role,
+    )
     Object.assign(cell, {
       id,
       ownerId: input.ownerId,
@@ -134,12 +154,14 @@ export function createGlyphStore({
       currentDurability: input.maxDurability,
       maxDurability: input.maxDurability,
       collisionRadius: input.collisionRadius,
-      alpha: 1,
-      baseTint: input.baseTint,
-      tint: input.baseTint,
+      alpha: presentation.alpha,
+      baseTint: presentation.tint,
+      tint: presentation.tint,
       hitFlashRemainingMs: 0,
       spreadFlashRemainingMs: 0,
+      spreadFeedbackVisualRoleId: null,
       material: input.material,
+      appearanceProfileId: input.appearanceProfileId,
       state: GLYPH_CELL_STATE.HEALTHY,
       rotation: 0,
       offsetX: 0,
@@ -214,24 +236,22 @@ export function createGlyphStore({
     ownerDurability.currentDurability = normalizeDurability(
       rawOwnerDurability,
     )
-    const material = getGlyphMaterialDefinition(cell.material)
-
     if (cell.currentDurability === 0) {
       cell.state = GLYPH_CELL_STATE.HUSK
-      cell.alpha = material.huskAlpha
       ownerDurability.livingGlyphCount -= 1
     } else {
       cell.state = GLYPH_CELL_STATE.DAMAGED
-      cell.alpha = cell.currentDurability / cell.maxDurability
     }
-    cell.baseTint = getGlyphDurabilityTint(
-      material,
+    const presentation = resolveGlyphBasePresentation(
+      visualTheme,
+      cell.appearanceProfileId,
       cell.currentDurability,
+      cell.maxDurability,
       cell.role,
     )
-    if (cell.hitFlashRemainingMs === 0) {
-      cell.tint = cell.baseTint
-    }
+    cell.alpha = presentation.alpha
+    cell.baseTint = presentation.tint
+    synchronizeCellTint(cell)
 
     return appliedDamage
   }
@@ -282,23 +302,31 @@ export function createGlyphStore({
 
     cell.velocityX += directionX * material.knockbackImpulse
     cell.velocityY += directionY * material.knockbackImpulse
-    cell.tint = material.hitTint
+    cell.tint = resolveGlyphImpactPresentation(
+      visualTheme,
+      cell.appearanceProfileId,
+    ).tint
     cell.hitFlashRemainingMs = material.hitFlashDurationMs
   }
 
-  function applySpreadFeedback(glyphId: number, durationMs: number): void {
+  function applySpreadFeedback(
+    glyphId: number,
+    durationMs: number,
+    visualRoleId: PlayerAttackVisualRoleId,
+  ): void {
     requireFiniteNumber(durationMs, 'spread feedback duration')
     if (durationMs <= 0) {
       throw new RangeError('spread feedback duration must be greater than zero.')
+    }
+    if (!isPlayerAttackVisualRoleId(visualRoleId)) {
+      throw new TypeError('spread feedback visualRoleId must be registered.')
     }
     const cell = cellById.get(glyphId)
     if (!cell) {
       return
     }
-    cell.spreadFlashRemainingMs = Math.max(
-      cell.spreadFlashRemainingMs,
-      durationMs,
-    )
+    cell.spreadFlashRemainingMs = durationMs
+    cell.spreadFeedbackVisualRoleId = visualRoleId
   }
 
   function stepMaterial(
@@ -339,6 +367,9 @@ export function createGlyphStore({
         0,
         cell.spreadFlashRemainingMs - deltaMs,
       )
+      if (cell.spreadFlashRemainingMs === 0) {
+        cell.spreadFeedbackVisualRoleId = null
+      }
     }
 
     if (
@@ -493,14 +524,16 @@ export function createGlyphStore({
       role === 'EYE'
         ? getPrintableAsciiGlyphFrame('O')
         : cell.baseGlyphFrame
-    cell.baseTint = getGlyphDurabilityTint(
-      getGlyphMaterialDefinition(cell.material),
+    const presentation = resolveGlyphBasePresentation(
+      visualTheme,
+      cell.appearanceProfileId,
       cell.currentDurability,
+      cell.maxDurability,
       role,
     )
-    if (cell.hitFlashRemainingMs === 0) {
-      cell.tint = cell.baseTint
-    }
+    cell.alpha = presentation.alpha
+    cell.baseTint = presentation.tint
+    synchronizeCellTint(cell)
   }
 
   return Object.freeze({

@@ -18,6 +18,7 @@ import {
   defineWeapon,
   type WeaponCombatProfile,
 } from '../../src/game/content/weapons/weaponDefinition.ts'
+import { PLAYER_ATTACK_VISUAL_ROLE } from '../../src/game/content/visuals/combatVisualTheme.ts'
 
 test('prepares the assisted o projectile as immutable weapon content', () => {
   const content = prepareGameContent()
@@ -52,8 +53,7 @@ test('prepares the assisted o projectile as immutable weapon content', () => {
       damageAmount: weapon.baseProfile.damageAmount,
       glyphFrame: weapon.baseProfile.projectilePresentation.glyphFrame,
       scale: weapon.baseProfile.projectilePresentation.scale,
-      alpha: weapon.baseProfile.projectilePresentation.alpha,
-      tint: weapon.baseProfile.projectilePresentation.tint,
+      visualRoleId: weapon.baseProfile.projectilePresentation.visualRoleId,
     },
     {
       fireIntervalMs: 220,
@@ -64,8 +64,7 @@ test('prepares the assisted o projectile as immutable weapon content', () => {
       damageAmount: 1,
       glyphFrame: getPrintableAsciiGlyphFrame('o'),
       scale: 0.55,
-      alpha: 1,
-      tint: 0x66ddff,
+      visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
     },
   )
   assert.equal('projectileLifetimeMs' in weapon.baseProfile.attackPattern, false)
@@ -99,6 +98,7 @@ test('prepares the persistent orbiting O as owner-relative weapon content', () =
       rehitCooldownMs: profile.rehitCooldownMs,
       rootKnockbackDistance: profile.rootKnockbackDistance,
       glyphFrame: profile.orbitPresentation.glyphFrame,
+      visualRoleId: profile.orbitPresentation.visualRoleId,
     },
     {
       ballCount: 1,
@@ -109,6 +109,7 @@ test('prepares the persistent orbiting O as owner-relative weapon content', () =
       rehitCooldownMs: 500,
       rootKnockbackDistance: 20,
       glyphFrame: getPrintableAsciiGlyphFrame('O'),
+      visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY,
     },
   )
   assert.equal(Object.isFrozen(profile.orbitPresentation), true)
@@ -139,6 +140,10 @@ test('prepares a short-range 90 degree pulsed cone flamethrower', () => {
     },
   )
   assert.equal(Object.isFrozen(weapon.baseProfile.flamePresentation), true)
+  assert.equal(
+    weapon.baseProfile.flamePresentation.visualRoleId,
+    PLAYER_ATTACK_VISUAL_ROLE.FLAMETHROWER,
+  )
 })
 
 test('rejects invalid weapon content before a run starts', () => {

@@ -1,5 +1,9 @@
 import type { GlyphBodyDefinition } from '../../glyph/glyphLayout.ts'
 import { getGlyphMaterialDefinition } from '../../glyph/glyphMaterial.ts'
+import {
+  isGlyphAppearanceProfileId,
+  type GlyphAppearanceProfileId,
+} from '../visuals/combatVisualTheme.ts'
 
 export const CREATURE_MOVEMENT_BEHAVIOR = Object.freeze({
   DIRECT_PURSUIT: 'DIRECT_PURSUIT',
@@ -40,6 +44,7 @@ export type CreatureCategory = 'ORDINARY' | 'BOSS'
 export interface CreatureDefinitionInput {
   readonly id: string
   readonly category: CreatureCategory
+  readonly appearanceProfileId: GlyphAppearanceProfileId
   readonly body: GlyphBodyDefinition
   readonly maximumSpeed: number
   readonly movementBehaviorId: CreatureMovementBehaviorId
@@ -68,6 +73,9 @@ export function defineCreature(
 ): CreatureDefinition {
   if (input.id.trim().length === 0) {
     throw new TypeError('Creature definition id must not be empty.')
+  }
+  if (!isGlyphAppearanceProfileId(input.appearanceProfileId)) {
+    throw new TypeError('Creature appearanceProfileId must be registered.')
   }
   if (!Number.isFinite(input.maximumSpeed) || input.maximumSpeed < 0) {
     throw new RangeError('maximumSpeed must be finite and non-negative.')

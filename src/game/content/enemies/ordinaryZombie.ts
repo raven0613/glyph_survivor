@@ -8,6 +8,7 @@ import {
 } from '../creatures/creatureDefinition.ts'
 import { defineGlyphBody, type GlyphBodyInput } from '../../glyph/glyphLayout.ts'
 import { GLYPH_MATERIAL } from '../../glyph/glyphMaterial.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../visuals/combatVisualTheme.ts'
 
 const ZOMBIE_GLYPH_COLLISION_RADIUS = 12
 const ZOMBIE_GLYPH_SCALE = 0.76
@@ -36,6 +37,7 @@ export function prepareOrdinaryZombieDefinition(): CreatureDefinition {
   return defineCreature({
     id: 'enemy.zombie',
     category: 'ORDINARY',
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.ZOMBIE,
     body: defineGlyphBody(ORDINARY_ZOMBIE_BODY_INPUT),
     maximumSpeed: 40,
     movementBehaviorId: CREATURE_MOVEMENT_BEHAVIOR.DIRECT_PURSUIT,

@@ -8,10 +8,6 @@ import { createSeededRng, type SeededRng } from '../core/seededRng.ts'
 import { createSpatialHash, type SpatialHash } from '../core/spatialHash.ts'
 import { createGlyphStore, type GlyphStore } from '../glyph/glyphStore.ts'
 import {
-  getGlyphDurabilityTint,
-  getGlyphMaterialDefinition,
-} from '../glyph/glyphMaterial.ts'
-import {
   createGlyphDamageQueue,
   createDamageResolutionScratch,
   type DamageResolutionScratch,
@@ -183,6 +179,7 @@ export function createWorldState(
       pointerRevision: 0,
     },
     glyphStore: createGlyphStore({
+      visualTheme: content.combatVisualTheme,
       onPoolMiss: () => {
         diagnostics.glyphPoolMisses += 1
       },
@@ -263,7 +260,6 @@ export function spawnEnemy(
   const enemyId = getNextEntityId(world)
   const body = definition.body
   for (const slot of body.slots) {
-    const material = getGlyphMaterialDefinition(slot.material)
     world.glyphStore.createGlyph({
       ownerId: enemyId,
       bodySlotId: slot.slotId,
@@ -280,11 +276,7 @@ export function spawnEnemy(
       collisionRadius: slot.collisionRadius,
       scale: slot.scale,
       material: slot.material,
-      baseTint: getGlyphDurabilityTint(
-        material,
-        slot.maxDurability,
-        slot.role,
-      ),
+      appearanceProfileId: definition.appearanceProfileId,
     })
   }
   Object.assign(activeEnemy, {
@@ -397,6 +389,7 @@ export function spawnExperienceDrop(
     x,
     y,
     value,
+    spawnedAtRunTimeMs: world.runTimeMs,
     isAlive: true,
   })
   world.drops.push(activeDrop)

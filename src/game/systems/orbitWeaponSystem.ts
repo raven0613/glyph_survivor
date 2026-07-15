@@ -10,6 +10,7 @@ import type { WorldState } from '../runtime/worldState.ts'
 import { getNextDamageEventId } from '../runtime/worldState.ts'
 import { getFirstSegmentCircleContactTime } from './combatGeometry.ts'
 import type { ResolvedOrbitWeaponProfile } from './resolveWeaponProfile.ts'
+import { getPlayerAttackAppearance } from '../content/visuals/combatVisualTheme.ts'
 
 const FULL_CIRCLE_RADIANS = Math.PI * 2
 
@@ -39,6 +40,10 @@ function createOrbit(
 ): OrbitAttackState {
   const x = world.player.x + Math.cos(phaseRadians) * currentRadius
   const y = world.player.y + Math.sin(phaseRadians) * currentRadius
+  const appearance = getPlayerAttackAppearance(
+    world.content.combatVisualTheme,
+    profile.orbitPresentation.visualRoleId,
+  )
   const orbit: OrbitAttackState = {
     id: world.nextOrbitAttackId,
     sourceWeaponInstanceId: weapon.id,
@@ -59,9 +64,10 @@ function createOrbit(
     impactStrengthMultiplier: profile.impactStrengthMultiplier,
     damageSpreadProfile: profile.damageSpreadProfile,
     glyphFrame: profile.orbitPresentation.glyphFrame,
+    visualRoleId: profile.orbitPresentation.visualRoleId,
     visualScale: profile.orbitPresentation.scale,
-    visualAlpha: profile.orbitPresentation.alpha,
-    visualTint: profile.orbitPresentation.tint,
+    visualAlpha: appearance.core.alpha,
+    visualTint: appearance.core.tint,
     nextAllowedHitTimeByOwner: new Map(),
   }
   world.nextOrbitAttackId += 1
@@ -84,9 +90,14 @@ function getOrbitRadius(
 }
 
 function updateResolvedValues(
+  world: WorldState,
   orbit: OrbitAttackState,
   profile: ResolvedOrbitWeaponProfile,
 ): void {
+  const appearance = getPlayerAttackAppearance(
+    world.content.combatVisualTheme,
+    profile.orbitPresentation.visualRoleId,
+  )
   orbit.damageRadius = profile.damageShape.radius
   orbit.damage = profile.damageAmount
   orbit.rehitCooldownMs = profile.rehitCooldownMs
@@ -94,9 +105,10 @@ function updateResolvedValues(
   orbit.impactStrengthMultiplier = profile.impactStrengthMultiplier
   orbit.damageSpreadProfile = profile.damageSpreadProfile
   orbit.glyphFrame = profile.orbitPresentation.glyphFrame
+  orbit.visualRoleId = profile.orbitPresentation.visualRoleId
   orbit.visualScale = profile.orbitPresentation.scale
-  orbit.visualAlpha = profile.orbitPresentation.alpha
-  orbit.visualTint = profile.orbitPresentation.tint
+  orbit.visualAlpha = appearance.core.alpha
+  orbit.visualTint = appearance.core.tint
 }
 
 function findEarliestOrbitContactTime(
@@ -181,6 +193,7 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
     )
     world.glyphDamageQueue.enqueue({
       attackEventId: getNextDamageEventId(world),
+      visualRoleId: orbit.visualRoleId,
       primaryScope: DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER,
       ownerId: enemy.id,
       shapeKind: LOCAL_DAMAGE_SHAPE.CIRCLE,
@@ -288,7 +301,7 @@ export function runOrbitWeaponSystem(world: WorldState, deltaMs: number): void {
         orbit.x = nextX
         orbit.y = nextY
       }
-      updateResolvedValues(orbit, profile)
+      updateResolvedValues(world, orbit, profile)
       collideOrbit(world, orbit)
     }
   }

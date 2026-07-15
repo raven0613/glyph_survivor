@@ -7,7 +7,6 @@ import { getGlyphMaterialDefinition } from '../glyph/glyphMaterial.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import {
   DAMAGE_PRIMARY_SCOPE,
-  DAMAGE_SPREAD_FEEDBACK_DURATION_MS,
   LOCAL_DAMAGE_SHAPE,
   type DamageClaim,
   type GlyphDamageEvent,
@@ -125,6 +124,7 @@ function addDamageClaim(
   glyphId: number,
   amount: number,
   isSpread: boolean,
+  spreadVisualRoleId: DamageClaim['spreadVisualRoleId'],
 ): void {
   const scratch = world.damageResolutionScratch
   const existingIndex = scratch.claimIndexByGlyphId.get(glyphId)
@@ -137,6 +137,7 @@ function addDamageClaim(
     ) {
       existing.amount = amount
       existing.isSpread = isSpread
+      existing.spreadVisualRoleId = spreadVisualRoleId
     }
     return
   }
@@ -145,6 +146,7 @@ function addDamageClaim(
   claim.glyphId = glyphId
   claim.amount = amount
   claim.isSpread = isSpread
+  claim.spreadVisualRoleId = spreadVisualRoleId
   scratch.claims[scratch.claimCount] = claim
   scratch.claimIndexByGlyphId.set(glyphId, scratch.claimCount)
   scratch.claimCount += 1
@@ -195,7 +197,7 @@ function collectPrimaryDamageForOwner(
   }
 
   for (const target of selection.damageTargets) {
-    addDamageClaim(world, target.id, event.amount, false)
+    addDamageClaim(world, target.id, event.amount, false, null)
   }
   for (const impact of selection.impactCells) {
     world.glyphStore.applyMaterialHit(
@@ -265,6 +267,7 @@ function collectSpreadDamage(
         glyph.id,
         event.amount * spread.bandDamageRatios[bandIndex],
         true,
+        event.visualRoleId,
       )
     }
   }
@@ -281,9 +284,13 @@ function applyDamageClaims(world: WorldState): void {
     const wasLiving = isGlyphLivingState(glyph.state)
     const appliedDamage = world.glyphStore.applyDamage(glyph.id, claim.amount)
     if (claim.isSpread && appliedDamage > 0) {
+      if (claim.spreadVisualRoleId === null) {
+        throw new Error('Spread damage claim is missing its visual role.')
+      }
       world.glyphStore.applySpreadFeedback(
         glyph.id,
-        DAMAGE_SPREAD_FEEDBACK_DURATION_MS,
+        world.content.combatVisualTheme.effects.spreadFeedbackDurationMs,
+        claim.spreadVisualRoleId,
       )
     }
     if (

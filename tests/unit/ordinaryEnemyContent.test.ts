@@ -10,6 +10,7 @@ import {
   defineOrdinaryEnemyProgression,
   selectOrdinaryEnemyDefinition,
 } from '../../src/game/content/enemies/ordinaryEnemyProgression.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../../src/game/content/visuals/combatVisualTheme.ts'
 
 test('compiles Z, BO, and BAT as ordered ordinary enemy definitions', () => {
   const content = prepareGameContent()
@@ -34,6 +35,16 @@ test('compiles Z, BO, and BAT as ordered ordinary enemy definitions', () => {
       CREATURE_BODY_MOTION_BEHAVIOR.BAT_FLAP,
     ],
   )
+  assert.deepEqual(
+    content.ordinaryEnemyDefinitions.map(
+      (definition) => definition.appearanceProfileId,
+    ),
+    [
+      GLYPH_APPEARANCE_PROFILE.ZOMBIE,
+      GLYPH_APPEARANCE_PROFILE.BONE,
+      GLYPH_APPEARANCE_PROFILE.BAT,
+    ],
+  )
   assert.equal(
     content.ordinaryEnemyDefinitions.every(
       (definition) =>
@@ -41,6 +52,23 @@ test('compiles Z, BO, and BAT as ordered ordinary enemy definitions', () => {
     ),
     true,
   )
+})
+
+test('places O above B without changing BONE motion slot identity', () => {
+  const bone = prepareGameContent().ordinaryEnemyDefinitions[1]
+  const bSlot = bone.body.slots.find((slot) => slot.character === 'B')
+  const oSlot = bone.body.slots.find((slot) => slot.character === 'O')
+
+  assert.ok(bSlot)
+  assert.ok(oSlot)
+  assert.equal(bSlot.slotId, 0)
+  assert.equal(oSlot.slotId, 1)
+  assert.equal(bone.bodyMotionGroupBySlotId[bSlot.slotId], 0)
+  assert.equal(bone.bodyMotionGroupBySlotId[oSlot.slotId], 1)
+  assert.equal(bSlot.localX, oSlot.localX)
+  assert.ok(oSlot.localY < bSlot.localY)
+  assert.equal(oSlot.topologyX, bSlot.topologyX)
+  assert.equal(oSlot.topologyY + 1, bSlot.topologyY)
 })
 
 test('preserves the first-appearance progression from Z to BO to BAT', () => {

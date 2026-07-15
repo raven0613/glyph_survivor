@@ -7,6 +7,7 @@ import {
 import { prepareGameContent } from '../../src/game/content/gameContent.ts'
 import { getWeaponDefinition } from '../../src/game/content/gameContent.ts'
 import { ORBIT_ENERGY_BALL_WEAPON_ID } from '../../src/game/content/weapons/orbitEnergyBallWeapon.ts'
+import { PLAYER_ATTACK_VISUAL_ROLE } from '../../src/game/content/visuals/combatVisualTheme.ts'
 import { PROTOTYPE_WEAPON_MODULE_ID } from '../../src/game/content/upgrades/prototypeWeaponModules.ts'
 import { createWorldState, spawnEnemy } from '../../src/game/runtime/worldState.ts'
 import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
@@ -53,6 +54,7 @@ test('advances a deterministic owner-relative orbit without projectiles', () => 
   assert.equal(first.orbitAttacks.length, 1)
   assert.deepEqual(first.orbitAttacks, second.orbitAttacks)
   const [orbit] = first.orbitAttacks
+  assert.equal(orbit.visualRoleId, PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY)
   assert.equal(orbit.phaseRadians, Math.PI * 0.45)
   assert.ok(Math.abs(orbit.x - (first.player.x + Math.cos(Math.PI * 0.45) * 80)) < 1e-9)
   assert.ok(Math.abs(orbit.y - (first.player.y + Math.sin(Math.PI * 0.45) * 80)) < 1e-9)

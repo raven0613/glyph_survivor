@@ -2,6 +2,7 @@ import { getPrintableAsciiGlyphFrame } from '../../glyph/glyphFrame.ts'
 import { DAMAGE_TARGET_MODE } from '../../glyph/localDamage.ts'
 import { WEAPON_DEFINITION_ID } from '../../../shared/weaponIds.ts'
 import { ASSISTED_PROJECTILE_TRACKING } from './projectileTracking.ts'
+import { PLAYER_ATTACK_VISUAL_ROLE } from '../visuals/combatVisualTheme.ts'
 import {
   ATTACK_PATTERN,
   DAMAGE_SHAPE,
@@ -43,8 +44,7 @@ export function prepareBasicProjectileWeaponDefinition(): WeaponDefinition {
       projectilePresentation: {
         glyphFrame: getPrintableAsciiGlyphFrame('o'),
         scale: 0.55,
-        alpha: 1,
-        tint: 0x66ddff,
+        visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
       },
     },
   })

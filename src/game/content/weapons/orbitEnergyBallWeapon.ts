@@ -1,6 +1,7 @@
 import { WEAPON_DEFINITION_ID } from '../../../shared/weaponIds.ts'
 import { getPrintableAsciiGlyphFrame } from '../../glyph/glyphFrame.ts'
 import { DAMAGE_TARGET_MODE } from '../../glyph/localDamage.ts'
+import { PLAYER_ATTACK_VISUAL_ROLE } from '../visuals/combatVisualTheme.ts'
 import {
   ATTACK_PATTERN,
   DAMAGE_SHAPE,
@@ -40,8 +41,7 @@ export function prepareOrbitEnergyBallWeaponDefinition(): WeaponDefinition {
       orbitPresentation: {
         glyphFrame: getPrintableAsciiGlyphFrame('O'),
         scale: 0.82,
-        alpha: 1,
-        tint: 0x66eeff,
+        visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY,
       },
     },
   })

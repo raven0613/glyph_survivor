@@ -19,6 +19,10 @@ import { runWeaponSystem } from '../../src/game/systems/weaponSystem.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
 import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
 import { runCollisionSystem } from '../../src/game/systems/collisionSystem.ts'
+import {
+  getPlayerAttackAppearance,
+  PLAYER_ATTACK_VISUAL_ROLE,
+} from '../../src/game/content/visuals/combatVisualTheme.ts'
 
 function createWeaponTestWorld() {
   const content = prepareGameContent()
@@ -123,6 +127,10 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
 
   const [projectile] = world.projectiles
   assert.ok(projectile)
+  const assistedAppearance = getPlayerAttackAppearance(
+    world.content.combatVisualTheme,
+    PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
+  )
   assert.deepEqual(
     {
       sourceWeaponInstanceId: projectile.sourceWeaponInstanceId,
@@ -134,6 +142,7 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
       trackingMode: projectile.trackingMode,
       trackingState: projectile.trackingState,
       glyphFrame: projectile.glyphFrame,
+      visualRoleId: projectile.visualRoleId,
       visualScale: projectile.visualScale,
       visualAlpha: projectile.visualAlpha,
       visualTint: projectile.visualTint,
@@ -148,9 +157,10 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
       trackingMode: 'ASSISTED',
       trackingState: 'BALLISTIC',
       glyphFrame: projectileProfile.projectilePresentation.glyphFrame,
+      visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
       visualScale: 0.55,
-      visualAlpha: 1,
-      visualTint: 0x66ddff,
+      visualAlpha: assistedAppearance.core.alpha,
+      visualTint: assistedAppearance.core.tint,
     },
   )
 
@@ -163,15 +173,19 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
       projectilePresentation: {
         ...projectileProfile.projectilePresentation,
         scale: 2,
-        tint: 0xff0000,
+        visualRoleId: PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY,
       },
     },
   })
   weapon.resolvedProfile = resolveWeaponProfile(changedDefinition)
 
   assert.equal(projectile.damage, 1)
+  assert.equal(
+    projectile.visualRoleId,
+    PLAYER_ATTACK_VISUAL_ROLE.ASSISTED_PROJECTILE,
+  )
   assert.equal(projectile.visualScale, 0.55)
-  assert.equal(projectile.visualTint, 0x66ddff)
+  assert.equal(projectile.visualTint, assistedAppearance.core.tint)
 
   const renderSnapshot = createRenderSnapshot()
   writeRenderSnapshot(world, renderSnapshot, 1)
@@ -194,10 +208,18 @@ test('snapshots assisted projectile combat and ASCII presentation at emission', 
   runWeaponSystem(world, 50)
 
   const [recycledProjectile] = world.projectiles
+  const orbitAppearance = getPlayerAttackAppearance(
+    world.content.combatVisualTheme,
+    PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY,
+  )
   assert.equal(recycledProjectile, projectile)
   assert.equal(recycledProjectile.damage, 99)
+  assert.equal(
+    recycledProjectile.visualRoleId,
+    PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY,
+  )
   assert.equal(recycledProjectile.visualScale, 2)
-  assert.equal(recycledProjectile.visualTint, 0xff0000)
+  assert.equal(recycledProjectile.visualTint, orbitAppearance.core.tint)
 })
 
 test('emits one centered assisted volley from one target query', () => {

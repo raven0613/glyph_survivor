@@ -1,6 +1,6 @@
 # Weapon System — Run Loadout, Cards, and Modules
 
-> 狀態：本文記錄已確認的武器、單局裝備、升級卡與 Module Slot 產品／工程契約。首三把武器身分、Damage Spread、Projectile Count、Range、XP 曲線與切片 1～10 已實作；永久解鎖條件、卡片權重與後期內容仍待 content tuning。
+> 狀態：本文記錄已確認的武器、單局裝備、升級卡與 Module Slot 產品／工程契約。首三把武器身分、Damage Spread、Projectile Count、Range、XP 曲線、XP 掉落物呈現、集中戰場 visual theme、怪物暗色基礎 palette／發亮階級分離，以及切片 1～10 已實作。集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。Damage Spread 跟隨來源 `PLAYER_ATTACK_VISUAL_ROLE` accent 色系的契約亦已實作。永久解鎖條件、卡片權重與後期內容仍待 content tuning。
 
 本文是武器系統工作的詳細入口。跨系統的產品方向以 [`spec.md`](../../spec.md) 為準，依賴方向、Runtime 權威與 Glyph 傷害規則以 [`AGENTS.md`](../../AGENTS.md) 為準。若修改武器、升級、裝備欄、Module、卡片抽選或相關 UI，必須同時閱讀這三份文件。
 
@@ -34,7 +34,8 @@
 ### Weapon Definition
 
 - LOADING 階段驗證並準備的 immutable content。
-- 定義武器 ID、UI metadata、Module Slot 數量、基礎 combat profile，以及使用的 TargetStrategy、AttackPattern、DamageShape、DestructionProfile 與 tracking profile。
+- 定義武器 ID、UI metadata、Module Slot 數量、基礎 combat profile，以及使用的 TargetStrategy、AttackPattern、DamageShape、DestructionProfile、tracking profile 與 semantic attack-presentation role IDs。
+- Presentation role 由集中 Battlefield Visual Theme 解析；Weapon Definition 不保存或複製 authoring color、prepared numeric tint、alpha 或亮度值。
 - 不保存 cooldown、已安裝 Module、目前 Rank 或其他單局 mutable state。
 
 ### Weapon Instance
@@ -174,6 +175,17 @@ XP 結算遵守以下規則：
 - 第一個升級的 playtest 目標是約擊敗五隻普通敵人、開局約 `8–15` 秒。這是節奏驗收目標，不是寫死的時間門檻；若實測偏慢，優先調整 curve content，而不是在系統中加入特例。
 - `xpToNext`、門檻表與 reward values 都是 validated content parameters。升級系統只能讀取準備完成的 curve，不得散落重複公式。
 
+### 7.2 XP 掉落物呈現
+
+XP 掉落物的呈現生命週期只提高拾取辨識度，不改變其權威 pickup、reward 或升級結算：
+
+- 剛生成時使用新鮮黃色的短暫狀態，之後平順過渡為長時間停留的暗金色。
+- 進入穩定狀態後只做偶發、短促、低 duty-cycle 的提醒閃爍；不得持續呼吸，也不得讓整批 XP 同步閃爍。
+- 閃爍 phase 由 stable drop ID 確定性錯開，時間讀取 simulation／gameplay presentation clock；不得消耗 gameplay RNG、讀取 wall clock，或在完整暫停時繼續老化。
+- 新生狀態與任何閃爍峰值疊加實際背景後的有效亮度，都必須嚴格低於每一種玩家攻擊核心的比較階級。
+- 這項亮度關係由瀏覽器視覺調校確認，不作為 Runtime 拒絕合法 `#RRGGBB` 色碼的條件。
+- 色值、alpha、過渡時間、閃爍間隔、峰值與 duty cycle 只存在 `src/game/content/visuals/prototypeCombatVisualTheme.ts`。其中顏色使用 `#RRGGBB` authoring strings，並只在 LOADING 轉換一次；Drop definition、upgrade system、本文與 renderer 不複製這些數值。
+
 ## 8. 原子決策流程
 
 React 可以保存「目前預覽哪張卡、哪把武器、哪個 Slot」等暫時 UI state，但在最後提交前不得改寫 Runtime。
@@ -240,6 +252,8 @@ Module 不直接散落修改 projectile、collision 或 damage system。每個 W
 | 噴火槍 | `PLAYER_AIM` | `PULSED_CONE` | `CONE`／`AREA` | `MATERIAL_IMPACT` |
 | 環繞能量球 | `OWNER_RELATIVE` | `PERSISTENT_ORBIT` | `CIRCLE`／`AREA` | `KNOCKBACK_CONTACT` |
 
+三把武器各自引用 semantic attack-presentation roles，實際色系與 alpha 由集中 Battlefield Visual Theme 決定。Attack event 必須 snapshot 這個 `PlayerAttackVisualRoleId`，使 projectile travel、Cone pulse 或 orbit contact 延後解析 Damage Spread 時仍保留來源色系。直接 Impact feedback 使用怪物自己的 Appearance Profile；Spread Target feedback 使用來源 attack role 的 `accent` tint。所有玩家攻擊核心 role 都高於 XP 新生／閃爍峰值與怪物受擊峰值；Weapon content 與 renderer 不保存另一套固定色值，也不得依武器 ID 寫 spread 顏色分支。
+
 傷害高低比較以「一個 Damage Target 每次有效命中」為單位：assisted `o` 的 `1.0` 高於能量球的 `0.6`，能量球再高於噴火槍的 `0.125`。AREA 武器可以同時選中多個 Damage Targets，因此總傷害與清怪能力不能只用這個單次數值比較。以基礎 `Max Durability = 1` 的 Cell 為例，未加成的 assisted `o` 可一次歸零、能量球需要兩次有效命中、噴火槍需要八次直接 pulse；Current Durability 可以在過程中保留小數。
 
 #### Assisted `o`
@@ -259,7 +273,7 @@ Module 不直接散落修改 projectile、collision 或 damage system。每個 W
 - Cone 是 AREA attack；每個 owner 的 target quota 等於其 distinct Impact Cells 數量，living Impact Cells 優先，缺額才沿 topology frontier 補足。只有實際 Cone 內的 Impact Cells 取得 hit flash、粒子與 Material response。
 - 一道 Cone stream 的一次 pulse 是一個 attack event。Cone 內的所有幾何取樣、Impact Cells 與 owner queries 都共享同一 event ID，不能讓同一 Cell 因落入多個取樣區而重複吃直接或擴散傷害。Projectile Count 產生的每一道 Cone stream 則各自建立 event；多道 Cone 重疊時，每一道火仍可各造成一次傷害。
 - 若安裝 Damage Spread，bands 從**整個 authoritative Cone 的外圍**向外計算，包括其弧形遠端與兩側邊界；不得由每顆 rendering 火星、每個 Cone 取樣點或每個 Impact Cell 各自產生擴散圈。
-- 橘色／黃色的 `.`、`*` 飛散是 rendering-only presentation；視覺密度降為零時，傷害結果必須完全相同。不得把每顆火星建立成 gameplay projectile。
+- `.`、`*` 飛散使用集中設定的 fire-spectrum presentation roles，且仍是 rendering-only presentation；調整其實際色值或把視覺密度降為零時，傷害結果必須完全相同。不得把每顆火星建立成 gameplay projectile。
 - 首版「火焰」只代表武器外觀與攻擊形狀，不包含 Fire DoT、燃燒疊加、刷新或元素組合。這些仍等待獨立 Glyph status contract。
 
 #### 環繞能量球
@@ -328,6 +342,8 @@ Damage Spread 先完成原始攻擊的 Impact Cells 與直接 Damage Targets，�
 5. 不限制 owner。所有精確落在 band 內的存活 Cells 都受傷，包括沒有被原始 Shape 命中的其他生命體；若直接命中的 owner 沒有存活 Cell 位於 bands 內，該 owner 只承受原本直接傷害。
 6. 以 `(attackEventId, glyphId)` 合併同一 event 的所有候選，最多套用一次最高傷害。直接主傷害與 spread 重疊時主傷害勝出；多圈邊界、broad-phase 重複、Cone 內部取樣或多個 Impact Cells 都不能疊出額外次數。
 7. Spread Targets 播放可辨識的擴散受傷回饋，但不自動繼承主要 Impact Cells 的 Material impulse、whole-body knockback 或 topology transfer。直接命中 Husk 而沿 body topology 找到的遠端直接 Damage Target，仍承受完整主傷害並可顯示暗亮連線；它與 spread 是兩套不同語意。
+8. Spread feedback 的 tint 從該 attack event 已 snapshot 的 `PlayerAttackVisualRoleId` 查詢集中 theme 的 `playerAttacks[roleId].accent`。Assisted `o` 與 orbit 使用各自能量色系；噴火槍使用 fire-spectrum 橘黃色系。共享 spread-effect 設定只控制 alpha、scale 與 duration，不保存一個固定藍色或其他全武器共用 tint。
+9. 只有成功套用大於零的 spread Durability damage 才刷新 feedback。若同一 Glyph 的既有 spread feedback 尚未結束，又依穩定 attack-event 處理順序收到另一個 role 的有效擴散傷害，最新一次成功事件取代 active role 並重新開始 duration。Renderer 只消費 Runtime 提供的 role／prepared tint，不得從 projectile glyph、weapon definition ID 或 emitter 類型反推。
 
 元素 Module 上線前必須先完成其 Glyph 契約：
 
@@ -401,6 +417,9 @@ React 只接收 UI-sized immutable summaries，例如：
 
 - rejects an initial weapon that is unknown or not in the frozen unlock set
 - applies the validated XP curve while preserving overflow across multiple level-ups
+- transitions XP presentation from fresh to settled without changing pickup or reward state
+- staggers occasional XP flashes by stable drop ID and freezes their age while gameplay is paused
+- accepts arbitrary valid `#RRGGBB` XP and attack colors without aesthetic luminance rejection
 - queues one pending upgrade per crossed level without resuming between offers
 - guarantees an eligible weapon card in the first upgrade offer
 - produces the same three unique cards from the same upgrade seed and state
@@ -416,6 +435,8 @@ React 只接收 UI-sized immutable summaries，例如：
 - applies at most the highest direct or spread amount once per Glyph and attack event
 - deduplicates all geometry samples inside one Cone event while allowing independent Cone streams to overlap
 - emits distinct spread feedback without copying primary Material impulse or whole-body knockback
+- snapshots each attack's visual role and colors spread feedback from that role's configured accent
+- refreshes spread duration and deterministically replaces its role only after a later successful spread hit
 - emits a rendering-only transfer link for a frontier-only direct Damage Target
 - compiles Projectile Count Rank I／II／III as total counts `2`、`3`、`4`
 - emits one assisted projectile volley from one target query with centered `8°` spacing

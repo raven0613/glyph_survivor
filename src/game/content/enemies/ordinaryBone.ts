@@ -8,6 +8,7 @@ import {
 } from '../creatures/creatureDefinition.ts'
 import { defineGlyphBody, type GlyphBodyInput } from '../../glyph/glyphLayout.ts'
 import { GLYPH_MATERIAL } from '../../glyph/glyphMaterial.ts'
+import { GLYPH_APPEARANCE_PROFILE } from '../visuals/combatVisualTheme.ts'
 
 const BONE_GLYPH_SPACING = 22
 const BONE_GLYPH_COLLISION_RADIUS = 12
@@ -22,10 +23,10 @@ export const ORDINARY_BONE_BODY_INPUT: GlyphBodyInput = Object.freeze({
         slotId,
         role: 'BODY' as const,
         character,
-        topologyX: slotId,
-        topologyY: 0,
-        localX: (slotId - 0.5) * BONE_GLYPH_SPACING,
-        localY: 0,
+        topologyX: 0,
+        topologyY: character === 'O' ? 0 : 1,
+        localX: 0,
+        localY: (character === 'O' ? -0.5 : 0.5) * BONE_GLYPH_SPACING,
         maxDurability: 1,
         collisionRadius: BONE_GLYPH_COLLISION_RADIUS,
         scale: BONE_GLYPH_SCALE,
@@ -39,6 +40,7 @@ export function prepareOrdinaryBoneDefinition(): CreatureDefinition {
   return defineCreature({
     id: 'enemy.bone',
     category: 'ORDINARY',
+    appearanceProfileId: GLYPH_APPEARANCE_PROFILE.BONE,
     body: defineGlyphBody(ORDINARY_BONE_BODY_INPUT),
     maximumSpeed: 56,
     movementBehaviorId: CREATURE_MOVEMENT_BEHAVIOR.DIRECT_PURSUIT,

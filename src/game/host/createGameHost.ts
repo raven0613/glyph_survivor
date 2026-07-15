@@ -130,7 +130,11 @@ export async function createGameHost({
       gameContent,
       unlockedWeaponDefinitionIds,
     )
-    renderAdapter = await createRenderAdapter(canvas, signal)
+    renderAdapter = await createRenderAdapter(
+      canvas,
+      gameContent.combatVisualTheme,
+      signal,
+    )
   } catch (error) {
     gameActor.send({ type: 'LOAD_FAILED', error })
     actorSubscription.unsubscribe()

@@ -1,5 +1,10 @@
 import type { GlyphBodySlotRole } from './glyphLayout.ts'
 import type { GlyphMaterialDefinition, GlyphMaterialId } from './glyphMaterial.ts'
+import type {
+  CombatVisualTheme,
+  GlyphAppearanceProfileId,
+  PlayerAttackVisualRoleId,
+} from '../content/visuals/combatVisualTheme.ts'
 
 export const GLYPH_CELL_STATE = Object.freeze({
   HEALTHY: 'HEALTHY',
@@ -39,7 +44,9 @@ export interface GlyphCell {
   readonly tint: number
   readonly hitFlashRemainingMs: number
   readonly spreadFlashRemainingMs: number
+  readonly spreadFeedbackVisualRoleId: PlayerAttackVisualRoleId | null
   readonly material: GlyphMaterialId
+  readonly appearanceProfileId: GlyphAppearanceProfileId
   readonly state: GlyphCellState
   readonly rotation: number
   readonly offsetX: number
@@ -71,7 +78,7 @@ export interface CreateGlyphInput {
   readonly collisionRadius: number
   readonly scale: number
   readonly material: GlyphMaterialId
-  readonly baseTint: number
+  readonly appearanceProfileId: GlyphAppearanceProfileId
   readonly localX?: number
   readonly localY?: number
 }
@@ -91,7 +98,11 @@ export interface GlyphStore {
     directionY: number,
     material: GlyphMaterialDefinition,
   ): void
-  applySpreadFeedback(glyphId: number, durationMs: number): void
+  applySpreadFeedback(
+    glyphId: number,
+    durationMs: number,
+    visualRoleId: PlayerAttackVisualRoleId,
+  ): void
   stepMaterial(
     glyphId: number,
     deltaMs: number,
@@ -120,5 +131,6 @@ export interface GlyphStore {
 }
 
 export interface CreateGlyphStoreOptions {
+  readonly visualTheme: CombatVisualTheme
   readonly onPoolMiss?: () => void
 }

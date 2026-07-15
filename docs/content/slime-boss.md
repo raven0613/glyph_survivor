@@ -1,6 +1,6 @@
 # SLIME Boss Content Sheet
 
-> 狀態：M4 已完成 Slime Phase、分體、重新聚合與 Encounter Death；本文已納入全怪物共用的 `HEALTHY → DAMAGED → HUSK` 契約，作為下一階段的實作依據。PlayerHealth 與 Boss 主動攻擊仍屬後續里程碑。
+> 狀態：M4 已完成 Slime Phase、分體、重新聚合與 Encounter Death；本文已納入全怪物共用的 `HEALTHY → DAMAGED → HUSK` 契約。暗色基礎 palette 與 Boss 發亮階級分離的 `SLIME_BOSS` Appearance Profile 已實作；集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。PlayerHealth 與 Boss 主動攻擊仍屬後續里程碑。
 
 本文是第一隻 Boss `SLIME` 的專屬內容設定。跨怪物共用的生命、Glyph、分裂守恆與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；不要把本文的史萊姆數值搬進 `AGENTS.md`。
 
@@ -20,6 +20,7 @@
 | 初始生命狀態 | 每格 Current Durability 等於 Max Durability，狀態為 `HEALTHY` |
 | 耐久分布 | `CENTER_HARD` authored strict band |
 | 預設 Material | `SLIME` |
+| Appearance Profile | `SLIME_BOSS` semantic role |
 | 最大移動速度 | 60 world units/s |
 | 接觸傷害 | 每次被接受的接觸命中為 1 Player HP |
 | 分體固定基準 | 根史萊姆最初設定的 50 Cells |
@@ -155,24 +156,28 @@ M3 首版 `SLIME` Material 數值為：
 - maximum deformation offset：`34` world units。
 - hit flash duration：`80 ms`。
 
-這些數值透過 Material definition 套用，不依 `contentId` 寫物種分支。DamageShape 內所有狀態的 Impact Cells 都可接受 flash／impulse；遠端 Damage Target 不接受這些局部 response。
+這些 response 數值透過 Material definition 套用，不依 `contentId` 寫物種分支。DamageShape 內所有狀態的 Impact Cells 都可接受 Material impulse／flash timing；遠端 Damage Target 不接受這些局部 response。直接受擊 flash 的色系與亮度由 Appearance Profile 和集中 Battlefield Visual Theme 解析，不得塞進 Material 或 renderer 的物種分支。Damage Spread 的 secondary feedback 不屬於 Slime primary response，改由來源 `PLAYER_ATTACK_VISUAL_ROLE` 的 accent 色系解析。
 
 ## 8. 顏色與 Glyph Atlas
 
-史萊姆使用不搶過玩家亮綠色的中等綠色階：
+史萊姆使用 `SLIME_BOSS` Appearance Profile。本文只保留可驗證的色彩語意，不保存 CSS color、Pixi numeric tint、alpha 或亮度數字：
 
-| 顯示狀態 | CSS hex | Pixi numeric tint |
-| --- | --- | --- |
-| Current Durability = 1 | `#4C956C` | `0x4C956C` |
-| Current Durability >= 2 | `#70B77E` | `0x70B77E` |
-| Eye Current Durability = 1 | `#D4A72C` | `0xD4A72C` |
-| Eye Current Durability >= 2 | `#F4D35E` | `0xF4D35E` |
-| 短暫受擊閃光 | `#B7E4C7` | `0xB7E4C7` |
-| `HUSK` | `#4C956C`，alpha `0.12` | `0x4C956C`，alpha `0.12` |
+| 顯示角色 | 色系與階級契約 |
+| --- | --- |
+| Living body | 使用暗而飽和的史萊姆綠色基底與 Boss active 發亮階級 |
+| Durability 降低 | 留在史萊姆綠色系，依 prepared durability／state mapping 單調降低 |
+| 短暫受擊閃光 | 留在史萊姆綠色系，使用 Boss impact tier |
+| Damage Spread feedback | 僅在擴散實際造成傷害時，短暫使用來源玩家攻擊 role 的 accent 色系；不改寫史萊姆 base palette |
+| Eye idle accent | 使用獨立 Eye Accent semantic role，但不改變生命、判定或階級上限 |
+| `HUSK` | 留在史萊姆色系的低亮 Husk tier，輪廓仍可讀 |
 
-眼睛使用獨立黃色耐久 tint 階級，但這只是 presentation role，不代表弱點、傷害倍率或特殊判定。受擊閃光只是一個短暫 render response，不能取代 Durability 或權威 displacement。
-
-Husk 色彩沿用 `SLIME` 的 `#4C956C`／`0x4C956C`，alpha `0.12` 是首版可調值；調校可以改變可讀性，但不得把 Husk 隱藏、移出 render snapshot 或排除於完整輪廓 hitbox。
+- 史萊姆的基礎色相／彩度／明度與 Boss 發亮強度是分離參數。相同 semantic role 下，史萊姆使用比 ordinary tier 更強的亮度強調，但不要求其基礎色或最終有效亮度與普通怪做固定差值，也不得把本體洗成淺綠或低彩度。
+- 史萊姆與普通怪的受擊峰值仍必須低於玩家攻擊；這類跨類別上限才使用疊加實際背景後的有效亮度驗證。
+- 上述色彩與亮度關係是瀏覽器視覺調校目標；Runtime 只驗證 `#RRGGBB` 格式與 theme 結構，不因合法色碼的彩度、明度或有效亮度拒絕載入。
+- Eye Accent 只是一個 presentation role，不代表弱點、傷害倍率或特殊判定。Eye Cell 被命中時使用史萊姆綠色系的 Boss impact response，結束後才回到符合其生命狀態的 Eye Accent；Eye Husk 不得因此恢復或消失。
+- 受擊閃光只是一個短暫 render response，不能取代 Durability、權威 displacement 或 Material recovery。
+- Husk 的集中設定可以調整可讀性，但不得把 Husk 隱藏、移出 render snapshot 或排除於完整輪廓 hitbox。
+- 所有實際色值、alpha 與狀態亮度映射只存在 `src/game/content/visuals/prototypeCombatVisualTheme.ts`，不再複製到本文、Boss definition、Material 或 render adapter。該 authoring config 的顏色一律使用 `#RRGGBB`，並在 content preparation 轉成 prepared numeric tint；Material 仍可擁有受擊 response 的時長，但不能擁有物種色值。
 
 首版字元只需共用 Printable ASCII Atlas。不得為每個 Cell 建立一個 PixiJS `Text`／`HTMLText`；高量 Glyph 使用共用 Atlas frame 與 pooled view。
 

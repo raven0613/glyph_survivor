@@ -1,9 +1,10 @@
-import { Rectangle, Texture } from 'pixi.js'
+import { Color, Rectangle, Texture } from 'pixi.js'
 import {
   PRINTABLE_ASCII_GLYPH_COUNT,
   getPrintableAsciiCharacter,
   getPrintableAsciiGlyphFrame,
 } from '../glyph/glyphFrame.ts'
+import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 
 export type FixedGlyphFrameName =
   | 'player'
@@ -31,7 +32,7 @@ function getFramePosition(glyphFrame: number): {
   }
 }
 
-export function createGlyphAtlas(): GlyphAtlas {
+export function createGlyphAtlas(visualTheme: CombatVisualTheme): GlyphAtlas {
   const canvas = document.createElement('canvas')
   canvas.width = CELL_SIZE * ATLAS_COLUMNS
   canvas.height = CELL_SIZE * ATLAS_ROWS
@@ -45,9 +46,13 @@ export function createGlyphAtlas(): GlyphAtlas {
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   context.font = "700 34px 'SFMono-Regular', Consolas, monospace"
-  context.lineWidth = 5
-  context.strokeStyle = '#000000'
-  context.fillStyle = '#ffffff'
+  context.lineWidth = visualTheme.glyphAtlas.outlineWidth
+  context.strokeStyle = new Color(
+    visualTheme.glyphAtlas.outlineTint,
+  ).toHex()
+  context.fillStyle = new Color(
+    visualTheme.glyphAtlas.sourceFillTint,
+  ).toHex()
 
   for (let glyphFrame = 0; glyphFrame < PRINTABLE_ASCII_GLYPH_COUNT; glyphFrame += 1) {
     const position = getFramePosition(glyphFrame)

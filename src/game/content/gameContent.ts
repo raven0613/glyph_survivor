@@ -17,10 +17,13 @@ import {
 } from './upgrades/levelProgression.ts'
 import { preparePrototypeWeaponModules } from './upgrades/prototypeWeaponModules.ts'
 import type { WeaponModuleDefinition } from './upgrades/moduleDefinition.ts'
+import type { CombatVisualTheme } from './visuals/combatVisualTheme.ts'
+import { PROTOTYPE_COMBAT_VISUAL_THEME } from './visuals/prototypeCombatVisualTheme.ts'
 
 const FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS = 3
 
 export interface PreparedGameContent {
+  readonly combatVisualTheme: CombatVisualTheme
   readonly ordinaryEnemyDefinitions: readonly CreatureDefinition[]
   readonly ordinaryEnemyProgression: OrdinaryEnemyProgression
   readonly slimeBossDefinition: CreatureDefinition
@@ -120,6 +123,7 @@ export function prepareGameContent(): PreparedGameContent {
   }
 
   return Object.freeze({
+    combatVisualTheme: PROTOTYPE_COMBAT_VISUAL_THEME,
     ordinaryEnemyDefinitions,
     ordinaryEnemyProgression,
     slimeBossDefinition,
