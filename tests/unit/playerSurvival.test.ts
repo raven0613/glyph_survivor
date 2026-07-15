@@ -6,6 +6,7 @@ import {
   assertValidPlayerSurvivalConfig,
   createPlayerDamageStepOutcome,
   createPlayerSurvivalState,
+  grantPlayerResumeInvulnerability,
   resolvePlayerDamageStep,
   type PlayerSurvivalConfig,
 } from '../../src/game/runtime/playerSurvival.ts'
@@ -15,6 +16,7 @@ const TEST_CONFIG: Readonly<PlayerSurvivalConfig> = Object.freeze({
   initialPlayerShieldLayers: 2,
   shieldRechargeIntervalMs: 1_000,
   playerDamageInvulnerabilityMs: 500,
+  playerResumeInvulnerabilityMs: 500,
   playerCollisionRadius: 14,
 })
 
@@ -26,9 +28,71 @@ test('validates the survival config values that define run state', () => {
     { ...TEST_CONFIG, initialPlayerShieldLayers: 1.5 },
     { ...TEST_CONFIG, shieldRechargeIntervalMs: 0 },
     { ...TEST_CONFIG, playerDamageInvulnerabilityMs: 0 },
+    { ...TEST_CONFIG, playerResumeInvulnerabilityMs: 0 },
     { ...TEST_CONFIG, playerCollisionRadius: 0 },
   ]) {
     assert.throws(() => assertValidPlayerSurvivalConfig(invalidConfig))
+  }
+})
+
+test('grants resume invulnerability without accepted-hit or recharge side effects', () => {
+  const state = createPlayerSurvivalState(TEST_CONFIG)
+  state.lastAcceptedDamageAtMs = 100
+  state.damageInvulnerableUntilMs = 1_700
+  state.nextShieldRechargeAtMs = 2_000
+  state.acceptedDamageEventIds.add(7)
+
+  grantPlayerResumeInvulnerability(state, 1_000, TEST_CONFIG)
+
+  assert.equal(state.damageInvulnerableUntilMs, 1_700)
+  assert.equal(state.lastAcceptedDamageAtMs, 100)
+  assert.equal(state.nextShieldRechargeAtMs, 2_000)
+  assert.deepEqual([...state.acceptedDamageEventIds], [7])
+
+  state.damageInvulnerableUntilMs = 0
+  grantPlayerResumeInvulnerability(state, 1_000, TEST_CONFIG)
+  assert.equal(state.damageInvulnerableUntilMs, 1_500)
+})
+
+test('blocks every damage route until resume invulnerability expires', () => {
+  for (const [index, route] of [
+    PLAYER_DAMAGE_ROUTE.SHIELD_FIRST,
+    PLAYER_DAMAGE_ROUTE.HEALTH_ONLY,
+  ].entries()) {
+    const config = { ...TEST_CONFIG, initialPlayerShieldLayers: 0 }
+    const state = createPlayerSurvivalState(config)
+    const outcome = createPlayerDamageStepOutcome()
+    const candidate = {
+      eventId: index + 20,
+      sourceKind: PLAYER_DAMAGE_SOURCE_KIND.CREATURE_CONTACT,
+      sourceId: index + 1,
+      amount: 1,
+      route,
+    }
+    grantPlayerResumeInvulnerability(state, 1_000, config)
+
+    resolvePlayerDamageStep(
+      state,
+      [candidate],
+      1,
+      1_499,
+      config,
+      outcome,
+    )
+    assert.equal(outcome.acceptedEventId, null)
+    assert.equal(state.currentHealth, config.initialPlayerHealth)
+    assert.equal(state.acceptedDamageEventIds.has(candidate.eventId), false)
+
+    resolvePlayerDamageStep(
+      state,
+      [candidate],
+      1,
+      1_500,
+      config,
+      outcome,
+    )
+    assert.equal(outcome.acceptedEventId, candidate.eventId)
+    assert.equal(state.currentHealth, config.initialPlayerHealth - 1)
   }
 })
 

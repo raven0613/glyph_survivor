@@ -28,6 +28,7 @@ export interface PlayerSurvivalConfig {
   readonly initialPlayerShieldLayers: number
   readonly shieldRechargeIntervalMs: number
   readonly playerDamageInvulnerabilityMs: number
+  readonly playerResumeInvulnerabilityMs: number
   readonly playerCollisionRadius: number
 }
 
@@ -85,6 +86,10 @@ export function assertValidPlayerSurvivalConfig(
     config.playerDamageInvulnerabilityMs,
     'playerDamageInvulnerabilityMs',
   )
+  requireFinitePositive(
+    config.playerResumeInvulnerabilityMs,
+    'playerResumeInvulnerabilityMs',
+  )
   requireFinitePositive(config.playerCollisionRadius, 'playerCollisionRadius')
 }
 
@@ -113,6 +118,26 @@ export function createPlayerDamageStepOutcome(): PlayerDamageStepOutcome {
     shieldLayersRestored: 0,
     playerDied: false,
   }
+}
+
+/** Extends the global damage gate without recording an accepted hit. */
+export function grantPlayerResumeInvulnerability(
+  state: PlayerSurvivalState,
+  runTimeMs: number,
+  config: Readonly<PlayerSurvivalConfig>,
+): void {
+  if (!Number.isFinite(runTimeMs) || runTimeMs < 0) {
+    throw new RangeError('runTimeMs must be finite and non-negative.')
+  }
+  const resumeInvulnerableUntilMs =
+    runTimeMs + config.playerResumeInvulnerabilityMs
+  if (!Number.isFinite(resumeInvulnerableUntilMs)) {
+    throw new RangeError('Resume invulnerability deadline must be finite.')
+  }
+  state.damageInvulnerableUntilMs = Math.max(
+    state.damageInvulnerableUntilMs,
+    resumeInvulnerableUntilMs,
+  )
 }
 
 function resetOutcome(

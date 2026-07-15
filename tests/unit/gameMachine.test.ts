@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createActor } from 'xstate'
-import { GAME_PHASE, gameMachine } from '../../src/game/runtime/gameMachine.ts'
+import {
+  GAME_PHASE,
+  didResumeGameplayFromPause,
+  gameMachine,
+  isGameplayPausePhase,
+} from '../../src/game/runtime/gameMachine.ts'
 
 const upgradeChoices = [
   { id: 'color-fire-red', kind: 'MODULE' as const, definitionId: 'module.fire', title: 'Color: Fire Red' },
@@ -68,6 +73,40 @@ test('pauses and resumes a running game from the menu', () => {
 
   actor.send({ type: 'RESUME_REQUESTED' })
   assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
+})
+
+test('classifies resume protection by pause phase instead of feature event', () => {
+  assert.equal(isGameplayPausePhase(GAME_PHASE.PAUSED_MENU), true)
+  assert.equal(isGameplayPausePhase(GAME_PHASE.PAUSED_UPGRADE), true)
+  assert.equal(isGameplayPausePhase(GAME_PHASE.RUNNING), false)
+  assert.equal(isGameplayPausePhase(GAME_PHASE.READY), false)
+  assert.equal(isGameplayPausePhase(GAME_PHASE.DEATH_REVIEW), false)
+
+  assert.equal(
+    didResumeGameplayFromPause(
+      GAME_PHASE.PAUSED_MENU,
+      GAME_PHASE.RUNNING,
+    ),
+    true,
+  )
+  assert.equal(
+    didResumeGameplayFromPause(
+      GAME_PHASE.PAUSED_UPGRADE,
+      GAME_PHASE.RUNNING,
+    ),
+    true,
+  )
+  assert.equal(
+    didResumeGameplayFromPause(GAME_PHASE.READY, GAME_PHASE.RUNNING),
+    false,
+  )
+  assert.equal(
+    didResumeGameplayFromPause(
+      GAME_PHASE.PAUSED_UPGRADE,
+      GAME_PHASE.PAUSED_UPGRADE,
+    ),
+    false,
+  )
 })
 
 test('pauses for an upgrade and resumes only after an offered choice commits', () => {

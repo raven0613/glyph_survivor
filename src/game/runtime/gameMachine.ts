@@ -18,6 +18,22 @@ export const GAME_PHASE = Object.freeze({
 
 export type GamePhase = (typeof GAME_PHASE)[keyof typeof GAME_PHASE]
 
+export function isGameplayPausePhase(phase: GamePhase): boolean {
+  return (
+    phase === GAME_PHASE.PAUSED_MENU ||
+    phase === GAME_PHASE.PAUSED_UPGRADE
+  )
+}
+
+export function didResumeGameplayFromPause(
+  previousPhase: GamePhase,
+  currentPhase: GamePhase,
+): boolean {
+  return (
+    isGameplayPausePhase(previousPhase) && currentPhase === GAME_PHASE.RUNNING
+  )
+}
+
 const REQUIRED_UPGRADE_CHOICE_COUNT = 3
 const INVALID_UPGRADE_OFFER_ERROR =
   'Invalid upgrade offer: expected three choices with unique, non-empty IDs.'

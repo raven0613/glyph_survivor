@@ -2,8 +2,8 @@ import { assertValidPlayerSurvivalConfig } from './playerSurvival.ts'
 import { assertValidPlayerDeathReviewConfig } from './playerDeathReview.ts'
 
 const gameConfig = {
-  worldWidth: 4_000,
-  worldHeight: 4_000,
+  worldWidth: 6_000,
+  worldHeight: 6_000,
   fixedStepMs: 1_000 / 60,
   maxFrameDeltaMs: 100,
   maxStepsPerFrame: 5,
@@ -20,9 +20,10 @@ const gameConfig = {
   initialPlayerShieldLayers: 1,
   shieldRechargeIntervalMs: 4_000,
   playerDamageInvulnerabilityMs: 500,
+  playerResumeInvulnerabilityMs: 500,
   playerCollisionRadius: 14,
   playerDeathFallDurationMs: 220,
-  playerDeathGroundedDurationMs: 2_000,
+  playerDeathGroundedDurationMs: 1_000,
   deathReviewEnemyWanderIntervalMs: 1_400,
   deathReviewEnemyWanderSpeedMultiplier: 0.42,
   deathReviewEnemyWanderTurnResponsiveness: 3.2,

@@ -16,6 +16,7 @@ const CONFIG: Readonly<PlayerSurvivalConfig> = Object.freeze({
   initialPlayerShieldLayers: 2,
   shieldRechargeIntervalMs: 1_000,
   playerDamageInvulnerabilityMs: 500,
+  playerResumeInvulnerabilityMs: 500,
   playerCollisionRadius: 14,
 })
 

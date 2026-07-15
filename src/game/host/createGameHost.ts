@@ -15,7 +15,11 @@ import {
 } from '../content/gameContent.ts'
 import { createRenderAdapter } from '../rendering/createRenderAdapter.ts'
 import { createGameLoop } from '../runtime/createGameLoop.ts'
-import { GAME_PHASE, gameMachine } from '../runtime/gameMachine.ts'
+import {
+  GAME_PHASE,
+  gameMachine,
+  type GamePhase,
+} from '../runtime/gameMachine.ts'
 import {
   SIMULATION_STEP_RESULT,
   runSimulationStep,
@@ -23,6 +27,7 @@ import {
 import type { UpgradeOffer } from '../runtime/upgradeState.ts'
 import { createWorldState, type WorldState } from '../runtime/worldState.ts'
 import { runDeathReviewStep } from '../runtime/runDeathReviewStep.ts'
+import { applyPlayerResumeInvulnerability } from '../runtime/playerResumeInvulnerability.ts'
 import { getXpToNextLevel } from '../content/upgrades/levelProgression.ts'
 import {
   installModuleFromOffer,
@@ -124,6 +129,7 @@ export async function createGameHost({
   let isDisposed = false
   let lastUiPublishTimeMs = 0
   let runWeaponUnlocks: Readonly<RunWeaponUnlocks> | null = null
+  let previousGamePhase: GamePhase = GAME_PHASE.BOOT
 
   function publishUi(): void {
     const machineSnapshot = gameActor.getSnapshot()
@@ -141,7 +147,18 @@ export async function createGameHost({
     uiListeners.forEach((listener) => listener(currentUiSnapshot))
   }
 
-  const actorSubscription = gameActor.subscribe(publishUi)
+  const actorSubscription = gameActor.subscribe(() => {
+    const currentGamePhase = gameActor.getSnapshot().value
+    if (world) {
+      applyPlayerResumeInvulnerability(
+        world,
+        previousGamePhase,
+        currentGamePhase,
+      )
+    }
+    previousGamePhase = currentGamePhase
+    publishUi()
+  })
   gameActor.start()
   gameActor.send({ type: 'INITIALIZE' })
 

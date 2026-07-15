@@ -1,6 +1,6 @@
 # Player Survival — Health, Shields, Death, and Run Results
 
-> 狀態：生存、統計、結算／回主畫面、玩家生命／護盾受擊 presentation、死亡回看、手動進入結算與跨局清理均已實作並完成回歸驗證。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
+> 狀態：生存、統計、結算／回主畫面、玩家生命／護盾受擊 presentation、任何完整 Gameplay 暫停後的恢復無敵、死亡回看、手動進入結算與跨局清理均已實作並完成回歸驗證。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
 
 本文是玩家生命、護盾、incoming damage、接觸碰撞、死亡、單局統計、結算畫面與回主畫面流程的唯一詳細入口。跨系統產品意圖以 [`spec.md`](../../spec.md) 為準，依賴方向與 lifecycle 架構以 [`AGENTS.md`](../../AGENTS.md) 為準；未來生存 Module 的 ordered Slot transaction 另須遵守 [`weapon-system.md`](weapon-system.md)。
 
@@ -10,6 +10,7 @@
 
 - Runtime-owned Player Survival state 與集中 config；
 - Health、Shield Layers、shield recharge 與 global damage invulnerability；
+- 從任何完整 Gameplay 暫停恢復至戰場時的共用 player resume invulnerability；
 - 玩家和普通怪／Boss 權威 Glyph 輪廓的接觸受傷；
 - 生命受擊、護盾常駐／受擊／回復的 rendering-only 玩家 presentation；
 - 玩家死亡、`DEATH_REVIEW` 戰場回看、手動進入 `GAME_OVER`、不可變 run result 與停止 simulation；
@@ -46,6 +47,7 @@ React 只讀取 UI-sized immutable summaries 並送出明確 command。Renderer 
 | `initialPlayerShieldLayers` | 開局 current 與 maximum Shield Layers；必須是有限非負整數 |
 | `shieldRechargeIntervalMs` | 每回復一層護盾所需的連續未受擊 RUNNING simulation time；必須是有限正值 |
 | `playerDamageInvulnerabilityMs` | 一次受擊被接受後的 global incoming-damage gate 時長；必須是有限正值 |
+| `playerResumeInvulnerabilityMs` | 一局中從任何完整 Gameplay 暫停 phase 回到 `RUNNING` 時，至少保證的全域受傷無敵時長；必須是有限正值 |
 | `playerCollisionRadius` | 玩家權威圓形接觸判定半徑；必須是有限正值 |
 | `playerDeathFallDurationMs` | 致命傷成立後，玩家 Glyph 從站立轉至躺地姿態所需的 death-review time；必須是有限正值 |
 | `playerDeathGroundedDurationMs` | 玩家完全躺地後，顯示「進入結算」操作前必須經過的 death-review time；必須是有限正值 |
@@ -76,7 +78,7 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - 回復排程必須保留 fixed-step overflow，不能因一步跨過多個 interval 就丟失已到期的層數。
 - Shield 已滿時不預存 recharge progress；之後的 accepted hit 必須從新的受擊 timestamp 重新等待。
 - 同一步若既達到 recharge threshold 又收到 accepted hit，先解析 incoming damage 並重設 recharge，不會先補出一層來阻擋該次攻擊。
-- `READY`、`PAUSED_MENU`、`PAUSED_UPGRADE`、`DEATH_REVIEW` 與 `GAME_OVER` 都不推進護盾回復或 global invulnerability；護盾回復與無敵期限都只讀 RUNNING simulation time，不讀 wall-clock time。
+- `READY`、任何完整 Gameplay 暫停 phase、`DEATH_REVIEW` 與 `GAME_OVER` 都不推進護盾回復或 global invulnerability；護盾回復與無敵期限都只讀 RUNNING simulation time，不讀 wall-clock time。
 
 ## 6. Incoming Player Damage
 
@@ -97,6 +99,17 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 敵方投射物之後加入時只能新增 source adapter，不能建立另一套玩家扣血、無敵或護盾邏輯。
 
 本里程碑所有 creature contact candidates 使用 `SHIELD_FIRST`。未來若某個接觸、投射物或主動能力要直接攻擊 Health，必須由該攻擊 content 明確 author `HEALTH_ONLY`，不能由物種名稱、Glyph 字元或 renderer presentation 推測。
+
+### 暫停後恢復無敵
+
+- 「完整 Gameplay 暫停」指由權威 game phase 明確停止一般 `RUNNING` fixed simulation 的狀態。現在的 `PAUSED_MENU` 與 `PAUSED_UPGRADE` 都屬於此分類；未來新增其他暫停原因時，必須加入同一個集中 phase classification／transition contract，不得各自在升級、選單或其他 feature handler 裡複製一份恢復無敵邏輯。
+- 只有一局進行中，權威 phase 實際由上述暫停分類轉回 `RUNNING` 時才授予恢復無敵。`READY → RUNNING` 的初次開局、`GAME_OVER` 後的新局、`DEATH_REVIEW`、只顯示但不停止 simulation 的 overlay，以及重複送出的 resume command 都不成立。
+- 連續 queued upgrade decisions 全程仍是同一段 `PAUSED_UPGRADE`；卡片之間不得短暫進入 `RUNNING` 或重複授予無敵。只有最後一個 authoritative decision commit、phase 真正恢復 `RUNNING` 時才授予一次。
+- 恢復無敵必須在下一個 `RUNNING` fixed step 的輸入、移動、碰撞與 incoming damage 解析之前寫入 Runtime survival state，不得留下可在恢復首幀受傷的空窗。
+- 恢復時把 global invulnerability deadline 延長到「目前 RUNNING simulation time 加上 `playerResumeInvulnerabilityMs`」，並與既有 deadline 取較晚者；不得縮短暫停前尚未結束的受擊無敵。暫停期間不消耗任一 deadline，若恢復後再次進入暫停，剩餘時間仍隨 RUNNING clock 凍結。
+- 恢復無敵沿用同一個 global incoming-damage gate，對 `SHIELD_FIRST` 與未來 `HEALTH_ONLY` 都有效。期間被忽略的 candidate 不消耗 Shield、不扣 Health、不加入 accepted event IDs，也不重設 shield recharge。
+- 授予恢復無敵本身不是 accepted hit：不得改寫 `lastAcceptedDamageAtMs`、不得重排 `nextShieldRechargeAtMs`、不得產生 Health／Shield 受擊 presentation revision，也不得影響擊殺、DPS、Gameplay time 之外的統計。
+- 本契約目前不新增獨立的無敵視覺效果；是否需要提示另行定案。Renderer 與 React 不得從 pause overlay 消失時間自行決定 Gameplay 無敵期限。
 
 ## 7. 怪物接觸碰撞
 
@@ -168,7 +181,7 @@ RUNNING → DEATH_REVIEW（轉身 → 躺地等待 → 顯示按鈕；戰場持�
 
 ### Gameplay time 與擊殺
 
-- 本場時間只累積 `RUNNING` fixed-step simulation time。`READY`、選單暫停、升級暫停、`DEATH_REVIEW` 與 `GAME_OVER` 不計時。
+- 本場時間只累積 `RUNNING` fixed-step simulation time。`READY`、任何完整 Gameplay 暫停、`DEATH_REVIEW` 與 `GAME_OVER` 不計時。
 - 普通怪與未來 Elite 只在整體 collapse 完成並正式進入 reward-authorizing death state 時各計一次擊殺。
 - Boss 以 Encounter 正式 `DEFEATED` 時計一次，不因 root／child bodies、分體或多份 cleanup 重複增加。
 - 玩家死亡當下仍在 `COLLAPSING`、尚未正式死亡／`DEFEATED` 的怪物不列入擊殺數。
@@ -184,7 +197,7 @@ RUNNING → DEATH_REVIEW（轉身 → 躺地等待 → 顯示按鈕；戰場持�
 ### 裝備時間與平均 DPS
 
 - Weapon Instance equipped gameplay time 從它正式 commit 到 loadout 開始，到被替換或玩家死亡為止，只累積 `RUNNING` fixed-step simulation time。
-- 沒有怪物可攻擊、武器在 cooldown、攻擊 miss 或玩家只在走位時，仍屬於裝備中 Gameplay time。選單暫停、升級暫停與結算不計入。
+- 沒有怪物可攻擊、武器在 cooldown、攻擊 miss 或玩家只在走位時，仍屬於裝備中 Gameplay time。任何完整 Gameplay 暫停與結算不計入。
 - 結算顯示的指標明確命名為「裝備期間平均 DPS」，計算時先把該 Instance 的 equipped gameplay time 正規化為秒，再以 Total Damage 除之。沒有正的 equipped gameplay time 時，Runtime result 使用 unavailable／`null`，UI 顯示無資料，不執行除以零。
 - 為避免把它誤讀成理論武器 DPS，每張武器結果同時顯示 Total Damage 與 equipped gameplay time，並標示只統計目前裝備的該 Weapon Instance。
 
@@ -236,13 +249,16 @@ Run result 在致命傷成立時已建立並凍結，但只在接受 `enterRunRe
 
 純規則與高風險 deterministic tests 應覆蓋：
 
-- config validation 拒絕不合法 Health、Shield、duration 與 collision radius；
+- config validation 拒絕不合法 Health、Shield、受擊／恢復無敵 duration 與 collision radius；
 - 一層護盾完整吸收一次 `SHIELD_FIRST` event，且不 spill 到 Health；
 - `HEALTH_ONLY` 明確略過仍存在的護盾；
 - 被接受的 shield hit 重設 recharge 並啟動 invulnerability，被 invulnerability 忽略的 hit 不會；
 - shield recharge 只讀 RUNNING simulation time、保留 interval overflow 並停止於 maximum；
 - 同 owner 多 Glyph 接觸只產生一個 candidate，Husk 仍參與 active outline；
 - 多 owner 同步接觸使用 stable ordering，且不能在同一 invulnerability window 批次扣血；
+- `PAUSED_MENU`、`PAUSED_UPGRADE` 與未來註冊在同一 pause classification 的 phase，只有在實際轉回 `RUNNING` 時才於下一個 fixed step 前授予一次 resume invulnerability；初次開局、非暫停 overlay 與重複 resume 不授予；
+- queued upgrades 中途不短暫恢復或重複授予；最終恢復時的 deadline 與既有受擊無敵取較晚者，且不改寫 accepted-hit identity、受擊 presentation 或 shield recharge 排程；
+- resume invulnerability 期間的 `SHIELD_FIRST`／`HEALTH_ONLY` candidates 都被同一 global gate 忽略，期限結束後下一個合法 candidate 才可正常成立；
 - Health 歸零優先進入 `DEATH_REVIEW`，停止剩餘 RUNNING catch-up steps 並壓過同一步 upgrade；
 - `DEATH_REVIEW` 凍結 death-time result／Gameplay time／Weapon equipped time；既有怪物立即解除玩家 target 並進入 deterministic、per-creature 錯開的無目標游走，Body Motion 與允許的 lifecycle presentation 持續，且不產生新 damage、reward、XP、kill 或 statistics mutation；
 - death-review wander 不讀取玩家死亡座標、切換時不瞬移或突然歸零速度，且遵守 world bounds；相同 seed／Creature IDs 可重現，不同怪物不會同步換向或共同聚集至同一隱藏 target；
