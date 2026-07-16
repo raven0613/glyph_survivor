@@ -1,0 +1,75 @@
+export interface RunModifierDiagnostics {
+  runModifierDamageActualDelta: number
+  volatileExplosionResolutionCount: number
+  volatileExplosionsResolvedThisStep: number
+  volatileSecondaryCandidateCount: number
+  volatileSecondaryAppliedCount: number
+  volatileSkippedHuskTargetCount: number
+  deferredVolatileExplosionCount: number
+  activeVolatileCurrentWaveEventCount: number
+  activeVolatileNextWaveEventCount: number
+  maximumObservedVolatileWaveDepth: number
+  volatileSchedulerPoolMisses: number
+  volatileCorePresentationPoolMisses: number
+  activeVolatileReactionChainCount: number
+  peakVolatileReactionChainCount: number
+  activeVolatilePresentationEventCount: number
+  peakVolatilePresentationEventCount: number
+  volatileStructuralDeferredOwnerCount: number
+  disconnectedTopologyCacheRebuildCount: number
+  disconnectedTopologyCacheRebuildTimeMs: number
+  disconnectedProtectedComponentCount: number
+  disconnectedVulnerableComponentCount: number
+  disconnectedHitPresentationPoolMisses: number
+  activeDisconnectedHitPresentationCount: number
+  peakDisconnectedHitPresentationCount: number
+  activeDisconnectedLatchedGlyphCount: number
+  activeCrackedGlyphCount: number
+  crackApplicationCount: number
+  crackApplicationDedupCount: number
+  crackConsumptionCount: number
+  overloadThresholdEvaluationCount: number
+  overloadTriggerCount: number
+  overloadPresentationPoolMisses: number
+  activeOverloadPresentationEventCount: number
+  peakOverloadPresentationEventCount: number
+}
+
+export function createRunModifierDiagnostics(): RunModifierDiagnostics {
+  return {
+    runModifierDamageActualDelta: 0,
+    volatileExplosionResolutionCount: 0,
+    volatileExplosionsResolvedThisStep: 0,
+    volatileSecondaryCandidateCount: 0,
+    volatileSecondaryAppliedCount: 0,
+    volatileSkippedHuskTargetCount: 0,
+    deferredVolatileExplosionCount: 0,
+    activeVolatileCurrentWaveEventCount: 0,
+    activeVolatileNextWaveEventCount: 0,
+    maximumObservedVolatileWaveDepth: 0,
+    volatileSchedulerPoolMisses: 0,
+    volatileCorePresentationPoolMisses: 0,
+    activeVolatileReactionChainCount: 0,
+    peakVolatileReactionChainCount: 0,
+    activeVolatilePresentationEventCount: 0,
+    peakVolatilePresentationEventCount: 0,
+    volatileStructuralDeferredOwnerCount: 0,
+    disconnectedTopologyCacheRebuildCount: 0,
+    disconnectedTopologyCacheRebuildTimeMs: 0,
+    disconnectedProtectedComponentCount: 0,
+    disconnectedVulnerableComponentCount: 0,
+    disconnectedHitPresentationPoolMisses: 0,
+    activeDisconnectedHitPresentationCount: 0,
+    peakDisconnectedHitPresentationCount: 0,
+    activeDisconnectedLatchedGlyphCount: 0,
+    activeCrackedGlyphCount: 0,
+    crackApplicationCount: 0,
+    crackApplicationDedupCount: 0,
+    crackConsumptionCount: 0,
+    overloadThresholdEvaluationCount: 0,
+    overloadTriggerCount: 0,
+    overloadPresentationPoolMisses: 0,
+    activeOverloadPresentationEventCount: 0,
+    peakOverloadPresentationEventCount: 0,
+  }
+}

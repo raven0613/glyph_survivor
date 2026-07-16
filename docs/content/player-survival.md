@@ -2,7 +2,7 @@
 
 > 狀態：生存、統計、結算／回主畫面、玩家生命／護盾受擊 presentation、任何完整 Gameplay 暫停後的恢復無敵、死亡回看、手動進入結算與跨局清理均已實作並完成回歸驗證。本文件不保存任何可調數值的 default；數值只存在對應的 validated config／content。
 
-本文是玩家生命、護盾、incoming damage、接觸碰撞、死亡、單局統計、結算畫面與回主畫面流程的唯一詳細入口。跨系統產品意圖以 [`spec.md`](../../spec.md) 為準，依賴方向與 lifecycle 架構以 [`AGENTS.md`](../../AGENTS.md) 為準；未來生存 Module 的 ordered Slot transaction 另須遵守 [`weapon-system.md`](weapon-system.md)。
+本文是玩家生命、護盾、incoming damage、接觸碰撞、死亡、單局統計、結算畫面與回主畫面流程的唯一詳細入口。跨系統產品意圖以 [`spec.md`](../../spec.md) 為準，依賴方向與 lifecycle 架構以 [`AGENTS.md`](../../AGENTS.md) 為準；未來生存 Module 的 ordered Slot transaction 另須遵守 [`weapon-system.md`](weapon-system.md)。Boss／run-start testing Modifier offer、`PAUSED_MODIFIER`、初次開局不授予resume invulnerability的例外，以及Modifier-caused damage attribution另見 [`run-modifiers.md`](run-modifiers.md)。
 
 ## 1. 本里程碑範圍
 
@@ -102,9 +102,9 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 
 ### 暫停後恢復無敵
 
-- 「完整 Gameplay 暫停」指由權威 game phase 明確停止一般 `RUNNING` fixed simulation 的狀態。現在的 `PAUSED_MENU` 與 `PAUSED_UPGRADE` 都屬於此分類；未來新增其他暫停原因時，必須加入同一個集中 phase classification／transition contract，不得各自在升級、選單或其他 feature handler 裡複製一份恢復無敵邏輯。
-- 只有一局進行中，權威 phase 實際由上述暫停分類轉回 `RUNNING` 時才授予恢復無敵。`READY → RUNNING` 的初次開局、`GAME_OVER` 後的新局、`DEATH_REVIEW`、只顯示但不停止 simulation 的 overlay，以及重複送出的 resume command 都不成立。
-- 連續 queued upgrade decisions 全程仍是同一段 `PAUSED_UPGRADE`；卡片之間不得短暫進入 `RUNNING` 或重複授予無敵。只有最後一個 authoritative decision commit、phase 真正恢復 `RUNNING` 時才授予一次。
+- 「完整 Gameplay 暫停」指由權威 game phase 明確停止一般 `RUNNING` fixed simulation 的狀態。現在的 `PAUSED_MENU`、`PAUSED_UPGRADE` 與 `PAUSED_MODIFIER` 都屬於此分類；未來新增其他暫停原因時，必須加入同一個集中 phase classification／transition contract，不得各自在升級、Modifier、選單或其他 feature handler 裡複製一份恢復無敵邏輯。
+- 只有一局已經執行過至少一個`RUNNING` fixed step，權威phase再由上述暫停分類轉回`RUNNING`時才授予恢復無敵。`READY → RUNNING`的普通初次開局，以及`enableRunStartModifierOfferForTesting`形成的`READY → PAUSED_MODIFIER → RUNNING`測試開局，都沒有先前Gameplay需要保護，因此不授予。`GAME_OVER`後的新局、`DEATH_REVIEW`、只顯示但不停止simulation的overlay，以及重複送出的resume command也不成立。
+- 連續 queued Modifier／upgrade decisions 全程維持完整暫停；可以直接由 `PAUSED_MODIFIER` 切換至下一個 `PAUSED_MODIFIER` 或 `PAUSED_UPGRADE`，但不得在卡片之間短暫進入 `RUNNING` 或重複授予無敵。只有最後一個 authoritative decision commit、phase 真正恢復 `RUNNING` 時才授予一次。
 - 恢復無敵必須在下一個 `RUNNING` fixed step 的輸入、移動、碰撞與 incoming damage 解析之前寫入 Runtime survival state，不得留下可在恢復首幀受傷的空窗。
 - 恢復時把 global invulnerability deadline 延長到「目前 RUNNING simulation time 加上 `playerResumeInvulnerabilityMs`」，並與既有 deadline 取較晚者；不得縮短暫停前尚未結束的受擊無敵。暫停期間不消耗任一 deadline，若恢復後再次進入暫停，剩餘時間仍隨 RUNNING clock 凍結。
 - 恢復無敵沿用同一個 global incoming-damage gate，對 `SHIELD_FIRST` 與未來 `HEALTH_ONLY` 都有效。期間被忽略的 candidate 不消耗 Shield、不扣 Health、不加入 accepted event IDs，也不重設 shield recharge。
@@ -164,7 +164,7 @@ RUNNING → DEATH_REVIEW（轉身 → 躺地等待 → 顯示按鈕；戰場持�
 - Health 歸零只提交一次 player-death transition，建立死亡當下的 immutable run result，並把全域 phase 從 `RUNNING` 轉為 `DEATH_REVIEW`；不得在致命傷當下直接顯示結算畫面。
 - 一旦 transition 成立，不再開始下一個一般 `RUNNING` fixed simulation step；同一 RAF callback 尚未執行的 RUNNING catch-up steps 必須停止並切換至 phase-specific death-review scheduler，避免多執行一次玩家攻擊、傷害、掉落、統計或 upgrade。
 - 已在死亡當步正式 commit 的傷害、擊殺、裝備時間與死亡結果保留並立即凍結。`DEATH_REVIEW` 經過的時間不屬於本場 Gameplay time，也不得改寫 death-time run result。
-- 若死亡與 level-up／upgrade trigger 落在同一 fixed step，死亡優先。不得先開啟或保留 `PAUSED_UPGRADE` overlay，也不得消耗 pending upgrade transaction。
+- 若死亡、Boss Modifier reward 與 level-up／upgrade trigger 落在同一 fixed step，優先序固定為 `PLAYER_DIED > MODIFIER_REWARD > XP_UPGRADE`。死亡成立時不得先開啟或保留 `PAUSED_MODIFIER`／`PAUSED_UPGRADE` overlay，也不得消耗 pending Modifier／upgrade transaction。
 - `DEATH_REVIEW` 不是全域暫停。玩家移動、輸入、武器 emission、player-owned authoritative attacks、incoming player damage、XP／upgrade、掉落獎勵與所有 run statistics 停止；玩家不再具有可受擊或可造成傷害的 Gameplay 身分。
 - 為保留可截圖的活戰場，死亡當下已存在的怪物仍由 Runtime 繼續其移動、Body Motion、materialization、reassembly 與已開始的 collapse presentation，rendering-only 戰場效果也可繼續。Director 不再生成新怪，且這段回看不得產生新的 combat damage、reward、XP、kill count 或 run-result mutation。
 - 進入 `DEATH_REVIEW` 時，所有怪物必須立即解除玩家 target；不得繼續讀取玩家的死亡座標、把倒地玩家當作 steering target，或因此逐漸聚集在屍體周圍。`ACTIVE` 怪物改用 phase-specific 的無目標游走，`MATERIALIZING`／`REASSEMBLING` 怪物完成既有階段後也進入同一游走；已進入 `COLLAPSING` 的怪物只完成崩解 presentation，不重新取得移動行為。
@@ -189,7 +189,7 @@ RUNNING → DEATH_REVIEW（轉身 → 躺地等待 → 顯示按鈕；戰場持�
 ### Weapon Instance 傷害歸屬
 
 - 每個 damaging attack 在 emission snapshot 保存 stable `sourceWeaponInstanceId`。Damage System 在 mutation 後回報每個 Glyph 實際減少的 Current Durability，累加到該 Instance。
-- Total Damage 是實際套用的 Glyph Durability delta，包含 primary direct targets、topology-frontier direct targets 與 Damage Spread targets。
+- Total Damage 是實際套用的 Glyph Durability delta，包含 primary direct targets、topology-frontier direct targets、Damage Spread targets，以及依 [`run-modifiers.md`](run-modifiers.md) 歸屬於 causal root Weapon Instance 的有效 Modifier bonus／Volatile damage。
 - Miss、Husk Cell 本身沒有發生的 durability delta、同 event 去重、overkill 被 clamp 的部分、純 knockback、Material displacement、particles 與其他 presentation 不計入 Total Damage；由 Husk impact 導向 living topology-frontier target 的實際 durability delta 仍須計入。
 - 統計以 stable Weapon Instance ID 隔離，不以 Weapon Definition ID 合併。同 definition 再次取得仍是新的 Instance，建立獨立且歸零的 counter。
 - 武器替換後，舊 Instance 的獨立在途攻擊仍歸舊 Instance；傷害不得搬到 replacement。Runtime 可保留 retired record 直到在途 attribution 安全結束，但死亡結果只 filter 當下 loadout 中的 Instances，因此被替換武器不顯示。
@@ -230,7 +230,7 @@ Run result 在致命傷成立時已建立並凍結，但只在接受 `enterRunRe
 
 結算頁的按鈕送出明確 `returnToMainMenu` command。Runtime／Host 只在合法 phase 接受，並以一個 lifecycle transaction：
 
-- 丟棄本局 WorldState、pending upgrades、run statistics、run result 與輸入狀態；
+- 丟棄本局 WorldState、pending upgrades、pending Modifier offers／reward tokens、run-start test authorization／origin／consumed guard、active Run Modifiers、Modifier reaction／status state、run statistics、run result 與輸入狀態；prepared Host config中的Boolean testing flag可以保留，但下一局只能在合法`startRun`後建立一份全新authorization；
 - 清空本局 Glyph、creature、projectile、effect、death-review clock／prompt 與玩家死亡 presentation，將 active render views 解除同步並歸還既有 pool，不保留可在下一局觸發的 event；
 - 回到 `READY`／主畫面與初始武器選擇流程；
 - 保留可安全重用的 GameHost、Pixi Application、prepared content、visual theme 與永久解鎖 snapshot，避免整頁 reload。
@@ -256,16 +256,16 @@ Run result 在致命傷成立時已建立並凍結，但只在接受 `enterRunRe
 - shield recharge 只讀 RUNNING simulation time、保留 interval overflow 並停止於 maximum；
 - 同 owner 多 Glyph 接觸只產生一個 candidate，Husk 仍參與 active outline；
 - 多 owner 同步接觸使用 stable ordering，且不能在同一 invulnerability window 批次扣血；
-- `PAUSED_MENU`、`PAUSED_UPGRADE` 與未來註冊在同一 pause classification 的 phase，只有在實際轉回 `RUNNING` 時才於下一個 fixed step 前授予一次 resume invulnerability；初次開局、非暫停 overlay 與重複 resume 不授予；
-- queued upgrades 中途不短暫恢復或重複授予；最終恢復時的 deadline 與既有受擊無敵取較晚者，且不改寫 accepted-hit identity、受擊 presentation 或 shield recharge 排程；
+- `PAUSED_MENU`、`PAUSED_UPGRADE`、`PAUSED_MODIFIER` 與未來註冊在同一 pause classification 的 phase，只有在run已執行過`RUNNING` fixed step後再實際轉回`RUNNING`時，才於下一個fixed step前授予一次resume invulnerability；普通初次開局、run-start testing Modifier選擇、非暫停overlay與重複resume不授予；
+- queued Modifier／upgrade decisions 中途不短暫恢復或重複授予；最終恢復時的 deadline 與既有受擊無敵取較晚者，且不改寫 accepted-hit identity、受擊 presentation 或 shield recharge 排程；
 - resume invulnerability 期間的 `SHIELD_FIRST`／`HEALTH_ONLY` candidates 都被同一 global gate 忽略，期限結束後下一個合法 candidate 才可正常成立；
-- Health 歸零優先進入 `DEATH_REVIEW`，停止剩餘 RUNNING catch-up steps 並壓過同一步 upgrade；
+- Health 歸零優先進入 `DEATH_REVIEW`，停止剩餘 RUNNING catch-up steps 並壓過同一步 Modifier reward／XP upgrade；
 - `DEATH_REVIEW` 凍結 death-time result／Gameplay time／Weapon equipped time；既有怪物立即解除玩家 target 並進入 deterministic、per-creature 錯開的無目標游走，Body Motion 與允許的 lifecycle presentation 持續，且不產生新 damage、reward、XP、kill 或 statistics mutation；
 - death-review wander 不讀取玩家死亡座標、切換時不瞬移或突然歸零速度，且遵守 world bounds；相同 seed／Creature IDs 可重現，不同怪物不會同步換向或共同聚集至同一隱藏 target；
 - 玩家 Glyph 依 snapshot-owned progress 轉四分之一圈，完全躺地並經過 config 定義的 grounded duration 後才發布一次 `canEnterRunResult`；在此之前與之後都不得自動進入結算；
 - `enterRunResult` 只有在 prompt ready 時能把 `DEATH_REVIEW` 原子轉成 `GAME_OVER`，過早／重複 command 安全無副作用；
 - kill count 只在正式 death／Boss Encounter defeat 增加，玩家死亡時未完成 collapse 不計；
-- actual Glyph Durability delta 正確歸屬 stable Weapon Instance，排除 overkill、Husk Cell 本身未發生的 delta 與純 presentation，同時保留 living topology-frontier target 的實際傷害；
+- actual Glyph Durability delta 正確歸屬 stable Weapon Instance，排除 overkill、Husk Cell 本身未發生的 delta 與純 presentation，同時保留 living topology-frontier target、Modifier direct bonus與causal Volatile的實際傷害且不重複計數；
 - replacement weapon 從空 counter 開始，舊在途 attack 不轉嫁，結果只列 death-time loadout；
 - equipped time 包含 RUNNING 中沒有目標的時間，但排除所有 pause／result time；
 - average DPS、tie-break、all-zero no-crown 與 immutable result snapshot；

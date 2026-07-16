@@ -1,7 +1,4 @@
-import {
-  GLYPH_CELL_STATE,
-  isGlyphLivingState,
-} from '../glyph/glyphStore.ts'
+import { isGlyphLivingState } from '../glyph/glyphStore.ts'
 import type { DamageTransferReservation } from '../glyph/localDamage.ts'
 import {
   isEnemyCombatPhase,
@@ -10,6 +7,12 @@ import {
 } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { recordWeaponDamage } from '../runtime/runStatistics.ts'
+import {
+  DAMAGE_APPLICATION_ROUTE,
+  applyDamageApplication,
+  completeDirectDamageBatch,
+  prepareDirectDamageBatch,
+} from './damageApplication.ts'
 
 export function schedulePendingDamageTransfer(
   world: WorldState,
@@ -37,6 +40,8 @@ export function schedulePendingDamageTransfer(
     sourceGlyphId: reservation.sourceGlyphId,
     targetGlyphId: reservation.targetGlyphId,
     reservedDamage,
+    impactDirectionX: reservation.impactDirectionX,
+    impactDirectionY: reservation.impactDirectionY,
     pathGlyphIds,
     nextPathIndex: 1,
     remainingToNextPulseMs: reservation.sourceFlashDurationMs,
@@ -125,11 +130,27 @@ function commitArrival(
   if (!target) {
     throw new Error('Validated topology-transfer target disappeared.')
   }
-  const wasLiving = isGlyphLivingState(target.state)
-  const appliedDamage = world.glyphStore.applyDamage(
-    target.id,
-    transfer.reservedDamage,
+  const directBatch = prepareDirectDamageBatch(
+    world,
+    transfer.attackEventId,
+    [target.id],
   )
+  const outcome = applyDamageApplication(
+    world,
+    {
+      rootAttackEventId: transfer.attackEventId,
+      reactionChainId: null,
+      route: DAMAGE_APPLICATION_ROUTE.DIRECT_TRANSFER_ARRIVAL,
+      sourceWeaponInstanceId: transfer.sourceWeaponInstanceId,
+      targetGlyphId: target.id,
+      baseDamage: transfer.reservedDamage,
+      impactDirectionX: transfer.impactDirectionX,
+      impactDirectionY: transfer.impactDirectionY,
+    },
+    directBatch,
+  )
+  completeDirectDamageBatch(world, directBatch)
+  const appliedDamage = outcome.actualAppliedDurabilityDelta
   if (appliedDamage <= 0) {
     world.diagnostics.pendingTransferInvalidTargetCancellationCount += 1
     return
@@ -140,9 +161,6 @@ function commitArrival(
     transfer.sourceWeaponInstanceId,
     appliedDamage,
   )
-  if (wasLiving && target.state === GLYPH_CELL_STATE.HUSK) {
-    world.topologyDirtyOwnerIds.add(target.ownerId)
-  }
   world.diagnostics.pendingTransferArrivalCommitCount += 1
 }
 

@@ -19,6 +19,8 @@ import { preparePrototypeWeaponModules } from './upgrades/prototypeWeaponModules
 import type { WeaponModuleDefinition } from './upgrades/moduleDefinition.ts'
 import type { CombatVisualTheme } from './visuals/combatVisualTheme.ts'
 import { PROTOTYPE_COMBAT_VISUAL_THEME } from './visuals/prototypeCombatVisualTheme.ts'
+import type { RunModifierDefinition } from './modifiers/runModifierDefinition.ts'
+import { preparePrototypeRunModifiers } from './modifiers/prototypeRunModifiers.ts'
 
 const FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS = 3
 
@@ -37,6 +39,10 @@ export interface PreparedGameContent {
   readonly levelProgression: Readonly<LevelProgressionDefinition>
   readonly maximumEquippedWeapons: number
   readonly maximumEnemyBroadPhaseRadius: number
+  readonly runModifierDefinitions: readonly Readonly<RunModifierDefinition>[]
+  readonly runModifierDefinitionsById: Readonly<
+    Record<string, Readonly<RunModifierDefinition>>
+  >
 }
 
 export function getCreatureDefinition(
@@ -121,6 +127,17 @@ export function prepareGameContent(): PreparedGameContent {
     }
     weaponDefinitionsById[definition.id] = definition
   }
+  const runModifierDefinitions = preparePrototypeRunModifiers()
+  const runModifierDefinitionsById: Record<
+    string,
+    Readonly<RunModifierDefinition>
+  > = {}
+  for (const definition of runModifierDefinitions) {
+    if (runModifierDefinitionsById[definition.id]) {
+      throw new Error(`Duplicate Run Modifier definition ${definition.id}.`)
+    }
+    runModifierDefinitionsById[definition.id] = definition
+  }
 
   return Object.freeze({
     combatVisualTheme: PROTOTYPE_COMBAT_VISUAL_THEME,
@@ -140,5 +157,7 @@ export function prepareGameContent(): PreparedGameContent {
         (definition) => definition.broadPhaseRadius,
       ),
     ),
+    runModifierDefinitions,
+    runModifierDefinitionsById: Object.freeze(runModifierDefinitionsById),
   })
 }

@@ -72,6 +72,122 @@ test('rejects invalid topology-transfer timing', () => {
   )
 })
 
+test('prepares and validates bounded OVERLOAD presentation roles', () => {
+  const prepared = PROTOTYPE_COMBAT_VISUAL_THEME.effects.runModifiers.overload
+  assert.ok(prepared.compression.attackDurationMs > 0)
+  assert.ok(prepared.compression.holdDurationMs > 0)
+  assert.ok(prepared.compression.settleDurationMs > 0)
+  assert.ok(prepared.compression.parallelScale < 1)
+  assert.ok(prepared.compression.perpendicularScale >= 1)
+  assert.equal(prepared.crackedSurface.fragmentBrightnessGains.length, 3)
+
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        runModifiers: {
+          ...theme.effects.runModifiers,
+          overload: {
+            ...theme.effects.runModifiers.overload,
+            compression: {
+              ...theme.effects.runModifiers.overload.compression,
+              holdDurationMs: 0,
+            },
+          },
+        },
+      },
+    }),
+  )
+})
+
+test('prepares and validates axis-only VOLATILE domino roles', () => {
+  const prepared =
+    PROTOTYPE_COMBAT_VISUAL_THEME.effects.runModifiers.volatile
+  assert.ok(prepared.sourceClamp.minimumScale < 1)
+  assert.equal(prepared.release.characters.length, 4)
+  assert.ok(prepared.release.delayMs >= 0)
+  assert.ok(prepared.neighborJolt.maximumOffset > 0)
+
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        runModifiers: {
+          ...theme.effects.runModifiers,
+          volatile: {
+            ...theme.effects.runModifiers.volatile,
+            release: {
+              ...theme.effects.runModifiers.volatile.release,
+              characters: ['-', '|'],
+            },
+          },
+        },
+      },
+    }),
+  )
+})
+
+test('prepares and validates low-duty DISCONNECTED motion roles', () => {
+  const prepared =
+    PROTOTYPE_COMBAT_VISUAL_THEME.effects.runModifiers.disconnected
+  const burstDuration =
+    prepared.ambient.attackDurationMs +
+    prepared.ambient.holdDurationMs +
+    prepared.ambient.settleDurationMs
+  assert.ok(burstDuration < prepared.ambient.intervalMs)
+  assert.ok(prepared.ambient.maximumSpacingOffset > 0)
+  assert.ok(prepared.hitShake.maximumOffset > 0)
+
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        runModifiers: {
+          ...theme.effects.runModifiers,
+          disconnected: {
+            ...theme.effects.runModifiers.disconnected,
+            ambient: {
+              ...theme.effects.runModifiers.disconnected.ambient,
+              intervalMs: 1,
+            },
+          },
+        },
+      },
+    }),
+  )
+})
+
+test('prepares and validates the central Run Modifier motion clamp', () => {
+  const prepared =
+    PROTOTYPE_COMBAT_VISUAL_THEME.effects.runModifiers.composition
+  assert.ok(prepared.maximumOffset > 0)
+  assert.ok(prepared.maximumRotation > 0)
+  assert.equal(Object.isFrozen(prepared), true)
+
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        runModifiers: {
+          ...theme.effects.runModifiers,
+          composition: {
+            ...theme.effects.runModifiers.composition,
+            maximumOffset: 0,
+          },
+        },
+      },
+    }),
+  )
+})
+
 test('rejects invalid player survival animation tuning', () => {
   const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
   assert.throws(() =>

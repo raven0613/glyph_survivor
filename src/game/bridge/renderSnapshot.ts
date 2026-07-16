@@ -25,6 +25,22 @@ import {
 } from './glyphRenderGeometry.ts'
 import { writeRenderGlyph } from './renderGlyphBuffer.ts'
 import { writeTopologyTransferRenderSnapshot } from './topologyTransferRenderSnapshot.ts'
+import {
+  hasActiveOverloadGlyphDeformation,
+  writeOverloadGlyphPresentation,
+  writeOverloadShockwaves,
+  type RenderCrackedSurface,
+  type RenderOverloadDeformation,
+} from './overloadRenderSnapshot.ts'
+import { resolveDisconnectedGlyphMotion } from './disconnectedRenderSnapshot.ts'
+import {
+  resolveVolatileGlyphPresentation,
+  writeVolatileCoreOverlays,
+} from './volatileRenderSnapshot.ts'
+import {
+  composeModifierPresentationMotion,
+  resolveVolatileSourceScaleMultiplier,
+} from './modifierPresentationComposition.ts'
 
 const MAX_BURST_PARTICLES_PER_GLYPH = 8
 const MAX_ACTIVE_IMPACT_PARTICLES = 192
@@ -66,6 +82,10 @@ export interface RenderSnapshot extends RenderPlayerState {
   readonly orbits: RenderGlyph[]
   readonly drops: RenderGlyph[]
   readonly flameEmitters: RenderFlameEmitter[]
+  readonly crackedSurfaces: RenderCrackedSurface[]
+  readonly overloadDeformations: RenderOverloadDeformation[]
+  readonly overloadShockwaves: RenderGlyph[]
+  readonly volatileCoreOverlays: RenderGlyph[]
 }
 
 export function createRenderSnapshot(): RenderSnapshot {
@@ -78,6 +98,10 @@ export function createRenderSnapshot(): RenderSnapshot {
     orbits: [],
     drops: [],
     flameEmitters: [],
+    crackedSurfaces: [],
+    overloadDeformations: [],
+    overloadShockwaves: [],
+    volatileCoreOverlays: [],
   }
 }
 
@@ -182,6 +206,8 @@ export function writeRenderSnapshot(
 
   let enemyCount = 0
   let effectCount = 0
+  let crackedSurfaceCount = 0
+  let overloadDeformationCount = 0
   for (const enemy of world.enemies) {
     if (enemy.phase === 'DEAD') {
       continue
@@ -232,13 +258,69 @@ export function writeRenderSnapshot(
             )
       const collapseAngle = glyph.id * GOLDEN_ANGLE
       const collapseDistance = collapseProgress * COLLAPSE_SCATTER_DISTANCE
-      const x =
+      const authoritativeX =
         getGlyphWorldX(rootX, glyph) + Math.cos(collapseAngle) * collapseDistance
-      const y =
+      const authoritativeY =
         getGlyphWorldY(rootY, glyph) + Math.sin(collapseAngle) * collapseDistance
+      const disconnectedMotion = resolveDisconnectedGlyphMotion(world, glyph)
+      const volatilePresentation = resolveVolatileGlyphPresentation(world, glyph)
+      const modifierMotion = composeModifierPresentationMotion(
+        disconnectedMotion,
+        volatilePresentation,
+        world.content.combatVisualTheme.effects.runModifiers.composition,
+      )
+      const x =
+        authoritativeX +
+        modifierMotion.offsetX
+      const y =
+        authoritativeY +
+        modifierMotion.offsetY
       if (!isWorldPositionVisible(x, y, camera)) {
         continue
       }
+
+      const glyphScale =
+        materializeProgress *
+        hitPresentation.scale *
+        (1 +
+          spreadIntensity *
+            world.content.combatVisualTheme.effects
+              .spreadFeedbackScaleBonus) *
+        (1 - collapseProgress * 0.7) *
+        resolveVolatileSourceScaleMultiplier(
+          volatilePresentation.scaleMultiplier,
+          hasActiveOverloadGlyphDeformation(world, glyph.id),
+        )
+      const glyphAlpha =
+        materializeProgress *
+        Math.max(
+          hitPresentation.alpha,
+          spreadIntensity *
+            world.content.combatVisualTheme.effects.spreadFeedbackAlpha,
+        ) *
+        (1 - collapseProgress)
+      const glyphTint =
+        spreadIntensity > 0 && spreadAccent !== null
+          ? spreadAccent.tint
+          : hitPresentation.tint
+      const modifierPresentation = writeOverloadGlyphPresentation(
+        world,
+        glyph,
+        x,
+        y,
+        glyph.rotation +
+          modifierMotion.rotation,
+        glyphScale,
+        glyphAlpha,
+        glyphTint,
+        snapshot.crackedSurfaces,
+        crackedSurfaceCount,
+        snapshot.overloadDeformations,
+        overloadDeformationCount,
+      )
+      crackedSurfaceCount = modifierPresentation.crackedSurfaceIndex
+      overloadDeformationCount =
+        modifierPresentation.overloadDeformationIndex
 
       writeRenderGlyph(
         snapshot.enemies,
@@ -247,24 +329,11 @@ export function writeRenderSnapshot(
         glyph.glyphFrame,
         x,
         y,
-        materializeProgress *
-          hitPresentation.scale *
-          (1 +
-            spreadIntensity *
-              world.content.combatVisualTheme.effects
-                .spreadFeedbackScaleBonus) *
-          (1 - collapseProgress * 0.7),
-        materializeProgress *
-          Math.max(
-            hitPresentation.alpha,
-            spreadIntensity *
-              world.content.combatVisualTheme.effects.spreadFeedbackAlpha,
-          ) *
-          (1 - collapseProgress),
-        spreadIntensity > 0 && spreadAccent !== null
-          ? spreadAccent.tint
-          : hitPresentation.tint,
-        glyph.rotation,
+        glyphScale,
+        modifierPresentation.hideBaseGlyph ? 0 : glyphAlpha,
+        glyphTint,
+        glyph.rotation +
+          modifierMotion.rotation,
       )
       enemyCount += 1
 
@@ -294,6 +363,20 @@ export function writeRenderSnapshot(
   }
   snapshot.enemies.length = enemyCount
   snapshot.effects.length = effectCount
+  snapshot.crackedSurfaces.length = crackedSurfaceCount
+  snapshot.overloadDeformations.length = overloadDeformationCount
+  writeOverloadShockwaves(
+    world,
+    snapshot.overloadShockwaves,
+    camera,
+    interpolationAlpha,
+  )
+  writeVolatileCoreOverlays(
+    world,
+    snapshot.volatileCoreOverlays,
+    camera,
+    interpolationAlpha,
+  )
   writeTopologyTransferRenderSnapshot(
     world,
     snapshot.topologyTransferPulses,

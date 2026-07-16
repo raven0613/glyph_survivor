@@ -59,6 +59,13 @@ export function runMovementSystem(world: WorldState, deltaMs: number): void {
 
     if (enemy.phase === 'REASSEMBLING') {
       if (hasCreatureFinishedReassembling(world, enemy.id)) {
+        if (enemy.reassemblyEpisodeId > 0) {
+          world.glyphStore.clearDisconnectedLatches(
+            enemy.id,
+            enemy.reassemblyEpisodeId,
+          )
+          enemy.reassemblyEpisodeId = 0
+        }
         enemy.phase = 'ACTIVE'
       } else {
         continue

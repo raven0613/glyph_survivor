@@ -11,6 +11,8 @@ import {
   createWorldState,
   spawnEnemy,
 } from '../../src/game/runtime/worldState.ts'
+import { createRunStartTestModifierOfferIfEnabled } from '../../src/game/systems/runModifierOffer.ts'
+import { selectRunModifierFromOffer } from '../../src/game/systems/runModifierTransaction.ts'
 
 test('clears completed-run input and render state without disposing reusable ports', () => {
   const snapshot = createRenderSnapshot()
@@ -68,6 +70,23 @@ test('creates a second run without survival, result, statistics, or entity resid
     0,
     content.ordinaryEnemyDefinitions[0],
   )
+  const modifierOffer = createRunStartTestModifierOfferIfEnabled(
+    content.runModifierDefinitions,
+    firstWorld.runModifierState,
+    true,
+  )
+  assert.ok(modifierOffer)
+  assert.equal(
+    selectRunModifierFromOffer(
+      content.runModifierDefinitions,
+      firstWorld.runModifierState,
+      {
+        offerId: modifierOffer.id,
+        choiceId: modifierOffer.choices[0].id,
+      },
+    ).ok,
+    true,
+  )
 
   const secondWorld = createWorldState(
     'next-run',
@@ -105,4 +124,11 @@ test('creates a second run without survival, result, statistics, or entity resid
   assert.equal(secondWorld.enemies.length, 0)
   assert.notEqual(secondWorld.enemies, firstWorld.enemies)
   assert.notEqual(secondWorld.glyphStore, firstWorld.glyphStore)
+  assert.deepEqual([...secondWorld.runModifierState.ownedDefinitionIds], [])
+  assert.equal(secondWorld.runModifierState.activeAuthorization, null)
+  assert.equal(secondWorld.runModifierState.activeOffer, null)
+  assert.equal(
+    secondWorld.runModifierState.runStartTestAuthorizationCreated,
+    false,
+  )
 })

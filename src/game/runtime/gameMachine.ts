@@ -1,8 +1,30 @@
 import { assign, setup } from 'xstate'
 import type {
-  UpgradeRankPreview,
-  UpgradeWeaponTargetPreview,
-} from './upgradeState.ts'
+  RunModifierChoiceReference,
+  RunModifierOfferOrigin,
+} from './runModifierState.ts'
+import {
+  copyModifierChoices,
+  INVALID_MODIFIER_OFFER_ERROR,
+  INVALID_MODIFIER_SELECTION_ERROR,
+  isValidBossModifierOffer,
+  isValidModifierOffer,
+  isValidRunStartModifierOffer,
+  type ModifierCommittedEvent,
+  type ModifierOfferedEvent,
+  type StartRunWithModifierOfferEvent,
+} from './runModifierMachineContract.ts'
+import {
+  copyUpgradeChoices,
+  INVALID_UPGRADE_OFFER_ERROR,
+  INVALID_UPGRADE_SELECTION_ERROR,
+  isValidUpgradeOffer,
+  type UpgradeChoice,
+  type UpgradeCommittedEvent,
+  type UpgradeOfferedEvent,
+} from './upgradeMachineContract.ts'
+
+export type { UpgradeChoice } from './upgradeMachineContract.ts'
 
 export const GAME_PHASE = Object.freeze({
   BOOT: 'BOOT',
@@ -11,6 +33,7 @@ export const GAME_PHASE = Object.freeze({
   RUNNING: 'RUNNING',
   PAUSED_MENU: 'PAUSED_MENU',
   PAUSED_UPGRADE: 'PAUSED_UPGRADE',
+  PAUSED_MODIFIER: 'PAUSED_MODIFIER',
   DEATH_REVIEW: 'DEATH_REVIEW',
   GAME_OVER: 'GAME_OVER',
   DISPOSED: 'DISPOSED',
@@ -21,7 +44,8 @@ export type GamePhase = (typeof GAME_PHASE)[keyof typeof GAME_PHASE]
 export function isGameplayPausePhase(phase: GamePhase): boolean {
   return (
     phase === GAME_PHASE.PAUSED_MENU ||
-    phase === GAME_PHASE.PAUSED_UPGRADE
+    phase === GAME_PHASE.PAUSED_UPGRADE ||
+    phase === GAME_PHASE.PAUSED_MODIFIER
   )
 }
 
@@ -34,43 +58,18 @@ export function didResumeGameplayFromPause(
   )
 }
 
-const REQUIRED_UPGRADE_CHOICE_COUNT = 3
-const INVALID_UPGRADE_OFFER_ERROR =
-  'Invalid upgrade offer: expected three choices with unique, non-empty IDs.'
-const INVALID_UPGRADE_SELECTION_ERROR =
-  'Invalid upgrade selection: the choice is not part of the active offer.'
 const LOAD_FAILURE_FALLBACK_ERROR = 'Game initialization failed.'
-
-/** A UI-sized reference to an authoritative runtime upgrade definition. */
-export interface UpgradeChoice {
-  readonly id: string
-  readonly kind: 'WEAPON' | 'MODULE'
-  readonly definitionId: string
-  readonly title?: string
-  readonly description?: string
-  readonly rankPreviews?: readonly Readonly<UpgradeRankPreview>[]
-  readonly weaponTargetPreviews?: readonly Readonly<UpgradeWeaponTargetPreview>[]
-}
 
 export interface GameMachineContext {
   readonly seed: string | number | null
   readonly upgradeChoices: readonly Readonly<UpgradeChoice>[]
   readonly pendingUpgradeCount: number
   readonly activeUpgradeOfferId: string | null
+  readonly modifierChoices: readonly Readonly<RunModifierChoiceReference>[]
+  readonly activeModifierOfferId: string | null
+  readonly activeModifierOfferOrigin: RunModifierOfferOrigin | null
   readonly recoverableError: string | null
   readonly canEnterRunResult: boolean
-}
-
-type UpgradeOfferedEvent = {
-  readonly type: 'UPGRADE_OFFERED'
-  readonly offerId: string
-  readonly choices: readonly UpgradeChoice[]
-  readonly pendingUpgradeCount?: number
-}
-
-type UpgradeCommittedEvent = {
-  readonly type: 'UPGRADE_COMMITTED'
-  readonly choiceId: string
 }
 
 type UpgradeCommandRejectedEvent = {
@@ -83,11 +82,15 @@ export type GameMachineEvent =
   | { readonly type: 'LOAD_SUCCEEDED' }
   | { readonly type: 'LOAD_FAILED'; readonly error: unknown }
   | { readonly type: 'START_RUN'; readonly seed: string | number }
+  | StartRunWithModifierOfferEvent
   | { readonly type: 'PAUSE_REQUESTED' }
   | { readonly type: 'RESUME_REQUESTED' }
   | UpgradeOfferedEvent
   | UpgradeCommittedEvent
   | UpgradeCommandRejectedEvent
+  | ModifierOfferedEvent
+  | ModifierCommittedEvent
+  | { readonly type: 'MODIFIER_COMMAND_REJECTED'; readonly error: string }
   | { readonly type: 'PLAYER_DIED' }
   | { readonly type: 'DEATH_REVIEW_READY' }
   | { readonly type: 'ENTER_RUN_RESULT' }
@@ -101,6 +104,9 @@ function createInitialContext(): GameMachineContext {
     upgradeChoices: Object.freeze([]),
     pendingUpgradeCount: 0,
     activeUpgradeOfferId: null,
+    modifierChoices: Object.freeze([]),
+    activeModifierOfferId: null,
+    activeModifierOfferOrigin: null,
     recoverableError: null,
     canEnterRunResult: false,
   }
@@ -118,103 +124,6 @@ function getErrorMessage(error: unknown): string {
   return LOAD_FAILURE_FALLBACK_ERROR
 }
 
-function hasValidChoiceId(choice: unknown): choice is UpgradeChoice {
-  return (
-    choice !== null &&
-    typeof choice === 'object' &&
-    'id' in choice &&
-    typeof choice.id === 'string' &&
-    choice.id.trim().length > 0 &&
-    'definitionId' in choice &&
-    typeof choice.definitionId === 'string' &&
-    choice.definitionId.trim().length > 0 &&
-    'kind' in choice &&
-    (choice.kind === 'WEAPON' || choice.kind === 'MODULE') &&
-    (!('rankPreviews' in choice) || hasValidRankPreviews(choice.rankPreviews)) &&
-    (!('weaponTargetPreviews' in choice) ||
-      choice.weaponTargetPreviews === undefined ||
-      hasValidWeaponTargetPreviews(choice.weaponTargetPreviews))
-  )
-}
-
-function hasValidWeaponTargetPreviews(
-  previews: unknown,
-): previews is readonly UpgradeWeaponTargetPreview[] {
-  return (
-    Array.isArray(previews) &&
-    previews.length > 0 &&
-    previews.every(
-      (preview) =>
-        preview !== null &&
-        typeof preview === 'object' &&
-        'weaponInstanceId' in preview &&
-        Number.isSafeInteger(preview.weaponInstanceId) &&
-        preview.weaponInstanceId > 0 &&
-        'summary' in preview &&
-        typeof preview.summary === 'string' &&
-        preview.summary.trim().length > 0,
-    ) &&
-    new Set(previews.map(({ weaponInstanceId }) => weaponInstanceId)).size ===
-      previews.length
-  )
-}
-
-function hasValidRankPreviews(
-  previews: unknown,
-): previews is readonly UpgradeRankPreview[] {
-  return (
-    Array.isArray(previews) &&
-    previews.length > 0 &&
-    previews.every(
-      (preview, index) =>
-        preview !== null &&
-        typeof preview === 'object' &&
-        'rank' in preview &&
-        preview.rank === index + 1 &&
-        'summary' in preview &&
-        typeof preview.summary === 'string' &&
-        preview.summary.trim().length > 0,
-    )
-  )
-}
-
-function hasValidUpgradeChoices(
-  choices: unknown,
-): choices is readonly UpgradeChoice[] {
-  if (!Array.isArray(choices) || choices.length !== REQUIRED_UPGRADE_CHOICE_COUNT) {
-    return false
-  }
-
-  if (!choices.every(hasValidChoiceId)) {
-    return false
-  }
-
-  return new Set(choices.map((choice) => choice.id)).size === choices.length
-}
-
-function hasValidPendingUpgradeCount(
-  pendingUpgradeCount: unknown,
-): pendingUpgradeCount is number | undefined {
-  return (
-    pendingUpgradeCount === undefined ||
-    (typeof pendingUpgradeCount === 'number' &&
-      Number.isInteger(pendingUpgradeCount) &&
-      pendingUpgradeCount > 0)
-  )
-}
-
-function isValidUpgradeOffer(
-  event: GameMachineEvent,
-): event is UpgradeOfferedEvent {
-  return (
-    event.type === 'UPGRADE_OFFERED' &&
-    typeof event.offerId === 'string' &&
-    event.offerId.trim().length > 0 &&
-    hasValidUpgradeChoices(event.choices) &&
-    hasValidPendingUpgradeCount(event.pendingUpgradeCount)
-  )
-}
-
 function isOfferedChoice(
   context: GameMachineContext,
   event: GameMachineEvent,
@@ -226,29 +135,13 @@ function isOfferedChoice(
   )
 }
 
-function copyUpgradeChoices(
-  choices: readonly UpgradeChoice[],
-): readonly Readonly<UpgradeChoice>[] {
-  return Object.freeze(
-    choices.map((choice) =>
-      Object.freeze({
-        ...choice,
-        rankPreviews: choice.rankPreviews
-          ? Object.freeze(
-              choice.rankPreviews.map((preview) =>
-                Object.freeze({ ...preview }),
-              ),
-            )
-          : undefined,
-        weaponTargetPreviews: choice.weaponTargetPreviews
-          ? Object.freeze(
-              choice.weaponTargetPreviews.map((preview) =>
-                Object.freeze({ ...preview }),
-              ),
-            )
-          : undefined,
-      }),
-    ),
+function isOfferedModifierChoice(
+  context: GameMachineContext,
+  event: GameMachineEvent,
+): event is ModifierCommittedEvent {
+  return (
+    event.type === 'MODIFIER_COMMITTED' &&
+    context.modifierChoices.some((choice) => choice.id === event.choiceId)
   )
 }
 
@@ -264,11 +157,23 @@ const gameMachineSetup = setup({
     assignInvalidUpgradeSelectionError: assign({
       recoverableError: () => INVALID_UPGRADE_SELECTION_ERROR,
     }),
+    assignInvalidModifierOfferError: assign({
+      recoverableError: () => INVALID_MODIFIER_OFFER_ERROR,
+    }),
+    assignInvalidModifierSelectionError: assign({
+      recoverableError: () => INVALID_MODIFIER_SELECTION_ERROR,
+    }),
     assignUpgradeCommandError: assign(({ event }) => ({
       recoverableError:
         event.type === 'UPGRADE_COMMAND_REJECTED' && event.error.trim()
           ? event.error
           : INVALID_UPGRADE_SELECTION_ERROR,
+    })),
+    assignModifierCommandError: assign(({ event }) => ({
+      recoverableError:
+        event.type === 'MODIFIER_COMMAND_REJECTED' && event.error.trim()
+          ? event.error
+          : INVALID_MODIFIER_SELECTION_ERROR,
     })),
     assignLoadFailure: assign(({ event }) => {
       if (event.type !== 'LOAD_FAILED') {
@@ -289,11 +194,49 @@ const gameMachineSetup = setup({
         recoverableError: null,
       }
     }),
+    assignModifierOffer: assign(({ event }) => {
+      if (!isValidModifierOffer(event)) {
+        return {}
+      }
+
+      return {
+        modifierChoices: copyModifierChoices(event.choices),
+        activeModifierOfferId: event.offerId,
+        activeModifierOfferOrigin: event.origin,
+        recoverableError: null,
+      }
+    }),
     clearCompletedUpgrade: assign({
       upgradeChoices: () => Object.freeze([]),
       pendingUpgradeCount: () => 0,
       activeUpgradeOfferId: () => null,
       recoverableError: () => null,
+    }),
+    clearCompletedModifier: assign({
+      modifierChoices: () => Object.freeze([]),
+      activeModifierOfferId: () => null,
+      activeModifierOfferOrigin: () => null,
+      recoverableError: () => null,
+    }),
+    clearModifierAndAssignUpgrade: assign(({ event }) => {
+      if (
+        event.type !== 'MODIFIER_COMMITTED' ||
+        !event.nextUpgradeOffer
+      ) {
+        return {}
+      }
+      return {
+        modifierChoices: Object.freeze([]),
+        activeModifierOfferId: null,
+        activeModifierOfferOrigin: null,
+        upgradeChoices: copyUpgradeChoices(
+          event.nextUpgradeOffer.choices,
+        ),
+        pendingUpgradeCount:
+          event.nextUpgradeOffer.pendingUpgradeCount,
+        activeUpgradeOfferId: event.nextUpgradeOffer.offerId,
+        recoverableError: null,
+      }
     }),
     clearRecoverableError: assign({
       recoverableError: () => null,
@@ -306,7 +249,9 @@ const gameMachineSetup = setup({
     })),
     resetRunContext: assign(({ event }) => {
       const seed =
-        event.type === 'START_RUN' || event.type === 'RESTART'
+        event.type === 'START_RUN' ||
+        event.type === 'START_RUN_WITH_MODIFIER_OFFER' ||
+        event.type === 'RESTART'
           ? (event.seed ?? null)
           : null
 
@@ -315,6 +260,9 @@ const gameMachineSetup = setup({
         upgradeChoices: Object.freeze([]),
         pendingUpgradeCount: 0,
         activeUpgradeOfferId: null,
+        modifierChoices: Object.freeze([]),
+        activeModifierOfferId: null,
+        activeModifierOfferOrigin: null,
         recoverableError: null,
         canEnterRunResult: false,
       }
@@ -323,6 +271,9 @@ const gameMachineSetup = setup({
       upgradeChoices: () => Object.freeze([]),
       pendingUpgradeCount: () => 0,
       activeUpgradeOfferId: () => null,
+      modifierChoices: () => Object.freeze([]),
+      activeModifierOfferId: () => null,
+      activeModifierOfferOrigin: () => null,
       recoverableError: () => null,
       canEnterRunResult: () => false,
     }),
@@ -341,6 +292,19 @@ const gameMachineSetup = setup({
     isOfferedUpgradeChoice: ({ context, event }) =>
       isOfferedChoice(context, event),
     isValidUpgradeOffer: ({ event }) => isValidUpgradeOffer(event),
+    isValidRunStartModifierOffer: ({ event }) =>
+      isValidRunStartModifierOffer(event),
+    isValidBossModifierOffer: ({ event }) => isValidBossModifierOffer(event),
+    isOfferedModifierChoice: ({ context, event }) =>
+      isOfferedModifierChoice(context, event) &&
+      event.nextUpgradeOffer === undefined,
+    hasValidUpgradeAfterModifier: ({ context, event }) =>
+      isOfferedModifierChoice(context, event) &&
+      event.nextUpgradeOffer !== undefined &&
+      isValidUpgradeOffer({
+        type: 'UPGRADE_OFFERED',
+        ...event.nextUpgradeOffer,
+      }),
     canEnterRunResult: ({ context }) => context.canEnterRunResult,
   },
 })
@@ -380,6 +344,16 @@ export const gameMachine = gameMachineSetup.createMachine({
     },
     [GAME_PHASE.READY]: {
       on: {
+        START_RUN_WITH_MODIFIER_OFFER: [
+          {
+            guard: 'isValidRunStartModifierOffer',
+            target: GAME_PHASE.PAUSED_MODIFIER,
+            actions: ['resetRunContext', 'assignModifierOffer'],
+          },
+          {
+            actions: 'assignInvalidModifierOfferError',
+          },
+        ],
         START_RUN: {
           target: GAME_PHASE.RUNNING,
           actions: 'resetRunContext',
@@ -397,6 +371,16 @@ export const gameMachine = gameMachineSetup.createMachine({
           },
           {
             actions: 'assignInvalidUpgradeOfferError',
+          },
+        ],
+        MODIFIER_OFFERED: [
+          {
+            guard: 'isValidBossModifierOffer',
+            target: GAME_PHASE.PAUSED_MODIFIER,
+            actions: 'assignModifierOffer',
+          },
+          {
+            actions: 'assignInvalidModifierOfferError',
           },
         ],
         PLAYER_DIED: {
@@ -438,6 +422,28 @@ export const gameMachine = gameMachineSetup.createMachine({
             actions: 'assignInvalidUpgradeOfferError',
           },
         ],
+      },
+    },
+    [GAME_PHASE.PAUSED_MODIFIER]: {
+      on: {
+        MODIFIER_COMMITTED: [
+          {
+            guard: 'hasValidUpgradeAfterModifier',
+            target: GAME_PHASE.PAUSED_UPGRADE,
+            actions: 'clearModifierAndAssignUpgrade',
+          },
+          {
+            guard: 'isOfferedModifierChoice',
+            target: GAME_PHASE.RUNNING,
+            actions: 'clearCompletedModifier',
+          },
+          {
+            actions: 'assignInvalidModifierSelectionError',
+          },
+        ],
+        MODIFIER_COMMAND_REJECTED: {
+          actions: 'assignModifierCommandError',
+        },
       },
     },
     [GAME_PHASE.DEATH_REVIEW]: {

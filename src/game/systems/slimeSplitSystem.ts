@@ -14,6 +14,12 @@ import {
   compileSlimeBodyLayout,
   findLivingConnectedComponents,
 } from './slimeTopology.ts'
+import {
+  getDisconnectedTopologySnapshot,
+  invalidateDisconnectedTopologyOwner,
+} from './disconnectedTopologySystem.ts'
+import { GLYPH_STATUS_FLAG, hasGlyphStatus } from '../glyph/glyphStatus.ts'
+import { hasPendingVolatileSourcesForOwner } from '../runtime/volatileState.ts'
 
 interface Component {
   readonly cells: readonly GlyphCell[]
@@ -113,6 +119,7 @@ function commitTargetLayout(
   owner: EnemyState,
   target: BodyTarget,
   originalWorldPositions: ReadonlyMap<number, readonly [number, number]>,
+  reassemblyEpisodeId: number,
 ): void {
   const layout = compileSlimeBodyLayout(
     target.assignedCells,
@@ -131,6 +138,7 @@ function commitTargetLayout(
   owner.behaviorElapsedMs = 0
   owner.layoutMode = 'COMPILED'
   owner.phase = 'REASSEMBLING'
+  owner.reassemblyEpisodeId = reassemblyEpisodeId
 
   for (const anchor of layout.anchors) {
     const position = originalWorldPositions.get(anchor.glyphId)
@@ -151,6 +159,47 @@ function commitTargetLayout(
       anchor.isEye ? 'EYE' : 'BODY',
     )
   }
+  invalidateDisconnectedTopologyOwner(world, owner.id)
+}
+
+function beginDisconnectedReassemblyEpisode(
+  world: WorldState,
+  ownerGlyphs: readonly GlyphCell[],
+  ownerId: number,
+): number {
+  if (!world.runModifierState.resolvedProfile.disconnected) {
+    return 0
+  }
+  const snapshot = getDisconnectedTopologySnapshot(world, ownerId)
+  if (!snapshot) {
+    return 0
+  }
+  const episodeId = world.disconnectedState.nextReassemblyEpisodeId
+  world.disconnectedState.nextReassemblyEpisodeId += 1
+  for (const glyph of ownerGlyphs) {
+    if (
+      hasGlyphStatus(glyph, GLYPH_STATUS_FLAG.DISCONNECTED_LATCHED)
+    ) {
+      world.glyphStore.applyDisconnectedLatch(
+        glyph.id,
+        glyph.disconnectedLatchedMultiplier,
+        episodeId,
+      )
+    }
+  }
+  for (const component of snapshot.components) {
+    if (component.isProtected) {
+      continue
+    }
+    for (const glyphId of component.glyphIds) {
+      world.glyphStore.applyDisconnectedLatch(
+        glyphId,
+        component.multiplier,
+        episodeId,
+      )
+    }
+  }
+  return episodeId
 }
 
 function resolveSlimeOwner(
@@ -176,6 +225,11 @@ function resolveSlimeOwner(
     components,
     minimumIndependentCellCount,
   )
+  const reassemblyEpisodeId = beginDisconnectedReassemblyEpisode(
+    world,
+    ownerGlyphs,
+    enemy.id,
+  )
   const originalWorldPositions = new Map(
     ownerGlyphs.map(
       (glyph) =>
@@ -195,22 +249,43 @@ function resolveSlimeOwner(
       index === 0
         ? enemy
         : spawnSplitEnemy(world, enemy, target.centroidX, target.centroidY)
-    commitTargetLayout(world, owner, target, originalWorldPositions)
+    commitTargetLayout(
+      world,
+      owner,
+      target,
+      originalWorldPositions,
+      reassemblyEpisodeId,
+    )
   }
 }
 
 export function runSlimeSplitSystem(world: WorldState): void {
-  const dirtyOwnerIds = [...world.topologyDirtyOwnerIds]
-  world.topologyDirtyOwnerIds.clear()
+  const dirtyOwnerIds = [...world.topologyDirtyOwnerIds].sort(
+    (first, second) => first - second,
+  )
+  let deferredOwnerCount = 0
 
   for (const ownerId of dirtyOwnerIds) {
     const enemy = world.enemyById.get(ownerId)
     if (!enemy || enemy.phase === 'DEAD') {
+      world.topologyDirtyOwnerIds.delete(ownerId)
       continue
     }
     const definition = getCreatureDefinition(world.content, enemy.definitionId)
-    if (definition.splitBehaviorId === CREATURE_SPLIT_BEHAVIOR.SLIME_TOPOLOGY) {
-      resolveSlimeOwner(world, enemy, definition)
+    if (definition.splitBehaviorId !== CREATURE_SPLIT_BEHAVIOR.SLIME_TOPOLOGY) {
+      world.topologyDirtyOwnerIds.delete(ownerId)
+      continue
     }
+    const ownerDurability = world.glyphStore.getOwnerDurability(ownerId)
+    if (
+      (ownerDurability?.livingGlyphCount ?? 0) > 0 &&
+      hasPendingVolatileSourcesForOwner(world.volatileState, ownerId)
+    ) {
+      deferredOwnerCount += 1
+      continue
+    }
+    world.topologyDirtyOwnerIds.delete(ownerId)
+    resolveSlimeOwner(world, enemy, definition)
   }
+  world.diagnostics.volatileStructuralDeferredOwnerCount = deferredOwnerCount
 }

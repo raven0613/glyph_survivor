@@ -3,6 +3,7 @@ import { InitialWeaponScreen } from './app/screens/InitialWeaponScreen.tsx'
 import { GameOverScreen } from './app/screens/GameOverScreen.tsx'
 import { UpgradeScreen } from './app/screens/UpgradeScreen.tsx'
 import { DeathReviewPrompt } from './app/screens/DeathReviewPrompt.tsx'
+import { ModifierRewardScreen } from './app/screens/ModifierRewardScreen.tsx'
 import type { UpgradeCommitCommand } from './app/screens/upgradeDecision.ts'
 import { INITIAL_UI_SNAPSHOT } from './game/bridge/uiSnapshot.ts'
 import {
@@ -28,6 +29,7 @@ function App() {
   )
   const isReady = uiSnapshot.phase === 'READY'
   const isUpgradePaused = uiSnapshot.phase === 'PAUSED_UPGRADE'
+  const isModifierPaused = uiSnapshot.phase === 'PAUSED_MODIFIER'
   const isDeathReview = uiSnapshot.phase === 'DEATH_REVIEW'
   const isGameOver = uiSnapshot.phase === 'GAME_OVER'
   const hasStarted = !['BOOT', 'LOADING', 'READY'].includes(uiSnapshot.phase)
@@ -113,6 +115,10 @@ function App() {
     gameHostRef.current?.returnToMainMenu()
   }
 
+  function handleModifierCommit(offerId: string, choiceId: string): void {
+    gameHostRef.current?.selectModifier({ offerId, choiceId })
+  }
+
   function handleEnterRunResult(): void {
     gameHostRef.current?.enterRunResult()
   }
@@ -186,6 +192,19 @@ function App() {
             onCommit={handleUpgradeCommit}
           />
         )}
+
+        {isModifierPaused &&
+          uiSnapshot.activeModifierOfferId &&
+          uiSnapshot.activeModifierOfferOrigin && (
+            <ModifierRewardScreen
+              key={uiSnapshot.activeModifierOfferId}
+              offerId={uiSnapshot.activeModifierOfferId}
+              origin={uiSnapshot.activeModifierOfferOrigin}
+              choices={uiSnapshot.modifierChoices}
+              recoverableError={uiSnapshot.recoverableError}
+              onCommit={handleModifierCommit}
+            />
+          )}
 
         {isDeathReview && uiSnapshot.canEnterRunResult && (
           <DeathReviewPrompt onEnterRunResult={handleEnterRunResult} />

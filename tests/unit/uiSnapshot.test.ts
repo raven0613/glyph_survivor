@@ -136,3 +136,47 @@ test('publishes review readiness without exposing the frozen result early', () =
   assert.equal(snapshot.canEnterRunResult, true)
   assert.equal(snapshot.runResult, null)
 })
+
+test('publishes immutable Modifier choices, origin, and owned definition IDs', () => {
+  const modifierChoice = {
+    id: 'modifier-offer-1:0',
+    definitionId: 'modifier.volatile',
+    title: 'VOLATILE',
+    description: 'Topology explosions.',
+    identityGlyph: '*',
+  }
+  const ownedModifierDefinitionIds = ['modifier.disconnected']
+  const snapshot = createUiSnapshot(
+    {
+      value: 'PAUSED_MODIFIER',
+      context: {
+        seed: 'modifier-ui',
+        upgradeChoices: [],
+        pendingUpgradeCount: 0,
+        activeUpgradeOfferId: null,
+        modifierChoices: [modifierChoice],
+        activeModifierOfferId: 'modifier-offer-1',
+        activeModifierOfferOrigin: 'RUN_START_TEST',
+        recoverableError: null,
+        canEnterRunResult: false,
+      },
+    },
+    undefined,
+    undefined,
+    undefined,
+    0,
+    ownedModifierDefinitionIds,
+  )
+
+  modifierChoice.title = 'mutated externally'
+  ownedModifierDefinitionIds.push('modifier.overload')
+
+  assert.equal(snapshot.modifierChoices[0].title, 'VOLATILE')
+  assert.equal(snapshot.activeModifierOfferOrigin, 'RUN_START_TEST')
+  assert.deepEqual(snapshot.ownedModifierDefinitionIds, [
+    'modifier.disconnected',
+  ])
+  assert.equal(Object.isFrozen(snapshot.modifierChoices), true)
+  assert.equal(Object.isFrozen(snapshot.modifierChoices[0]), true)
+  assert.equal(Object.isFrozen(snapshot.ownedModifierDefinitionIds), true)
+})

@@ -2,7 +2,7 @@
 
 > 狀態：本文記錄已確認的武器、單局裝備、升級卡與 Module Slot 產品／工程契約。首三把武器身分、Damage Spread、Projectile Count、Range、XP 曲線、XP 掉落物呈現、集中戰場 visual theme、怪物暗色基礎 palette／發亮階級分離，以及切片 1～10 的既有核心功能已實作。集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。Damage Spread 跟隨來源 `PLAYER_ATTACK_VISUAL_ROLE` accent 色系，以及 directional topology-frontier、逐 Cell pulse、抵達時傷害 commit 的契約亦已實作；舊端點連線已移除。永久解鎖條件、卡片權重與後期內容仍待 content tuning。
 
-本文是武器系統工作的詳細入口。跨系統的產品方向以 [`spec.md`](../../spec.md) 為準，依賴方向、Runtime 權威與 Glyph 傷害規則以 [`AGENTS.md`](../../AGENTS.md) 為準。若修改武器、升級、裝備欄、Module、卡片抽選或相關 UI，必須同時閱讀這三份文件。若工作涉及玩家生命、護盾、生存 Module、武器統計或死亡結算，還必須閱讀 [`player-survival.md`](player-survival.md)。
+本文是武器系統工作的詳細入口。跨系統的產品方向以 [`spec.md`](../../spec.md) 為準，依賴方向、Runtime 權威與 Glyph 傷害規則以 [`AGENTS.md`](../../AGENTS.md) 為準。若修改武器、升級、裝備欄、Module、卡片抽選或相關 UI，必須同時閱讀這三份文件。若工作涉及玩家生命、護盾、生存 Module、武器統計或死亡結算，還必須閱讀 [`player-survival.md`](player-survival.md)。Run Modifier 是獨立的 Boss reward／world-rule domain，不是 `MODULE` choice，也不占 Weapon Slot；其完整契約見 [`run-modifiers.md`](run-modifiers.md)。
 
 ## 1. 核心目標
 
@@ -15,6 +15,8 @@
 5. 每次投資都必須改變武器或玩家生存的明確能力軸或策略；武器戰鬥類 Module 仍須保留該武器自己的 TargetStrategy、AttackPattern、DamageShape 與 DestructionProfile 身分。
 
 不要把此系統實作成全域的 `Damage +10%` 清單，也不要讓 Module 直接修改 Enemy／Boss Entity HP。所有傷害仍必須經過 Glyph Cell、Impact Cells、Damage Targets 與 Material 規則。
+
+不同 Run Modifiers 可以同時改變本局世界規則，但它們不進入本文件的 Weapon／Module loadout、Rank、Slot、replacement 或 XP offer transaction。武器只提供 snapshotted base attack identity／damage；Modifier 在共同 durability-application boundary 依 [`run-modifiers.md`](run-modifiers.md) 合成。
 
 ## 2. 名詞與所有權
 
@@ -65,7 +67,7 @@
 ## 3. 開局與永久解鎖
 
 - `READY` 階段提供已永久解鎖武器的 UI summaries；fixed simulation 尚未開始。
-- 玩家必須選擇且只能選擇一把合法的初始武器，Runtime 驗證後才建立本局 Weapon Instance 並進入 `RUNNING`。
+- 玩家必須選擇且只能選擇一把合法的初始武器，Runtime驗證後才建立本局Weapon Instance。正式path接著進入`RUNNING`；若 [`run-modifiers.md`](run-modifiers.md) 的`enableRunStartModifierOfferForTesting`已在LOADING凍結為true，則先在第一個fixed step前進入一次`PAUSED_MODIFIER`測試offer，commit後才初次進入`RUNNING`。無效初始武器不得建立測試authorization。
 - 未解鎖、未知或過期的 weapon definition ID 必須被拒絕，不得以 fallback 武器靜默開局。
 - 本局使用的 unlocked weapon set 必須在 run 開始時凍結。主選單或 persistence 狀態後續改變，不得在同一 run 中途改寫卡池。
 - 永久解鎖的條件、結算獎勵與 save migration 不屬於本文件目前的單局實作範圍；未確認前不得在 weapon system 中自行發明。
@@ -133,7 +135,7 @@ Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內�
 
 本里程碑不建立這些 Module definitions、Rank tables、card-pool entries、preview 或 transaction 分支，也不自行決定最大生命／護盾效果被覆蓋或替換時的 current-value 調整規則。已確認範圍與仍待決策項目集中在 [`player-survival.md`](player-survival.md)。
 
-## 7. 混合三選一卡池
+## 7. XP 升級混合三選一卡池
 
 - 每次升級提供恰好三張具有不同 choice IDs 的卡片。
 - 卡片是 discriminated choices：`WEAPON` 或 `MODULE`。
@@ -145,6 +147,8 @@ Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內�
 - 其餘卡位與後續升級使用 content-defined weights；精確權重尚未確認，不得寫成產品不變量。
 - 抽選使用由 run seed 派生的獨立 upgrade RNG stream。敵人生成、AI 或視覺亂數的消耗不得改變同一升級序列。
 - 抽選順序與 tie-break 使用 stable content order／stable IDs，確保結果可重現。
+
+本節「恰好三張」只適用於 XP 的 `WEAPON | MODULE` offer。Boss Modifier reward 使用自己的 offer ID、choice kind、RNG、owned-definition exclusion與`PAUSED_MODIFIER` transaction；當只剩兩個eligible Modifier definitions時可以二選一，不能為了補滿三張而塞入已持有Modifier。
 
 若一次取得多個 level-up，Runtime 以 pending count 排隊。完成一個有效投資或武器取得後，若仍有 pending level-up，直接產生下一個 offer 並保持 `PAUSED_UPGRADE`；不得在兩次選擇之間短暫恢復 simulation。
 
@@ -384,6 +388,8 @@ Upgrade UI 是 Canvas 上方的 React DOM overlay，不是 PixiJS scene objects�
 - PixiJS 只繼續顯示暫停中的戰場 snapshot，不接收卡片點擊，也不決定選擇結果。
 - 不使用實驗性的 PixiJS `DOMContainer` 放置這類 viewport-centered UI；它只適合必須跟隨 scene node 的 DOM。
 
+Modifier reward 使用獨立的 React overlay與Runtime transaction，不應把無Weapon／Slot target的world-rule choice塞進Upgrade decision state machine。兩種screen可以共用純presentation card shell，但不能共用權威offer type或commit command。
+
 React 可以使用 CSS、SVG 或 Web Animations 呈現文字聚合、staggered entry、3D tilt、neon border、scanline、glitch、code diff 與 Rank compile 等效果。動畫應以 `transform`／`opacity` 為主，避免以 React state 驅動每一幀，並提供 `prefers-reduced-motion` 路徑。
 
 Damage Spread 卡與 target preview 顯示該 Rank 的完整 band ratios，例如 Rank II 顯示 `20% / 10%`；Projectile Count 顯示該 Rank 的總數，例如 Rank II 顯示 `3 emissions`。Range 卡可以列出完整 Rank multiplier，但選擇 target weapon 與確認 transaction 時必須顯示 Runtime-authored、weapon-specific before／after reach，例如 assisted acquisition／travel、Cone length 或 orbit sweep interval。不得把這些效果偽裝成不相干的 multiplier，或由 React 自行推算。這些仍是 UI-sized immutable summaries。
@@ -399,6 +405,8 @@ choose card
 ```
 
 Gameplay time、cooldown、projectile、enemy、damage、drop 與 director 都不得前進。UI animation 使用獨立的 DOM／CSS clock，可以在 gameplay simulation 暫停時繼續播放。
+
+若Boss Modifier reward之後仍有pending XP upgrade，直接由`PAUSED_MODIFIER`進入`PAUSED_UPGRADE`並保持完整暫停；只有最後一個decision成功後才回到`RUNNING`。
 
 若 upgrade trigger 在 catch-up frame 的第一個 fixed step 發生，GameHost／loop 必須在每個 step boundary 重新檢查 phase，立即中止剩餘 catch-up steps 並清空不應保留的 accumulator。只在整個 RAF 開始前檢查一次 `RUNNING` 不足以保證完全暫停。
 
@@ -420,7 +428,7 @@ React 只接收 UI-sized immutable summaries，例如：
 
 ## 13. 效能與可重現性
 
-- 武器數量雖然首版最多三把，weapon loop 仍不得在 fixed step 配置暫時 modifier structures。
+- 武器數量雖然首版最多三把，weapon loop 仍不得在 fixed step 配置暫時 effect-composition structures。
 - 多發 Module 應由一次 AttackPattern 決定 target sharing／distribution，不要讓每顆 projectile 無限制重做昂貴 target query。
 - Homing reacquisition 繼續使用 budgeted spatial query；初次 target selection 與大量 emissions 也需要診斷計數。
 - Projectile pool 新增 source weapon、pierce、element 或 hit-history 欄位時，reuse 必須完整 reset，不能繼承上一顆 projectile 的狀態。
@@ -439,6 +447,7 @@ React 只接收 UI-sized immutable summaries，例如：
 風險導向的純規則測試至少覆蓋：
 
 - rejects an initial weapon that is unknown or not in the frozen unlock set
+- creates no run-start Modifier testing authorization until after a valid initial Weapon Instance exists and still executes no fixed step before that offer commits
 - applies the validated XP curve while preserving overflow across multiple level-ups
 - transitions XP presentation from fresh to settled without changing pickup or reward state
 - staggers occasional XP flashes by stable drop ID and freezes their age while gameplay is paused

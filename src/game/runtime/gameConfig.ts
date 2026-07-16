@@ -1,5 +1,6 @@
 import { assertValidPlayerSurvivalConfig } from './playerSurvival.ts'
 import { assertValidPlayerDeathReviewConfig } from './playerDeathReview.ts'
+import { assertValidRunModifierConfig } from './runModifierConfig.ts'
 
 const gameConfig = {
   worldWidth: 6_000,
@@ -27,9 +28,11 @@ const gameConfig = {
   deathReviewEnemyWanderIntervalMs: 1_400,
   deathReviewEnemyWanderSpeedMultiplier: 0.42,
   deathReviewEnemyWanderTurnResponsiveness: 3.2,
+  enableRunStartModifierOfferForTesting: false,
 }
 
 assertValidPlayerSurvivalConfig(gameConfig)
 assertValidPlayerDeathReviewConfig(gameConfig)
+assertValidRunModifierConfig(gameConfig)
 
 export const GAME_CONFIG = Object.freeze(gameConfig)

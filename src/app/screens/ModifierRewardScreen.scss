@@ -1,0 +1,136 @@
+.modifier-screen {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  gap: clamp(18px, 4vh, 36px);
+  padding: clamp(24px, 5vw, 64px);
+  color: #dce8e8;
+  background:
+    linear-gradient(180deg, rgb(3 6 8 / 82%), rgb(3 4 6 / 96%)),
+    radial-gradient(circle at 50% 42%, rgb(110 79 142 / 28%), transparent 48%);
+  backdrop-filter: blur(6px);
+}
+
+.modifier-screen__header,
+.modifier-card-grid,
+.modifier-screen__footer {
+  width: min(100%, 1080px);
+  margin-inline: auto;
+}
+
+.modifier-screen__header {
+  span {
+    color: #c69cff;
+    font: 700 9px/1 var(--mono);
+    letter-spacing: 0.2em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #f5efff;
+    font: 700 clamp(30px, 5vw, 62px)/0.9 var(--mono);
+    letter-spacing: -0.06em;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 0;
+    color: #849296;
+    font: 10px/1.5 var(--mono);
+  }
+}
+
+.modifier-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(10px, 2vw, 20px);
+}
+
+.modifier-card {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 12px;
+  min-height: 260px;
+  padding: 18px;
+  border: 1px solid rgb(198 156 255 / 22%);
+  color: #879397;
+  background: rgb(7 9 12 / 92%);
+  font: 9px/1.5 var(--mono);
+  text-align: left;
+  cursor: pointer;
+  transition: 120ms ease;
+
+  &:hover,
+  &:focus-visible,
+  &--selected {
+    border-color: #c69cff;
+    color: #dfe5e5;
+    transform: translateY(-4px);
+  }
+
+  &:focus-visible {
+    outline: 1px solid #c69cff;
+    outline-offset: 4px;
+  }
+
+  &--selected {
+    background: rgb(18 12 24 / 96%);
+    box-shadow: inset 0 -3px #c69cff;
+  }
+
+  strong {
+    color: #f0e7ff;
+    font-size: 13px;
+  }
+}
+
+.modifier-card__index {
+  color: #5d5369;
+}
+
+.modifier-card__glyph {
+  color: #c69cff;
+  font-size: 54px;
+  line-height: 1;
+}
+
+.modifier-screen__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: #748084;
+  font: 9px/1.4 var(--mono);
+
+  button {
+    padding: 13px 18px;
+    border: 1px solid #c69cff;
+    color: #f6efff;
+    background: rgb(61 37 76 / 92%);
+    font: 700 9px/1 var(--mono);
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+@media (width <= 760px) {
+  .modifier-screen {
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  .modifier-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modifier-card {
+    min-height: 180px;
+  }
+}

@@ -25,6 +25,12 @@ import {
   type DamageSelectionCell,
   type DamageSelectionShape,
 } from './glyphDamageSelection.ts'
+import {
+  DAMAGE_APPLICATION_ROUTE,
+  applyDamageApplication,
+  completeDirectDamageBatch,
+  prepareDirectDamageBatch,
+} from './damageApplication.ts'
 
 type GlyphSelectionCell = DamageSelectionCell & { readonly glyph: GlyphCell }
 type MutableDamageSelectionCell = {
@@ -202,6 +208,8 @@ function collectPrimaryDamageForOwner(
       sourceFlashDurationMs: getGlyphMaterialDefinition(
         transfer.sourceImpactCell.glyph.material,
       ).hitFlashDurationMs,
+      impactDirectionX: event.impactDirectionX,
+      impactDirectionY: event.impactDirectionY,
     }
     addDamageClaim(
       world,
@@ -271,8 +279,23 @@ function collectSpreadDamage(
   }
 }
 
-function applyDamageClaims(world: WorldState): number {
+function applyDamageClaims(
+  world: WorldState,
+  event: Readonly<GlyphDamageEvent>,
+): number {
   const scratch = world.damageResolutionScratch
+  const immediateTargetGlyphIds: number[] = []
+  for (let index = 0; index < scratch.claimCount; index += 1) {
+    const claim = scratch.claims[index]
+    if (!claim.transferReservation) {
+      immediateTargetGlyphIds.push(claim.glyphId)
+    }
+  }
+  const directBatch = prepareDirectDamageBatch(
+    world,
+    event.attackEventId,
+    immediateTargetGlyphIds,
+  )
   let totalAppliedDamage = 0
   for (let index = 0; index < scratch.claimCount; index += 1) {
     const claim = scratch.claims[index]
@@ -284,31 +307,36 @@ function applyDamageClaims(world: WorldState): number {
       )
       continue
     }
-    const glyph = world.glyphStore.getById(claim.glyphId)
-    if (!glyph) {
-      continue
-    }
-    const wasLiving = isGlyphLivingState(glyph.state)
-    const appliedDamage = world.glyphStore.applyDamage(glyph.id, claim.amount)
+    const outcome = applyDamageApplication(
+      world,
+      {
+        rootAttackEventId: event.attackEventId,
+        reactionChainId: null,
+        route: claim.isSpread
+          ? DAMAGE_APPLICATION_ROUTE.DAMAGE_SPREAD
+          : DAMAGE_APPLICATION_ROUTE.DIRECT_LOCAL,
+        sourceWeaponInstanceId: event.sourceWeaponInstanceId,
+        targetGlyphId: claim.glyphId,
+        baseDamage: claim.amount,
+        impactDirectionX: event.impactDirectionX,
+        impactDirectionY: event.impactDirectionY,
+      },
+      directBatch,
+    )
+    const appliedDamage = outcome.actualAppliedDurabilityDelta
     totalAppliedDamage += appliedDamage
     if (claim.isSpread && appliedDamage > 0) {
       if (claim.spreadVisualRoleId === null) {
         throw new Error('Spread damage claim is missing its visual role.')
       }
       world.glyphStore.applySpreadFeedback(
-        glyph.id,
+        claim.glyphId,
         world.content.combatVisualTheme.effects.spreadFeedbackDurationMs,
         claim.spreadVisualRoleId,
       )
     }
-    if (
-      wasLiving &&
-      appliedDamage > 0 &&
-      glyph.state === GLYPH_CELL_STATE.HUSK
-    ) {
-      world.topologyDirtyOwnerIds.add(glyph.ownerId)
-    }
   }
+  completeDirectDamageBatch(world, directBatch)
   return totalAppliedDamage
 }
 
@@ -362,7 +390,7 @@ function resolveDamageEvent(
     return
   }
   collectSpreadDamage(world, event, shape, candidates)
-  const totalAppliedDamage = applyDamageClaims(world)
+  const totalAppliedDamage = applyDamageClaims(world, event)
   recordWeaponDamage(
     world.runStatistics,
     event.sourceWeaponInstanceId,

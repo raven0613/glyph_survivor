@@ -2,7 +2,7 @@
 
 > 狀態：M4 已完成 Slime Phase、分體、重新聚合與 Encounter Death；本文已納入全怪物共用的 `HEALTHY → DAMAGED → HUSK` 契約。暗色基礎 palette 與 Boss 發亮階級分離的 `SLIME_BOSS` Appearance Profile 已實作；集中 theme 已改用 `#RRGGBB` authoring strings，並在 content preparation 一次轉換成 numeric tint。玩家生存契約已移至 [`player-survival.md`](player-survival.md)，Runtime implementation 尚未完成；Boss 主動攻擊仍屬後續里程碑。
 
-本文是第一隻 Boss `SLIME` 的專屬內容設定。跨怪物共用的生命、Glyph、分裂守恆與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；玩家接觸受傷、護盾與死亡則以 [`player-survival.md`](player-survival.md) 為準。不要把本文的史萊姆數值搬進 `AGENTS.md`。
+本文是第一隻 Boss `SLIME` 的專屬內容設定。跨怪物共用的生命、Glyph、分裂守恆與效能規則仍以 [`spec.md`](../../spec.md) 與 [`AGENTS.md`](../../AGENTS.md) 為準；玩家接觸受傷、護盾與死亡則以 [`player-survival.md`](player-survival.md) 為準；Boss Modifier reward、Volatile structural ordering與Disconnected reassembly latch以 [`run-modifiers.md`](run-modifiers.md) 為準。不要把本文的史萊姆數值搬進 `AGENTS.md`。
 
 本文中的欄位名稱是預定的內容契約名稱。正式實作時可依 TypeScript 型別微調命名，但不得改變其語意或把它們變成第二套可變 HP。
 
@@ -23,6 +23,7 @@
 | Appearance Profile | `SLIME_BOSS` semantic role |
 | 最大移動速度 | 60 world units/s |
 | 接觸傷害 | 由 prepared Boss Definition 的 `contactDamage` 提供 |
+| 正式擊敗獎勵 | Encounter-level XP reward，加上一次 Run Modifier reward |
 | 分體固定基準 | 根史萊姆最初設定的 50 Cells |
 | 獨立分體門檻 | `ceil(50 × 0.30) = 15` 個 Living Cells；15 格也算通過 |
 
@@ -139,9 +140,9 @@ Marker 定義：
 
 - 每次攻擊必須分開計算 `Impact Cells` 與 `Damage Targets`。`Impact Cells` 是 DamageShape 幾何範圍內的所有輪廓 Cells，包含 `HEALTHY`、`DAMAGED` 與 `HUSK`；只要命中任一 Impact Cell，就算命中史萊姆完整 hitbox。
 - 每個被命中的 body 分別解析 quota。Point-like attack 的 `targetQuota = 1`；AoE 的 `targetQuota` 等於 DamageShape 內命中該 body 的不同輪廓 Cell 數量。每個 Living Cell 在同一次攻擊最多成為一次 Damage Target。
-- Damage Targets 優先使用 Impact Cells 中的 Living Cells。若 quota 尚未用完，從被命中的 Husk 區域沿同一 body 的 canonical topology frontier，依拓撲距離選擇最近的 Living Cells；即使最近的 Living Cell 已在身體另一端，也必須正常扣除 Durability，讓壞死區持續向外蠶食。
-- 同距離時以較小 Glyph ID 決定，確保選擇穩定可重現。若整個 body 的 Living Cells 少於 quota，剩餘 quota 直接捨棄，不得把多次傷害疊到最後一格，也不得跨 owner 複製命中次數。
-- 受擊閃光、deformation impulse 與局部粒子只作用在 DamageShape 內的 Impact Cells，無論它們是 Living 或 Husk。因 topology frontier 而在範圍外被選中的遠端 Damage Target 只扣 Durability，不接受該次 flash、impulse 或局部命中特效。
+- Damage Targets 優先使用 Impact Cells 中的 Living Cells。若 quota 尚未用完，每個 Husk Impact source先依該武器的authoritative forward traversal direction尋找前方第一個Living Cell；只有該方向已鑽通時，才fallback至最近canonical-topology frontier。完整選擇與tie-break遵守 [`weapon-system.md`](weapon-system.md) 與 [`AGENTS.md`](../../AGENTS.md) 的共用damage contract。
+- 若整個 body 的 Living Cells 少於 quota，剩餘 quota 直接捨棄，不得把多次傷害疊到最後一格，也不得跨 owner 複製命中次數。遠端 direct target在命中步只建立包含stable source／target／path／reserved damage的pending transfer，不得立即扣除Durability。
+- 受擊閃光、deformation impulse 與局部粒子只作用在 DamageShape 內的 Impact Cells，無論它們是 Living 或 Husk。因directional topology transfer而在範圍外被選中的遠端Damage Target，必須等Runtime-owned逐Cell pulse抵達才扣Durability並顯示target hit response；中間path Cells不承受damage、Material impulse或primary feedback。
 - Impact Cell 的 collision position 跟著權威 deformation 位移。Husk 的 Current Durability 永遠維持零，但仍可呈現局部受擊反應，之後由 `SLIME` spring 被動回到自己的 layout anchor。
 - 當外力停止，即使 Creature root 沒有移動，Living Cell 與 Husk 都以彈簧式恢復回當前 layout anchor。
 - Creature root 正在移動或蠕動時，Cell 追逐的是更新後的 anchor，不是舊 world position。
@@ -213,8 +214,11 @@ Living connected component 有 15 格以上時可成為獨立史萊姆；「以�
 - 連通圖使用目前已 commit 的 canonical body layout grid，以四方向鄰接：上、下、左、右。
 - 對角線不算連通。
 - 只有 Husk 會切斷 Living 連通；暫時擊退、飛散、回彈或 morph 造成的 world-space 距離不會觸發分裂。
+- DISCONNECTED 的 spacing loosen、ambient jitter與component hit shake同樣只是 [`run-modifiers.md`](run-modifiers.md) 定義的bounded render-only presentation；它們不得改寫史萊姆canonical coordinates、split component、precise hitbox或spring recovery target。
 - 中性／寬扁／直立 morph layouts 共用同一份 topology；只有分體或重新聚合完成時，才可在 structural boundary 為新的 body layout commit 新 canonical coordinates 與 adjacency。
 - 只在 Glyph 進入 `HUSK`、將 owner 標為 topology-dirty 時，於 Damage／Death 後的 structural boundary 重算；不得每個 fixed step 掃描所有史萊姆。
+- 若該owner仍有Living Cells，且存在尚未解析、仍可能對它造成damage的Volatile reaction events，這次topology-dirty與split／reassembly structural commit必須保留到相關chains收斂；不得在跨tick wave中途改寫canonical adjacency。其他owner不受此defer影響。
+- Owner已全Husk時仍依既有Encounter lifecycle進入`INACTIVE`或`COLLAPSING`，不因只剩presentation用途的Volatile events延後phase；但Runtime不得丟棄已授權的source-event sequence，正式`DEFEATED`／reward／cleanup仍須等待它解析完成。
 
 ### 10.3 Component resolution
 
@@ -229,6 +233,7 @@ Living connected component 有 15 格以上時可成為獨立史萊姆；「以�
 9. Living component 決定分體拓撲；每個 Husk Glyph ID 仍須確定性地歸屬最近的最終 body，但保持 `HUSK`、不得連通、不得計入 15 格，也不得恢復 Durability。
 10. 每個最終 body 必須透過 pure deterministic `compileSlimeBodyLayout`，為自己既有的每個 Glyph ID 恰好產生一個 anchor 與 canonical topology position。重排時先保留 Cell 當下 world position 為 deformation offset，再由 Material recovery 合攏，避免瞬移。
 11. 只有本節的多-component layout commit 完成後，才依第 5 節規則重新指定各最終 body 的外觀眼睛；一般單一 component 受傷不會讓眼睛漂移。
+12. 若本局持有`DISCONNECTED`，在本次structural commit改寫canonical topology之前，先依最終pre-split Living components計算未受80%主要團塊規則保護的multiplier，並以stable Glyph ID保存reassembly latch；公式與status payload以 [`run-modifiers.md`](run-modifiers.md) 為準。
 
 ### 10.4 首版 child layout 與 Phase
 
@@ -240,14 +245,19 @@ Living connected component 有 15 格以上時可成為獨立史萊姆；「以�
 - commit 前先記錄每個 Glyph 的 world position；新 root 與 anchor 建立後，差值寫入權威 deformation offset，因此 ownership／layout 改變當步不得造成畫面或碰撞位置瞬移。
 - 新 body 的 face targets 位於形狀上方 40% 高度、中心左右各 20% 寬度。每個 target 只從保留／建立該 owner 的 core component 選最近 Living Glyph；未達門檻、正在聚回去的小碎塊不得取得眼睛。同距離取較小 Glyph ID，且同一 Glyph 不得同時成為兩眼。
 - Split 後 body 進入 `REASSEMBLING`。此階段暫停 root 追蹤與 morph，但 Glyph 仍可碰撞、受傷，並由 `SLIME` spring 向新 anchors 聚合。
+- 若Cell帶有本次episode的`DISCONNECTED_LATCHED` payload，`REASSEMBLING`期間的direct damage使用latched與目前topology計算結果中較高的multiplier。Ownership transfer、eye reassignment與layout recovery不得清除或複製該payload。
+- 該latch的易傷presentation跟隨stable Glyph ID通過ownership／layout改寫；render-only鬆動以新body的resolved component presentation為準，不得讓舊owner留下一份重複overlay。
 - 所有 Cells（包含 Living 與 Husk）的 offset 距離不超過 1 world unit 且速度不超過 5 world units/s 後，body 回到 `ACTIVE`；compiled body 以同一組 anchors 做寬扁／直立比例形變。
+- Body正式回到`ACTIVE`時清除該reassembly episode的Disconnected latch，後續damage重新依最新canonical topology動態判定；Cell若先進入Husk則立即清除living-only latch。
 - compiled body 的 `compiledMorphStrength = 1.4`，將基準比例差放大至 140%；首版 wide scale 約為 `(1.21, 0.65)`，tall scale 約為 `(0.65, 1.21)`，讓重組後的第二階段穿插幅度比先前明顯。
 - Living Cells 為零但 Encounter 尚未結束的 body 進入 `INACTIVE`，不移動、不能提供 Damage Target，也不提前清除其 Glyph IDs；其 Husk 仍以低亮度構成完整輪廓，可命中並播放 DamageShape 範圍內的 impact effects。
 - 15-Cell 門檻只決定 component 是否能在 split commit 當下取得新 owner。已合法建立的 child owner 日後即使剩餘少於 15 Cells，也不跨 owner 聚回 root 或其他 child；它只重新吸收自己之後產生的未達門檻碎塊。
 
 Encounter phase 為 `ACTIVE → COLLAPSING → DEFEATED`。所有 child 共享根史萊姆的 `encounterId`、`rootBossId` 與 50-Cell split reference；只有 Encounter Current Durability 歸零、也就是 encounter 內所有 Cells 都成為 Husk 時，才進入 `COLLAPSING`。
 
-`COLLAPSING` 開始後，所有 bodies 停止移動、targeting、damage 與 Gameplay collision，並由 Runtime 統一驅動完整 Husk 輪廓崩解；renderer 不得自行決定 encounter 何時死亡。崩解演出完成後才轉為 `DEFEATED`，由 root body 結算一次獎勵並進入 cleanup，不能由每個 child 重複發放或提前清除 Husk。
+`COLLAPSING` 開始後，所有 bodies 停止移動、targeting、damage 與 Gameplay collision，並由 Runtime 統一驅動完整 Husk 輪廓崩解；renderer 不得自行決定 encounter 何時死亡。崩解演出與該Encounter已授權的Runtime-owned Volatile source-event sequence都完成後才轉為`DEFEATED`，由Encounter／root只結算一次XP reward並授權一次Run Modifier reward，再進入cleanup；不能由每個child重複發放或提前清除Husk。
+
+Modifier reward token必須在root／child cleanup前建立，並遵守 [`run-modifiers.md`](run-modifiers.md) 的owned-definition exclusion、三選一／二選一、dedicated RNG、`PAUSED_MODIFIER`與原子commit契約。Modifier reward不取代史萊姆原有XP reward。
 
 所有新舊 bodies 都繼承相同的 `encounterId`、`rootBossId` 與 `splitReferenceCellCount = 50`。Boss UI 的 Current／Max HP 以 encounter 內所有 Glyph 聚合；Husk 對 Current HP 貢獻為零，但其 Max Durability 仍計入 Max HP。
 
@@ -291,4 +301,4 @@ every original glyphId has exactly one owner
 
 - 生成聚合期間是否可被玩家武器鎖定／傷害，以及 Active 切換當步的精確順序；對玩家的接觸傷害已明確關閉，不在此待定項目內。
 - Boss spawn 的每次候選上限、retry cadence，以及第一波同側在世界邊界無合法點時的 seeded fallback side。
-- Boss 主動攻擊、`COLLAPSING` 的演出時長／視覺調校，以及獎勵內容；`ACTIVE → COLLAPSING → DEFEATED → reward／cleanup` 的順序已固定，不在此列。
+- Boss 主動攻擊、`COLLAPSING` 的演出時長／視覺調校，以及XP reward數值調校；Run Modifier reward的identity、時機與transaction已由 [`run-modifiers.md`](run-modifiers.md) 固定，不在此列。

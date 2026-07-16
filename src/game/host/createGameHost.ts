@@ -46,6 +46,12 @@ import {
 } from './runWeaponUnlocks.ts'
 import { createLoadoutUiSummaries } from './createLoadoutUiSummaries.ts'
 import { clearCompletedRun } from './clearCompletedRun.ts'
+import { GAME_CONFIG } from '../runtime/gameConfig.ts'
+import { createRunStartTestModifierOfferIfEnabled } from '../systems/runModifierOffer.ts'
+import {
+  selectRunModifierFromOffer,
+  type SelectRunModifierCommand,
+} from '../systems/runModifierTransaction.ts'
 
 export interface StartRunOptions {
   readonly seed: string | number
@@ -58,6 +64,7 @@ export interface GameHost {
   startRun(options: StartRunOptions): void
   acquireWeapon(options: AcquireWeaponCommand): void
   installModule(options: InstallModuleCommand): void
+  selectModifier(options: SelectRunModifierCommand): void
   enterRunResult(): void
   returnToMainMenu(): void
   subscribeUi(listener: UiSnapshotListener): () => void
@@ -143,6 +150,7 @@ export async function createGameHost({
         ? createLoadoutUiSummaries(world.content, world.weaponLoadout)
         : undefined,
       world?.weaponLoadout.maximumEquippedWeapons,
+      world ? [...world.runModifierState.ownedDefinitionIds] : undefined,
     )
     uiListeners.forEach((listener) => listener(currentUiSnapshot))
   }
@@ -214,6 +222,22 @@ export async function createGameHost({
         world.input.horizontal = 0
         world.input.vertical = 0
         gameActor.send({ type: 'PLAYER_DIED' })
+        publishUi()
+        return
+      }
+      if (
+        stepResult === SIMULATION_STEP_RESULT.MODIFIER_REWARD_OFFERED &&
+        world.runModifierState.activeOffer
+      ) {
+        inputAdapter.clearMovement()
+        world.input.horizontal = 0
+        world.input.vertical = 0
+        gameActor.send({
+          type: 'MODIFIER_OFFERED',
+          offerId: world.runModifierState.activeOffer.id,
+          origin: world.runModifierState.activeOffer.origin,
+          choices: world.runModifierState.activeOffer.choices,
+        })
         publishUi()
         return
       }
@@ -329,6 +353,23 @@ export async function createGameHost({
         initialWeaponDefinition.id,
         runWeaponUnlocks.definitionIds,
       )
+      const modifierOffer = createRunStartTestModifierOfferIfEnabled(
+        gameContent.runModifierDefinitions,
+        world.runModifierState,
+        GAME_CONFIG.enableRunStartModifierOfferForTesting,
+      )
+      if (modifierOffer) {
+        inputAdapter.clearMovement()
+        gameActor.send({
+          type: 'START_RUN_WITH_MODIFIER_OFFER',
+          seed,
+          offerId: modifierOffer.id,
+          origin: modifierOffer.origin,
+          choices: modifierOffer.choices,
+        })
+        return
+      }
+
       gameActor.send({ type: 'START_RUN', seed })
     },
 
@@ -354,6 +395,46 @@ export async function createGameHost({
       }
 
       publishUpgradeCommandResult(installModuleFromOffer(world, options))
+    },
+
+    selectModifier(options: SelectRunModifierCommand) {
+      if (
+        isDisposed ||
+        !world ||
+        gameActor.getSnapshot().value !== GAME_PHASE.PAUSED_MODIFIER
+      ) {
+        return
+      }
+
+      const result = selectRunModifierFromOffer(
+        gameContent.runModifierDefinitions,
+        world.runModifierState,
+        options,
+      )
+      if (!result.ok) {
+        gameActor.send({
+          type: 'MODIFIER_COMMAND_REJECTED',
+          error: result.error,
+        })
+        publishUi()
+        return
+      }
+
+      inputAdapter.clearMovement()
+      world.input.horizontal = 0
+      world.input.vertical = 0
+      gameActor.send({
+        type: 'MODIFIER_COMMITTED',
+        choiceId: result.choiceId,
+        nextUpgradeOffer: world.upgradeState.activeOffer
+          ? {
+              offerId: world.upgradeState.activeOffer.id,
+              choices: world.upgradeState.activeOffer.choices,
+              pendingUpgradeCount: world.upgradeState.pendingUpgradeCount,
+            }
+          : undefined,
+      })
+      publishUi()
     },
 
     enterRunResult() {

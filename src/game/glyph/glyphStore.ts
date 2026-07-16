@@ -1,4 +1,3 @@
-import { getPrintableAsciiGlyphFrame } from './glyphFrame.ts'
 import type { GlyphBodySlotRole } from './glyphLayout.ts'
 import type { GlyphMaterialDefinition } from './glyphMaterial.ts'
 import {
@@ -16,7 +15,25 @@ import {
   type GlyphStore,
   type OwnerDurability,
 } from './glyphCell.ts'
-import { normalizeNonNegativeGameplayNumber } from '../core/gameplayNumber.ts'
+import {
+  applyDisconnectedLatchStatus,
+  applyCrackedStatus,
+  clearDisconnectedLatchStatus,
+  consumeCrackedStatus,
+} from './glyphStatus.ts'
+import { applyGlyphDurabilityDamage } from './glyphDurability.ts'
+import {
+  requireFiniteNumber,
+  requireNonNegativeSafeInteger,
+  requirePositiveSafeInteger,
+} from './glyphStoreValidation.ts'
+import { removeGlyphOwner } from './glyphOwnerRemoval.ts'
+import {
+  updateGlyphBodyMotion,
+  updateGlyphCompiledLayout,
+  updateGlyphLocalPosition,
+} from './glyphStoreLayout.ts'
+import { updateGlyphRolePresentation } from './glyphStorePresentation.ts'
 
 export { GLYPH_MATERIAL } from './glyphMaterial.ts'
 export type { GlyphMaterialId } from './glyphMaterial.ts'
@@ -35,24 +52,6 @@ type Mutable<T> = { -readonly [Key in keyof T]: T[Key] }
 type MutableGlyphCell = Mutable<GlyphCell>
 type MutableOwnerDurability = Mutable<OwnerDurability>
 
-function requirePositiveSafeInteger(value: number, name: string): void {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive safe integer.`)
-  }
-}
-
-function requireFiniteNumber(value: number, name: string): void {
-  if (!Number.isFinite(value)) {
-    throw new RangeError(`${name} must be finite.`)
-  }
-}
-
-function requireNonNegativeSafeInteger(value: number, name: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new RangeError(`${name} must be a non-negative safe integer.`)
-  }
-}
-
 /** Owns all mutable Glyph Cell life state and derived owner aggregates. */
 export function createGlyphStore({
   visualTheme,
@@ -68,16 +67,6 @@ export function createGlyphStore({
   const durabilityByOwner = new Map<number, MutableOwnerDurability>()
   let nextGlyphId = 1
   let poolMisses = 0
-
-  function synchronizeCellTint(cell: MutableGlyphCell): void {
-    cell.tint =
-      cell.hitFlashRemainingMs === 0
-        ? cell.baseTint
-        : resolveGlyphImpactPresentation(
-            visualTheme,
-            cell.appearanceProfileId,
-          ).tint
-  }
 
   function createGlyph(input: CreateGlyphInput): GlyphCell {
     requirePositiveSafeInteger(input.ownerId, 'ownerId')
@@ -160,6 +149,9 @@ export function createGlyphStore({
       velocityY: 0,
       scale: input.scale,
       flags: 0,
+      crackedCreatedByRootAttackEventId: 0,
+      disconnectedLatchedMultiplier: 1,
+      disconnectedLatchEpisodeId: 0,
     })
 
     cellById.set(id, cell)
@@ -215,69 +207,65 @@ export function createGlyphStore({
       throw new Error(`Glyph ${glyphId} has no owner durability aggregate.`)
     }
 
-    const previousDurability = cell.currentDurability
-    const rawRemainingDurability = Math.max(0, previousDurability - amount)
-    cell.currentDurability =
-      normalizeNonNegativeGameplayNumber(rawRemainingDurability)
-    const appliedDamage = previousDurability - cell.currentDurability
-    const rawOwnerDurability = Math.max(
-      0,
-      ownerDurability.currentDurability - appliedDamage,
-    )
-    ownerDurability.currentDurability = normalizeNonNegativeGameplayNumber(
-      rawOwnerDurability,
-    )
-    if (cell.currentDurability === 0) {
-      cell.state = GLYPH_CELL_STATE.HUSK
-      ownerDurability.livingGlyphCount -= 1
-    } else {
-      cell.state = GLYPH_CELL_STATE.DAMAGED
-    }
-    const presentation = resolveGlyphBasePresentation(
+    return applyGlyphDurabilityDamage(
+      cell,
+      ownerDurability,
+      amount,
       visualTheme,
-      cell.appearanceProfileId,
-      cell.currentDurability,
-      cell.maxDurability,
-      cell.role,
     )
-    cell.alpha = presentation.alpha
-    cell.baseTint = presentation.tint
-    synchronizeCellTint(cell)
+  }
 
-    return appliedDamage
+  function applyCracked(
+    glyphId: number,
+    rootAttackEventId: number,
+  ): boolean {
+    requirePositiveSafeInteger(rootAttackEventId, 'rootAttackEventId')
+    return applyCrackedStatus(cellById.get(glyphId), rootAttackEventId)
+  }
+
+  function consumeCracked(
+    glyphId: number,
+    rootAttackEventId: number,
+  ): boolean {
+    requirePositiveSafeInteger(rootAttackEventId, 'rootAttackEventId')
+    return consumeCrackedStatus(cellById.get(glyphId), rootAttackEventId)
+  }
+
+  function applyDisconnectedLatch(
+    glyphId: number,
+    multiplier: number,
+    episodeId: number,
+  ): boolean {
+    return applyDisconnectedLatchStatus(
+      cellById.get(glyphId),
+      multiplier,
+      episodeId,
+    )
+  }
+
+  function clearDisconnectedLatches(
+    ownerId: number,
+    episodeId: number,
+  ): number {
+    let clearedCount = 0
+    for (const glyph of cellsByOwner.get(ownerId) ?? []) {
+      if (clearDisconnectedLatchStatus(glyph, episodeId)) {
+        clearedCount += 1
+      }
+    }
+    return clearedCount
   }
 
   function removeOwner(ownerId: number): void {
-    const ownerCells = cellsByOwner.get(ownerId)
-    if (!ownerCells) {
-      return
-    }
-
-    for (const cell of ownerCells) {
-      const cellIndex = cellIndexById.get(cell.id)
-      if (cellIndex === undefined || cellById.get(cell.id) !== cell) {
-        throw new Error(`Glyph ${cell.id} is missing from its owned store.`)
-      }
-
-      const lastCell = cells.pop()
-      if (!lastCell) {
-        throw new Error('Glyph Store active cell index is inconsistent.')
-      }
-
-      if (cellIndex < cells.length) {
-        cells[cellIndex] = lastCell
-        cellIndexById.set(lastCell.id, cellIndex)
-      }
-
-      cellById.delete(cell.id)
-      cellIndexById.delete(cell.id)
-      recycledCells.push(cell)
-    }
-
-    cellsByOwner.delete(ownerId)
-    ownerCells.length = 0
-    recycledOwnerCells.push(ownerCells)
-    durabilityByOwner.delete(ownerId)
+    removeGlyphOwner(ownerId, {
+      cells,
+      recycledCells,
+      recycledOwnerCells,
+      cellById,
+      cellIndexById,
+      cellsByOwner,
+      durabilityByOwner,
+    })
   }
 
   function applyMaterialHit(
@@ -381,14 +369,7 @@ export function createGlyphStore({
     localX: number,
     localY: number,
   ): void {
-    requireFiniteNumber(localX, 'localX')
-    requireFiniteNumber(localY, 'localY')
-    const cell = cellById.get(glyphId)
-    if (!cell) {
-      return
-    }
-    cell.localX = localX
-    cell.localY = localY
+    updateGlyphLocalPosition(cellById.get(glyphId), localX, localY)
   }
 
   function setGlyphBodyMotion(
@@ -397,16 +378,12 @@ export function createGlyphStore({
     offsetY: number,
     rotation: number,
   ): void {
-    requireFiniteNumber(offsetX, 'bodyMotionOffsetX')
-    requireFiniteNumber(offsetY, 'bodyMotionOffsetY')
-    requireFiniteNumber(rotation, 'rotation')
-    const cell = cellById.get(glyphId)
-    if (!cell) {
-      return
-    }
-    cell.bodyMotionOffsetX = offsetX
-    cell.bodyMotionOffsetY = offsetY
-    cell.rotation = rotation
+    updateGlyphBodyMotion(
+      cellById.get(glyphId),
+      offsetX,
+      offsetY,
+      rotation,
+    )
   }
 
   function transferGlyph(glyphId: number, newOwnerId: number): void {
@@ -481,50 +458,22 @@ export function createGlyphStore({
     offsetX: number,
     offsetY: number,
   ): void {
-    const values = { topologyX, topologyY, localX, localY, offsetX, offsetY }
-    for (const [name, value] of Object.entries(values)) {
-      requireFiniteNumber(value, name)
-    }
-    const cell = cellById.get(glyphId)
-    if (!cell) {
-      return
-    }
-    Object.assign(cell, {
+    updateGlyphCompiledLayout(
+      cellById.get(glyphId),
       topologyX,
       topologyY,
-      layoutBaseX: localX,
-      layoutBaseY: localY,
       localX,
       localY,
       offsetX,
       offsetY,
-    })
+    )
   }
 
   function setGlyphPresentation(
     glyphId: number,
     role: GlyphBodySlotRole,
   ): void {
-    const cell = cellById.get(glyphId)
-    if (!cell) {
-      return
-    }
-    cell.role = role
-    cell.character = role === 'EYE' ? 'O' : cell.baseCharacter
-    cell.glyphFrame =
-      role === 'EYE'
-        ? getPrintableAsciiGlyphFrame('O')
-        : cell.baseGlyphFrame
-    const presentation = resolveGlyphBasePresentation(
-      visualTheme,
-      cell.appearanceProfileId,
-      cell.currentDurability,
-      cell.maxDurability,
-      role,
-    )
-    cell.alpha = presentation.alpha
-    cell.baseTint = presentation.tint
-    synchronizeCellTint(cell)
+    updateGlyphRolePresentation(cellById.get(glyphId), role, visualTheme)
   }
 
   return Object.freeze({
@@ -553,6 +502,10 @@ export function createGlyphStore({
       )
     },
     applyDamage,
+    applyCracked,
+    consumeCracked,
+    applyDisconnectedLatch,
+    clearDisconnectedLatches,
     applyMaterialHit,
     applySpreadFeedback,
     stepMaterial,

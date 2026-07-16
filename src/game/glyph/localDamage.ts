@@ -110,6 +110,8 @@ export interface DamageTransferReservation {
   readonly targetGlyphId: number
   readonly pathGlyphIds: readonly number[]
   readonly sourceFlashDurationMs: number
+  readonly impactDirectionX: number
+  readonly impactDirectionY: number
 }
 
 export interface DamageResolutionScratch {

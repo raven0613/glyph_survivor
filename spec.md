@@ -221,7 +221,7 @@ Boss 的 Glyph 可以具有較高 Durability。較高 Max Durability 的 Cell �
 
 `HEALTHY`、`DAMAGED`、`HUSK` 都參與生命體的完整輪廓碰撞，因此玩家不會在大型怪物接近死亡時只剩一個可命中的字母。生命體仍在戰鬥中時，不得把 `HUSK` 提前轉成 rendering-only fragment，或因為它沒有 Durability 就從 hitbox、Glyph Store 或 Owner 關係中移除。
 
-當一個生命體的所有 Glyph Cell 都進入 `HUSK` 狀態時，該生命體先進入 `COLLAPSING`。崩解期間停止成為攻擊目標、停止接受傷害並移除戰鬥碰撞，整體輪廓才開始飛散與淡出；崩解演出完成後才正式死亡、發放獎勵並清理 Glyph 與 Entity。死亡不是 Entity HP 欄位觸發的另一套規則。
+當一個生命體的所有 Glyph Cell 都進入 `HUSK` 狀態時，該生命體先進入 `COLLAPSING`。崩解期間停止成為攻擊目標、停止接受傷害並移除戰鬥碰撞，整體輪廓才開始飛散與淡出；崩解演出及已授權、仍由 Runtime 排程的 Volatile source-event sequence 都完成後，才正式死亡、發放獎勵並清理 Glyph 與 Entity。死亡不是 Entity HP 欄位觸發的另一套規則。
 
 ---
 
@@ -385,6 +385,8 @@ SNAKE
 
 自己的受擊方式。
 
+Boss Encounter 完成整體崩解並正式進入 `DEFEATED` 後，會授權一次本局 Run Modifier reward。Split child 不會各自發獎；Modifier reward 與既有 XP reward 分開結算。詳細規則見 [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md)。
+
 ---
 
 # Split Boss
@@ -502,14 +504,67 @@ Damage +10%
 
 ---
 
-# Upgrade
+# Run Modifiers
 
-升級時：
+Run Modifier 是 Boss 被正式擊敗後取得的本局世界規則。它和武器／Module Build 同時存在，但不是 Weapon Module：
+
+- 不占用 Weapon Instance 的 Module Slot。
+- 不因武器替換而消失。
+- 只存在目前 run，回到主選單後清空。
+- 不同 Modifier 可以同時持有。
+- 同一 Modifier 一局只能取得一次，已持有者不再出現在 reward pool。
+- Modifier 可能在武器／Module Build 尚未成形時就取得；每張首版 Modifier 必須能獨立形成玩法，不能依賴特定武器、Rank 或另一張 Modifier 才有作用。
+- Boss Encounter 只有在完整 `COLLAPSING` 結束並正式進入 `DEFEATED` 後，才授權一次 Modifier reward。
+- Eligible definitions 足夠時提供三選一；只剩兩張未持有 definitions 時允許二選一。
+- 選擇期間進入獨立 `PAUSED_MODIFIER`，Gameplay simulation 完全停止。Runtime 以 stable offer／choice ID 原子驗證並 commit；React 只負責卡片與動畫。
+- Modifier reward、queued Modifier decisions 與 XP upgrade decisions 之間不得短暫恢復 simulation。同步結果優先序為 `PLAYER_DIED → MODIFIER_REWARD → XP_UPGRADE`。
+- 開發驗收期間可以用 validated Runtime config flag `enableRunStartModifierOfferForTesting`，在合法初始武器建立後、第一個 fixed step 前開啟一次正常 Modifier offer。這個測試入口不消耗 Boss reward、不推進正式 Boss offer RNG；選到的 Modifier 仍屬本局 owned set，因此之後 Boss 依剩餘 eligible definitions 正常 N 選一。正式／release path 關閉此 flag。
+
+首批三張 Modifier 為：
+
+所有 Modifier 動畫都要短促、有清楚頓點與巧勁：快速建立力量、極短停住讓玩家讀到結果、立即收乾淨。常駐提示也以大部分時間靜止、偶爾短促動一下為原則，不使用拖長的 glow、blur、持續抖動或慢速漂浮堆疊戰場噪音。
+
+### VOLATILE — 不穩定結構
+
+Cell 第一次進入 `HUSK` 時，對同 owner、canonical topology distance `1` 的四方向 Living neighbors 造成一次爆裂傷害。傷害依 Dead Source Cell 的 Max Durability 增加並受 content-defined cap 限制；爆裂造成的新 Husk 會在後續 fixed-step wave 各自繼續爆裂。
+
+Volatile 首版不跨 owner、不讀畫面距離，也不繼承原攻擊的 Damage Spread、Material impulse、whole-body knockback、DISCONNECTED 或 OVERLOAD。每個 stable Glyph 整局最多產生一次爆裂。`maxExplosionResolutionsPerFixedStep` 只限制每步解析量，不是整條 chain 的硬上限；未處理事件必須保留至後續 fixed steps，不能因 PixiJS、粒子、pool 或 frame budget 被丟棄。
+
+視覺上，每個真正解析的 Husk source 做一次短促內縮與四方向 topology shock；同 wave 同時、下一 wave 接棒，前一格只留下極短 afterimage，形成快速骨牌。VOLATILE 不畫圓形shockwave或連線，與OVERLOAD的一次徑向衝擊保持明確差異。
+
+### DISCONNECTED — 結構失聯
+
+DISCONNECTED 使用只包含 Living Cells 的 canonical topology connected components。Husk 會切斷 Living topology；Body Motion、deformation、knockback 與畫面距離不影響分類。Authored floating Cells 沒有豁免。
+
+若一個 component 的大小至少是最大 component 的 `protectedComponentRatio`，它視為主要團塊，不受增傷。其餘 component 依自身 Cell 數占 owner 目前總 Living Cell 數的比例取得加成；越小的團塊倍率越接近 content-defined maximum。Multiplier 只作用於真正承受 local direct 或 topology-transfer-arrival direct damage 的 Living target，不作用於 pulse 中間 Cells、Damage Spread 或 Volatile。
+
+Slime 在 split／reassembly commit 前，先依舊 canonical topology 保存小團塊的 multiplier；該 latch 跟隨 Glyph ID，在 `REASSEMBLING` 期間保留操作窗口，回到 `ACTIVE` 後清除並改依新 topology 判定。
+
+視覺上，小團塊依實際倍率得到不同程度的render-only spacing loosen與低duty-cycle不同步micro-jitter；大部分時間保持安靜。脆弱Cell受direct hit時，整個component先共同短震，再留下較小的per-Cell殘震；其他Cells不取得damage或primary hit flash。
+
+### OVERLOAD — 耐久過載
+
+成功提交的 Final Direct Damage 若達到 target Max Durability 的 content-defined ratio，就對該 source 的 canonical immediate Living neighbors 施加一個不造成傷害的 `CRACKED` status。判定使用 overkill clamp 前的有效 direct damage除以 Max Durability，不使用剩餘耐久。
+
+Crack 無層數、無 duration，重複施加是 no-op。下一個不同 root attack event 的合法 direct hit 才能消耗它並加重傷害；同一攻擊的延遲 topology transfer不能吃掉自己建立的 Crack。施加 Crack 本身不建立 damage event。
+
+視覺上，qualifying重擊讓主目標沿impact axis快速壓縮、短暫頓住後回彈，同時只釋放一次短徑向ASCII shockwave。取得`CRACKED`的neighbors以共用atlas的二至三片pooled fragments呈現同一字元，碎片只有小幅位置／亮度差，不改變authoritative Cell、字元身分或hitbox。
+
+Modifier 的傷害 bonus 都從同一份 base Direct Damage 計算後相加，再對每顆 target只提交一次。Crack 與最大 DISCONNECTED 同時成立時的首版總效果上限為 base direct damage的 `×2.00`，不是兩個倍率相乘的 `×2.24`。Final Direct Damage可以協助觸發 OVERLOAD或造成Husk並啟動VOLATILE，但Volatile自身不再取得其他Modifier加成。
+
+完整公式、prototype config參數、Cell status payload、傷害route interaction、Volatile wave scheduler、Slime structural ordering、Boss reward transaction與驗證契約集中在 [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md)。
+
+---
+
+# XP Upgrade
+
+XP 升級時：
 
 遊戲完全暫停。
 畫面稍微變暗。
 中央跳出三張卡片。
 三張卡片混合包含已解鎖的新武器與通用 Module；第一次升級保證至少出現一張 eligible 武器卡。
+這個「固定三張」契約只屬於 XP 的 `WEAPON | MODULE` upgrade offer；Boss Run Modifier reward 是獨立 domain，並依上一節允許二選一。
 玩家先選卡片，再完成該卡片需要的 target decision：
 
 - Module 卡：選擇投資哪把武器；若沒有相同 Module 且 Slots 已滿，再選擇覆蓋哪個 Slot。

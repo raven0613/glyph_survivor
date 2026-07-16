@@ -5,6 +5,13 @@ import {
   getPrintableAsciiGlyphFrame,
 } from '../glyph/glyphFrame.ts'
 import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
+import {
+  GLYPH_ATLAS_CELL_SIZE,
+  createCrackedGlyphFragmentLayout,
+} from './crackedGlyphFragments.ts'
+import type { CrackedGlyphFragmentFrame } from './crackedGlyphFragmentFrame.ts'
+
+export type { CrackedGlyphFragmentFrame } from './crackedGlyphFragmentFrame.ts'
 
 export type FixedGlyphFrameName =
   | 'player'
@@ -15,10 +22,11 @@ export type FixedGlyphFrameName =
 export interface GlyphAtlas {
   readonly frames: Readonly<Record<FixedGlyphFrameName, Texture>>
   readonly printableFrames: readonly Texture[]
+  readonly crackedFragmentFrames: readonly (readonly Readonly<CrackedGlyphFragmentFrame>[] )[]
   destroy(): void
 }
 
-const CELL_SIZE = 64
+const CELL_SIZE = GLYPH_ATLAS_CELL_SIZE
 const ATLAS_COLUMNS = 16
 const ATLAS_ROWS = Math.ceil(PRINTABLE_ASCII_GLYPH_COUNT / ATLAS_COLUMNS)
 
@@ -82,11 +90,41 @@ export function createGlyphAtlas(visualTheme: CombatVisualTheme): GlyphAtlas {
     experience: printableFrames[getPrintableAsciiGlyphFrame('*')],
     background: printableFrames[getPrintableAsciiGlyphFrame('+')],
   })
+  const crackedFragmentFrames = Object.freeze(
+    Array.from(
+      { length: PRINTABLE_ASCII_GLYPH_COUNT },
+      (_, glyphFrame) => {
+        const position = getFramePosition(glyphFrame)
+        return Object.freeze(
+          createCrackedGlyphFragmentLayout(glyphFrame).map((fragment, index) =>
+            Object.freeze({
+              ...fragment,
+              texture: new Texture({
+                source: atlasTexture.source,
+                frame: new Rectangle(
+                  position.x + fragment.x,
+                  position.y + fragment.y,
+                  fragment.width,
+                  fragment.height,
+                ),
+                defaultAnchor: { x: 0.5, y: 0.5 },
+                label: `glyph-cracked-${glyphFrame}-${index}`,
+              }),
+            }),
+          ),
+        )
+      },
+    ),
+  )
 
   return Object.freeze({
     frames,
     printableFrames: Object.freeze(printableFrames),
+    crackedFragmentFrames,
     destroy() {
+      crackedFragmentFrames.forEach((fragments) =>
+        fragments.forEach(({ texture }) => texture.destroy(false)),
+      )
       printableFrames.forEach((texture) => texture.destroy(false))
       atlasTexture.destroy(true)
     },

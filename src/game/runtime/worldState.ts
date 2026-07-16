@@ -4,11 +4,7 @@ import {
   type PreparedGameContent,
 } from '../content/gameContent.ts'
 import type { CreatureDefinition } from '../content/creatures/creatureDefinition.ts'
-import {
-  createSeededRng,
-  hashSeed,
-  type SeededRng,
-} from '../core/seededRng.ts'
+import { createSeededRng, hashSeed, type SeededRng } from '../core/seededRng.ts'
 import { createSpatialHash, type SpatialHash } from '../core/spatialHash.ts'
 import { createGlyphStore, type GlyphStore } from '../glyph/glyphStore.ts'
 import {
@@ -54,8 +50,25 @@ import {
   synchronizeEquippedWeaponStatistics,
   type RunStatisticsState,
 } from './runStatistics.ts'
+import {
+  createRunModifierState,
+  type RunModifierState,
+} from './runModifierState.ts'
+import {
+  createOverloadPresentationState,
+  type OverloadPresentationState,
+} from './overloadPresentationState.ts'
+import {
+  createRunModifierDiagnostics,
+  type RunModifierDiagnostics,
+} from './runModifierDiagnostics.ts'
+import {
+  createDisconnectedState,
+  type DisconnectedState,
+} from './disconnectedState.ts'
+import { createVolatileState, type VolatileState } from './volatileState.ts'
 
-export interface WorldDiagnostics {
+export interface WorldDiagnostics extends RunModifierDiagnostics {
   droppedSimulationTimeMs: number
   simulationStepCount: number
   enemyPoolMisses: number
@@ -94,6 +107,10 @@ export interface WorldState {
   readonly weaponLoadout: WeaponLoadoutState
   readonly runStatistics: RunStatisticsState
   readonly upgradeState: UpgradeState
+  readonly runModifierState: RunModifierState
+  readonly volatileState: VolatileState
+  readonly disconnectedState: DisconnectedState
+  readonly overloadPresentation: OverloadPresentationState
   readonly deathReview: PlayerDeathReviewState
   readonly input: InputState
   readonly glyphStore: GlyphStore
@@ -134,6 +151,7 @@ export interface WorldState {
   nextFlameEmitterId: number
   nextOrbitAttackId: number
   nextDamageEventId: number
+  nextDamageApplicationId: number
   nextPendingDamageTransferId: number
   nextTopologyTransferPulseId: number
   nextPlayerDamageEventId: number
@@ -184,6 +202,7 @@ export function createWorldState(
   ),
 ): WorldState {
   const diagnostics: WorldDiagnostics = {
+    ...createRunModifierDiagnostics(),
     droppedSimulationTimeMs: 0,
     simulationStepCount: 0,
     enemyPoolMisses: 0,
@@ -229,6 +248,10 @@ export function createWorldState(
     weaponLoadout,
     runStatistics,
     upgradeState: createUpgradeState(seed, unlockedWeaponDefinitionIds),
+    runModifierState: createRunModifierState(seed),
+    volatileState: createVolatileState(),
+    disconnectedState: createDisconnectedState(),
+    overloadPresentation: createOverloadPresentationState(),
     deathReview: createPlayerDeathReviewState(),
     input: {
       horizontal: 0,
@@ -281,6 +304,7 @@ export function createWorldState(
     nextFlameEmitterId: 1,
     nextOrbitAttackId: 1,
     nextDamageEventId: 1,
+    nextDamageApplicationId: 1,
     nextPendingDamageTransferId: 1,
     nextTopologyTransferPulseId: 1,
     nextPlayerDamageEventId: 1,
@@ -381,6 +405,7 @@ export function spawnEnemy(
     rootBossId: definition.category === 'BOSS' ? enemyId : null,
     splitReferenceCellCount:
       definition.category === 'BOSS' ? definition.body.slots.length : 0,
+    reassemblyEpisodeId: 0,
     trackingLoad: 0,
   })
   world.enemies.push(activeEnemy)
@@ -438,6 +463,7 @@ export function spawnSplitEnemy(
     encounterId: source.encounterId,
     rootBossId: source.rootBossId,
     splitReferenceCellCount: source.splitReferenceCellCount,
+    reassemblyEpisodeId: 0,
     trackingLoad: 0,
   })
   world.enemies.push(enemy)

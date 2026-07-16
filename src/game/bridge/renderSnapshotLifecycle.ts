@@ -11,4 +11,8 @@ export function clearRenderSnapshot(snapshot: RenderSnapshot): void {
   snapshot.orbits.length = 0
   snapshot.drops.length = 0
   snapshot.flameEmitters.length = 0
+  snapshot.crackedSurfaces.length = 0
+  snapshot.overloadDeformations.length = 0
+  snapshot.overloadShockwaves.length = 0
+  snapshot.volatileCoreOverlays.length = 0
 }

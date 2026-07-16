@@ -17,6 +17,19 @@ import {
   preparePlayerSurvivalVisualTheme,
   validateAndFreezePlayerSurvivalVisualTheme,
 } from './playerSurvivalVisualTheme.ts'
+import {
+  prepareOverloadEffectAppearance,
+  validateAndFreezeOverloadEffectAppearance,
+} from './overloadVisualTheme.ts'
+import {
+  prepareDisconnectedEffectAppearance,
+  validateAndFreezeDisconnectedEffectAppearance,
+} from './disconnectedVisualTheme.ts'
+import {
+  prepareVolatileEffectAppearance,
+  validateAndFreezeVolatileEffectAppearance,
+} from './volatileVisualTheme.ts'
+import { validateAndFreezeRunModifierCompositionAppearance } from './modifierCompositionVisualTheme.ts'
 
 export * from './combatVisualThemeTypes.ts'
 export * from './glyphAppearancePresentation.ts'
@@ -139,6 +152,20 @@ function prepareCombatVisualTheme(
         ),
         stepIntervalMs: input.effects.topologyTransfer.stepIntervalMs,
         pulseDurationMs: input.effects.topologyTransfer.pulseDurationMs,
+      },
+      runModifiers: {
+        composition: { ...input.effects.runModifiers.composition },
+        volatile: prepareVolatileEffectAppearance(
+          input.effects.runModifiers.volatile,
+          prepareVisualColor,
+        ),
+        disconnected: prepareDisconnectedEffectAppearance(
+          input.effects.runModifiers.disconnected,
+        ),
+        overload: prepareOverloadEffectAppearance(
+          input.effects.runModifiers.overload,
+          prepareVisualColor,
+        ),
       },
     },
   }
@@ -317,6 +344,33 @@ function validateAndFreezeCombatVisualTheme(
     input.effects.topologyTransfer.stepIntervalMs,
     'topology transfer stepIntervalMs',
   )
+  const overload = validateAndFreezeOverloadEffectAppearance(
+    input.effects.runModifiers.overload,
+    {
+      validateColor: validateVisualColor,
+      positive: requirePositiveFinite,
+      range: requireFiniteRange,
+    },
+  )
+  const volatile = validateAndFreezeVolatileEffectAppearance(
+    input.effects.runModifiers.volatile,
+    {
+      validateColor: validateVisualColor,
+      positive: requirePositiveFinite,
+      range: requireFiniteRange,
+    },
+  )
+  const disconnected = validateAndFreezeDisconnectedEffectAppearance(
+    input.effects.runModifiers.disconnected,
+    {
+      positive: requirePositiveFinite,
+      range: requireFiniteRange,
+    },
+  )
+  const composition = validateAndFreezeRunModifierCompositionAppearance(
+    input.effects.runModifiers.composition,
+    { positive: requirePositiveFinite },
+  )
   requirePositiveFinite(
     input.effects.topologyTransfer.pulseDurationMs,
     'topology transfer pulseDurationMs',
@@ -421,6 +475,12 @@ function validateAndFreezeCombatVisualTheme(
       spreadFeedbackDurationMs: input.effects.spreadFeedbackDurationMs,
       topologyTransfer: Object.freeze({
         ...input.effects.topologyTransfer,
+      }),
+      runModifiers: Object.freeze({
+        composition,
+        volatile,
+        disconnected,
+        overload,
       }),
     }),
   })

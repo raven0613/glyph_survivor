@@ -14,6 +14,12 @@ const upgradeChoices = [
   { id: 'weight-bold', kind: 'MODULE' as const, definitionId: 'module.weight', title: 'Weight: Bold' },
 ]
 
+const modifierChoices = [
+  { id: 'modifier-offer-1:0', definitionId: 'modifier.volatile', title: 'VOLATILE', description: 'Explodes.', identityGlyph: '*' },
+  { id: 'modifier-offer-1:1', definitionId: 'modifier.disconnected', title: 'DISCONNECTED', description: 'Fragments.', identityGlyph: '/' },
+  { id: 'modifier-offer-1:2', definitionId: 'modifier.overload', title: 'OVERLOAD', description: 'Cracks.', identityGlyph: '!' },
+]
+
 function startRunningActor(machine: typeof gameMachine = gameMachine) {
   const actor = createActor(machine).start()
   actor.send({ type: 'INITIALIZE' })
@@ -78,6 +84,7 @@ test('pauses and resumes a running game from the menu', () => {
 test('classifies resume protection by pause phase instead of feature event', () => {
   assert.equal(isGameplayPausePhase(GAME_PHASE.PAUSED_MENU), true)
   assert.equal(isGameplayPausePhase(GAME_PHASE.PAUSED_UPGRADE), true)
+  assert.equal(isGameplayPausePhase(GAME_PHASE.PAUSED_MODIFIER), true)
   assert.equal(isGameplayPausePhase(GAME_PHASE.RUNNING), false)
   assert.equal(isGameplayPausePhase(GAME_PHASE.READY), false)
   assert.equal(isGameplayPausePhase(GAME_PHASE.DEATH_REVIEW), false)
@@ -106,6 +113,122 @@ test('classifies resume protection by pause phase instead of feature event', () 
       GAME_PHASE.PAUSED_UPGRADE,
     ),
     false,
+  )
+})
+
+test('starts directly in the run-start Modifier pause and commits only an offered choice', () => {
+  const actor = createActor(gameMachine).start()
+  actor.send({ type: 'INITIALIZE' })
+  actor.send({ type: 'LOAD_SUCCEEDED' })
+  actor.send({
+    type: 'START_RUN_WITH_MODIFIER_OFFER',
+    seed: 'modifier-start',
+    offerId: 'modifier-offer-1',
+    origin: 'RUN_START_TEST',
+    choices: modifierChoices,
+  })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_MODIFIER)
+  assert.equal(actor.getSnapshot().context.seed, 'modifier-start')
+  assert.equal(
+    actor.getSnapshot().context.activeModifierOfferOrigin,
+    'RUN_START_TEST',
+  )
+
+  actor.send({ type: 'RESUME_REQUESTED' })
+  actor.send({ type: 'MODIFIER_COMMITTED', choiceId: 'not-offered' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_MODIFIER)
+
+  actor.send({
+    type: 'MODIFIER_COMMITTED',
+    choiceId: 'modifier-offer-1:0',
+  })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
+  assert.deepEqual(actor.getSnapshot().context.modifierChoices, [])
+  assert.equal(actor.getSnapshot().context.activeModifierOfferId, null)
+})
+
+test('accepts Modifier offer origins only in their authorized lifecycle path', () => {
+  const readyActor = createActor(gameMachine).start()
+  readyActor.send({ type: 'INITIALIZE' })
+  readyActor.send({ type: 'LOAD_SUCCEEDED' })
+  readyActor.send({
+    type: 'START_RUN_WITH_MODIFIER_OFFER',
+    seed: 'wrong-start-origin',
+    offerId: 'modifier-offer-1',
+    origin: 'BOSS_REWARD',
+    choices: modifierChoices,
+  })
+  assert.equal(readyActor.getSnapshot().value, GAME_PHASE.READY)
+
+  const runningActor = startRunningActor()
+  runningActor.send({
+    type: 'MODIFIER_OFFERED',
+    offerId: 'modifier-offer-1',
+    origin: 'RUN_START_TEST',
+    choices: modifierChoices,
+  })
+  assert.equal(runningActor.getSnapshot().value, GAME_PHASE.RUNNING)
+})
+
+test('moves directly from a Boss Modifier decision into a pending XP decision', () => {
+  const actor = startRunningActor()
+  const observedPhases: unknown[] = []
+  const subscription = actor.subscribe((snapshot) => {
+    observedPhases.push(snapshot.value)
+  })
+  actor.send({
+    type: 'MODIFIER_OFFERED',
+    offerId: 'boss-modifier-offer',
+    origin: 'BOSS_REWARD',
+    choices: modifierChoices.slice(0, 2),
+  })
+  observedPhases.length = 0
+
+  actor.send({
+    type: 'MODIFIER_COMMITTED',
+    choiceId: modifierChoices[0].id,
+    nextUpgradeOffer: {
+      offerId: 'xp-after-boss',
+      choices: upgradeChoices,
+      pendingUpgradeCount: 1,
+    },
+  })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_UPGRADE)
+  assert.deepEqual(observedPhases, [GAME_PHASE.PAUSED_UPGRADE])
+  assert.equal(
+    actor.getSnapshot().context.activeUpgradeOfferId,
+    'xp-after-boss',
+  )
+  assert.equal(actor.getSnapshot().context.activeModifierOfferId, null)
+  assert.deepEqual(actor.getSnapshot().context.modifierChoices, [])
+  subscription.unsubscribe()
+})
+
+test('keeps the Modifier pause when its chained XP payload is malformed', () => {
+  const actor = startRunningActor()
+  actor.send({
+    type: 'MODIFIER_OFFERED',
+    offerId: 'boss-modifier-offer',
+    origin: 'BOSS_REWARD',
+    choices: modifierChoices.slice(0, 2),
+  })
+
+  actor.send({
+    type: 'MODIFIER_COMMITTED',
+    choiceId: modifierChoices[0].id,
+    nextUpgradeOffer: {
+      offerId: 'invalid-xp-after-boss',
+      choices: upgradeChoices.slice(0, 2),
+      pendingUpgradeCount: 1,
+    },
+  })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_MODIFIER)
+  assert.equal(
+    actor.getSnapshot().context.activeModifierOfferId,
+    'boss-modifier-offer',
   )
 })
 
@@ -279,6 +402,9 @@ test('returns from game over to a clean ready context and ignores repeated comma
     upgradeChoices: [],
     pendingUpgradeCount: 0,
     activeUpgradeOfferId: null,
+    modifierChoices: [],
+    activeModifierOfferId: null,
+    activeModifierOfferOrigin: null,
     recoverableError: null,
     canEnterRunResult: false,
   })

@@ -10,6 +10,14 @@ interface ActiveParticleView {
 export interface ParticleLayerPool {
   sync(glyphs: readonly RenderGlyph[]): void
   clear(): void
+  getDiagnostics(): Readonly<ParticleLayerPoolDiagnostics>
+}
+
+export interface ParticleLayerPoolDiagnostics {
+  readonly activeParticleCount: number
+  readonly peakActiveParticleCount: number
+  readonly recycledParticleCount: number
+  readonly poolMissCount: number
 }
 
 export function createParticleLayerPool(
@@ -19,6 +27,8 @@ export function createParticleLayerPool(
   const activeViews = new Map<number, ActiveParticleView>()
   const recycledParticles: Particle[] = []
   let frameNumber = 0
+  let peakActiveParticleCount = 0
+  let poolMissCount = 0
 
   function getTexture(glyphFrame: number): Texture {
     const texture = textures[glyphFrame]
@@ -36,6 +46,8 @@ export function createParticleLayerPool(
       particle.texture = texture
       return particle
     }
+
+    poolMissCount += 1
 
     return new Particle({
       texture,
@@ -90,12 +102,25 @@ export function createParticleLayerPool(
       if (hasChangedGlyphFrame) {
         container.update()
       }
+      peakActiveParticleCount = Math.max(
+        peakActiveParticleCount,
+        activeViews.size,
+      )
     },
 
     clear() {
       activeViews.forEach((view) => container.removeParticle(view.particle))
       activeViews.clear()
       recycledParticles.length = 0
+    },
+
+    getDiagnostics() {
+      return Object.freeze({
+        activeParticleCount: activeViews.size,
+        peakActiveParticleCount,
+        recycledParticleCount: recycledParticles.length,
+        poolMissCount,
+      })
     },
   })
 }

@@ -55,6 +55,9 @@ export interface GlyphCell {
   readonly velocityY: number
   readonly scale: number
   readonly flags: number
+  readonly crackedCreatedByRootAttackEventId: number
+  readonly disconnectedLatchedMultiplier: number
+  readonly disconnectedLatchEpisodeId: number
 }
 
 export interface OwnerDurability {
@@ -92,6 +95,14 @@ export interface GlyphStore {
   getOwnerDurability(ownerId: number): Readonly<OwnerDurability> | undefined
   isOwnerDepleted(ownerId: number): boolean
   applyDamage(glyphId: number, amount: number): number
+  applyCracked(glyphId: number, rootAttackEventId: number): boolean
+  consumeCracked(glyphId: number, rootAttackEventId: number): boolean
+  applyDisconnectedLatch(
+    glyphId: number,
+    multiplier: number,
+    episodeId: number,
+  ): boolean
+  clearDisconnectedLatches(ownerId: number, episodeId: number): number
   applyMaterialHit(
     glyphId: number,
     directionX: number,

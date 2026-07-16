@@ -24,12 +24,17 @@ import { runPlayerContactSystem } from '../systems/playerContactSystem.ts'
 import { runPlayerSurvivalSystem } from '../systems/playerSurvivalSystem.ts'
 import { runPendingDamageTransferSystem } from '../systems/pendingDamageTransferSystem.ts'
 import { runStatisticsSystem } from '../systems/runStatisticsSystem.ts'
+import { runModifierPresentationSystem } from '../systems/modifierPresentationSystem.ts'
+import { runDisconnectedTopologySystem } from '../systems/disconnectedTopologySystem.ts'
+import { runVolatileReactionSystem } from '../systems/volatileReactionSystem.ts'
+import { runBossModifierRewardSystem } from '../systems/bossModifierRewardSystem.ts'
 import { finalizeRunResult } from './runResult.ts'
 import { beginWorldDeathReview } from './runDeathReviewStep.ts'
 import type { WorldState } from './worldState.ts'
 
 export const SIMULATION_STEP_RESULT = Object.freeze({
   CONTINUE: 'CONTINUE',
+  MODIFIER_REWARD_OFFERED: 'MODIFIER_REWARD_OFFERED',
   UPGRADE_OFFERED: 'UPGRADE_OFFERED',
   PLAYER_DIED: 'PLAYER_DIED',
 } as const)
@@ -47,6 +52,7 @@ export function runSimulationStep(
   runAimSystem(world)
   runMovementSystem(world, deltaMs)
   runGlyphMaterialSystem(world, deltaMs)
+  runModifierPresentationSystem(world, deltaMs)
   runEnemySpatialIndexSystem(world)
   runDirectorSystem(world, deltaMs)
   runBossSpawnSystem(world)
@@ -59,7 +65,9 @@ export function runSimulationStep(
   runCollisionSystem(world)
   runPendingDamageTransferSystem(world, deltaMs)
   runDamageSystem(world)
+  runVolatileReactionSystem(world)
   runSlimeSplitSystem(world)
+  runDisconnectedTopologySystem(world)
   runDeathSystem(world, deltaMs)
   runPlayerContactSystem(world)
   if (runPlayerSurvivalSystem(world)) {
@@ -68,10 +76,14 @@ export function runSimulationStep(
     runGlyphDiagnosticsSystem(world)
     return SIMULATION_STEP_RESULT.PLAYER_DIED
   }
+  const modifierOfferCreated = runBossModifierRewardSystem(world) !== null
   runDropSystem(world)
   const upgradeOfferCreated = runUpgradeSystem(world)
   runCleanupSystem(world)
   runGlyphDiagnosticsSystem(world)
+  if (modifierOfferCreated) {
+    return SIMULATION_STEP_RESULT.MODIFIER_REWARD_OFFERED
+  }
   return upgradeOfferCreated
     ? SIMULATION_STEP_RESULT.UPGRADE_OFFERED
     : SIMULATION_STEP_RESULT.CONTINUE

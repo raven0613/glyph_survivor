@@ -8,6 +8,8 @@ Before designing or changing weapons, run loadouts, upgrade cards, Module Slots,
 
 Before designing or changing player health, shields, incoming player damage, player contact collision, player death, run results or statistics, the game-over flow, return to the main menu, or related survival Module cards, also read [`docs/content/player-survival.md`](docs/content/player-survival.md). That file is the detailed player-survival and run-settlement contract; survival Module cards are additionally subject to [`docs/content/weapon-system.md`](docs/content/weapon-system.md). `spec.md` still wins on product intent, and this file still wins on cross-layer architecture.
 
+Before designing or changing Run Modifiers, Boss Modifier rewards, the run-start Modifier testing offer, `PAUSED_MODIFIER`, Glyph Cell negative statuses, Modifier damage composition, Modifier presentation, Volatile reaction chains, Disconnected topology classification, Overload／Cracked behavior, or the related UI flow, also read [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md) completely. That file is the detailed Run Modifier content, presentation, testing, and transaction contract; it does not replace the weapon／Module or player-survival contracts.
+
 ## 1. Project status
 
 - The repository currently contains the default Vite/React starter UI.
@@ -47,6 +49,14 @@ These rules come directly from `spec.md` and must survive refactors:
 - Replacing a weapon destroys that Weapon Instance's Module Slots and runtime state. It must not mutate the other equipped Weapon Instances.
 - Opening the upgrade screen completely pauses gameplay simulation through card, weapon, Module Slot, and weapon-replacement selection until an authoritative commit succeeds.
 - Boss splitting redistributes existing Glyphs and durability. It must not increase total Glyph count, current durability, or maximum durability.
+- Run Modifiers are Runtime-owned world rules for the current run, not Weapon Modules. They occupy no Module Slot, survive weapon replacement, disappear with the run, may coexist when their definition IDs differ, and cannot be acquired twice unless a future explicit Rank contract says otherwise. Because a Boss reward may arrive before the Weapon／Module Build is mature, every first-pass Modifier must create a useful decision on its own rather than require a particular weapon, Module, Rank, or another Modifier to function.
+- A Boss Encounter authorizes exactly one Modifier reward only after its complete collapse resolves and it formally enters `DEFEATED`. The reward normally offers three unique, unowned definitions and may offer two when exactly two eligible definitions remain; it never inserts a Modifier into the XP weapon／Module offer domain.
+- Modifier development may enable one validated Boolean Runtime config flag, `enableRunStartModifierOfferForTesting`. It authorizes exactly one normal Modifier offer after a valid initial Weapon Instance exists but before the first fixed step. It never consumes a Boss token or advances the Boss-offer RNG domain; the selected definition becomes genuinely owned, so the later Boss reward excludes it normally. The release path keeps the flag false.
+- The confirmed first Run Modifiers are `VOLATILE`, `DISCONNECTED`, and `OVERLOAD`. Their formulas, damage-route interaction matrix, Cell-status payloads, Slime latch behavior, reward transaction, and prototype config parameters live only in `docs/content/run-modifiers.md`.
+- Volatile is initially a same-owner, canonical-topology depth-one reaction. Every stable Glyph can emit at most one Volatile explosion when it first enters `HUSK`; chained events advance in Runtime-owned breadth-first waves and no authoritative event may be discarded because a fixed-step processing budget, pool, renderer, or particle budget is exhausted.
+- Disconnected classifies Living canonical connected components, never screen-space separation. Overload applies a non-damaging, non-stacking `CRACKED` status to Living canonical neighbors after a sufficiently heavy direct hit; Crack affects only a later direct attack from a different root attack event.
+- Modifier bonuses are composed once from the same base direct damage and committed through one authoritative durability-application boundary. Modifier handlers must not recursively multiply one another, duplicate Damage Spread, inherit unrelated Material impulse, or grow scattered `if (hasModifierX)` branches across weapon systems.
+- Modifier presentation uses short attack／hold／settle beats with a visible stop point and a fast, clean finish. Disconnected owns restrained component-level instability, Overload owns one directional compression／radial impact plus a persistent cracked surface, and Volatile owns discrete topology-wave pulses. Long glow tails, continuous ambient shaking, radial Volatile rings, and unbounded status-effect stacking violate their visual identities.
 
 ## 3. Non-negotiable architecture
 
@@ -143,6 +153,8 @@ src/
       projectileSystem.ts
       collisionSystem.ts
       damageSystem.ts
+      runModifierSystem.ts
+      volatileReactionSystem.ts
       deathSystem.ts
       dropSystem.ts
       upgradeSystem.ts
@@ -158,6 +170,7 @@ src/
       weapons/
       bosses/
       upgrades/
+      modifiers/
       visuals/
         combatVisualTheme.ts  Types, validation, and prepared theme contract
         prototypeCombatVisualTheme.ts
@@ -222,6 +235,7 @@ Recommended responsibilities:
   <Hud />              reads UiSnapshot
   <InitialWeaponScreen /> visible in READY before startRun
   <UpgradeScreen />    visible only in PAUSED_UPGRADE
+  <ModifierRewardScreen /> visible only in PAUSED_MODIFIER
   <PauseMenu />
 ```
 
@@ -244,6 +258,10 @@ gameHost.acquireWeapon({
   choiceId,
   replacedWeaponInstanceId,
 })
+gameHost.selectModifier({
+  offerId,
+  choiceId,
+})
 gameHost.updateSettings(settings)
 gameHost.dispose()
 
@@ -252,11 +270,11 @@ const unsubscribe = gameHost.subscribeUi((uiSnapshot) => {})
 
 Rules:
 
-- `subscribeUi` publishes only UI-sized data: phase, feature-defined HUD and end-of-run summaries, initial weapon choices, upgrade choices, equipped-weapon and Module-Slot summaries, target eligibility, boss summaries, and recoverable errors. Feature-specific fields belong to their detailed content contracts.
+- `subscribeUi` publishes only UI-sized data: phase, feature-defined HUD and end-of-run summaries, initial weapon choices, upgrade choices, Modifier choices with their Runtime-authored authorization origin, owned-Modifier summaries, equipped-weapon and Module-Slot summaries, target eligibility, boss summaries, and recoverable errors. Feature-specific fields belong to their detailed content contracts. React must not label a `RUN_START_TEST` offer as a defeated-Boss reward or infer the origin from timing.
 - Do not include entity arrays, Glyph arrays, projectiles, particles, Pixi objects, or mutable WorldState references.
 - Publish when relevant UI values change or on a low-frequency throttle. Do not publish at display refresh rate by default.
 - React StrictMode may mount, clean up, and mount again. GameHost initialization and disposal must not leak a ticker, RAF, event listener, canvas, or asset subscription.
-- React controls the initial-weapon and upgrade DOM/UI, including card, target, replacement previews, focus, and animation. Runtime controls whether simulation is paused, which choices and targets are legal, and whether a transaction commits.
+- React controls the initial-weapon, upgrade, and Modifier-reward DOM/UI, including cards, target／replacement previews where applicable, focus, and animation. Runtime controls whether simulation is paused, which choices and targets are legal, and whether a transaction commits.
 - UI preview state may remain local to React, but the final command must include the active offer ID and every authoritative target ID needed for one atomic Runtime validation and commit.
 
 ## 7. Game phases and lifecycle
@@ -265,22 +283,26 @@ Use an explicit phase/state machine rather than scattered booleans:
 
 ```text
 BOOT → LOADING → READY → RUNNING
-                         ↔ PAUSED_MENU
-                         → PAUSED_UPGRADE → RUNNING
-                         → DEATH_REVIEW → GAME_OVER → READY
-any non-final phase      → DISPOSED
+                    ↘ PAUSED_MODIFIER → RUNNING  [run-start test flag only]
+RUNNING              ↔ PAUSED_MENU
+                     → PAUSED_UPGRADE → RUNNING
+                     → PAUSED_MODIFIER → PAUSED_MODIFIER, PAUSED_UPGRADE, or RUNNING
+                     → DEATH_REVIEW → GAME_OVER → READY
+any non-final phase   → DISPOSED
 ```
 
 Required behavior:
 
 - Asset/config failure stays in `LOADING` or transitions to a documented error state; it must not start a partial simulation.
-- `READY` means initialization succeeded and the runtime is waiting for an explicit `startRun` command with a valid initial weapon from the frozen unlock set; fixed simulation steps have not started.
+- `READY` means initialization succeeded and the runtime is waiting for an explicit `startRun` command with a valid initial weapon from the frozen unlock set; fixed simulation steps have not started. With the run-start testing flag enabled, a valid command creates the WorldState and initial Weapon Instance, then enters one `RUN_START_TEST` Modifier offer before any fixed step instead of entering `RUNNING` immediately.
 - `PAUSED_UPGRADE` stops fixed simulation steps completely for the whole decision chain: card preview, weapon target, optional Module-Slot or weapon replacement, authoritative commit, and any next queued offer.
+- `PAUSED_MODIFIER` is a separate complete Gameplay pause for a Runtime-authorized Run Modifier offer. Production authorization comes from a defeated Boss Encounter; the only first-pass testing authorization is the validated run-start flag. The phase stops fixed simulation, Volatile waves, status progression, projectiles, enemies, drops, XP, and director work until an authoritative Modifier commit succeeds and any next queued decision is selected.
+- Consecutive Modifier and XP-upgrade decisions must remain continuously paused. Only the final transition back to `RUNNING` after the run has already executed a `RUNNING` step grants the shared resume invulnerability once; moving directly from `PAUSED_MODIFIER` to `PAUSED_UPGRADE` must not grant it. `READY → PAUSED_MODIFIER → RUNNING` from the run-start testing offer is still the initial-start path and grants none.
 - Menu pause stops gameplay time. Rendering may remain static or run at a deliberately reduced rate.
 - `DEATH_REVIEW` may run only the narrow phase-specific scheduler defined by [`docs/content/player-survival.md`](docs/content/player-survival.md); it is neither ordinary `RUNNING` simulation nor a renderer-owned timer. The explicit result-entry command alone transitions it to `GAME_OVER`.
 - Repeated `start`, `pause`, `resume`, and `dispose` calls must have defined idempotent behavior.
 - Disposal removes DOM listeners, input listeners, ticker/RAF callbacks, subscriptions, scene nodes, and owned GPU resources.
-- `COLLAPSING` is an individual creature lifecycle phase, not a global game phase. A collapsing creature no longer participates in targeting, damage, or collision. The runtime owns collapse timing and allows reward/cleanup only after the whole-body collapse resolves, even if an explicit death rule hands its visual fragments to the renderer during that phase.
+- `COLLAPSING` is an individual creature lifecycle phase, not a global game phase. A collapsing creature no longer participates in targeting, damage, or collision. The runtime owns collapse timing and allows reward/cleanup only after the whole-body collapse and any already-authorized Runtime-owned Volatile source-event sequence for that creature／Encounter resolve, even if an explicit death rule hands its visual fragments to the renderer during that phase.
 
 For PixiJS v8:
 
@@ -312,7 +334,7 @@ Frame algorithm:
 
 Do not feed arbitrary render-frame delta directly into collision, damage, cooldown, spawn, or AI rules.
 
-Re-check whether simulation may continue before every catch-up step, not only once at the start of an RAF callback. If an upgrade trigger leaves `RUNNING`, stop the remaining steps immediately and clear the accumulator state that must not cross the pause boundary. This is required for a genuinely complete upgrade pause.
+Re-check whether simulation may continue before every catch-up step, not only once at the start of an RAF callback. If any authoritative decision or death transition leaves `RUNNING`, including an XP upgrade or Boss Modifier reward, stop the remaining steps immediately and clear the accumulator state that must not cross the phase boundary. This is required for a genuinely complete pause.
 
 Each fixed step runs systems in a stable order:
 
@@ -322,9 +344,10 @@ Input sample
 → Spawn / Director
 → Targeting / Weapons
 → Projectile movement / Collision
-→ Damage / Glyph material response
-→ Death detection / Boss split / Creature collapse / Drops / XP
-→ Upgrade trigger
+→ Damage application / Glyph material response / Modifier status outcomes
+→ Current Volatile reaction waves
+→ Topology structural commit / Boss split / Creature collapse / Drops / XP
+→ Decision arbitration: PLAYER_DIED > MODIFIER_REWARD > XP_UPGRADE
 → Cleanup
 → Snapshot publication
 ```
@@ -342,6 +365,10 @@ Mutation is allowed inside tightly owned, performance-critical stores. Keep it l
 Random behavior must use an injected seeded RNG. Do not call `Math.random()` inside gameplay systems. Record the run seed and content version so failing scenarios can be reproduced.
 
 Derive an independent upgrade-offer RNG stream from the run seed. Enemy spawning, AI, combat, and rendering randomness must not change the sequence of weapon／Module offers for the same upgrade state.
+
+Derive independent Modifier-offer RNG domains from the run seed. At minimum, `BOSS_REWARD` and `RUN_START_TEST` are domain-separated so a testing offer never advances the production Boss stream. Combat, enemy, rendering, XP-upgrade, and test-offer RNG consumption must not change Boss Modifier offers for the same owned-Modifier and reward state. Stable content order and stable IDs remain the final tie-breaks.
+
+Validate `enableRunStartModifierOfferForTesting` as a Boolean before entering `READY` and freeze it for the run. It is developer Runtime config, not a React setting, persisted player preference, query-string command, or mutable mid-run switch. When false it must create no authorization, offer, or RNG side effect.
 
 ### World and camera
 
@@ -407,6 +434,7 @@ Preserve the distinction between:
 - material: local durability／impulse／displacement／recovery／destruction behavior, not creature hue;
 - appearance profile: the semantic species／role palette identity that survives damage, Husk state, morph, reassembly, and split ownership changes unless an explicit content rule replaces it;
 - state: exactly the living progression `HEALTHY`, `DAMAGED`, or `HUSK` for active creature Glyphs;
+- status flags and status-specific payload: orthogonal Runtime-owned negative／temporary rules such as `CRACKED` or a Slime disconnected latch; they do not add another life-state enum or a second HP model;
 - render alpha/tint: presentation resolved from Glyph state, appearance profile, transient response state, and the prepared combat visual theme.
 
 The state and durability invariants are:
@@ -418,6 +446,8 @@ HUSK: currentDurability === 0
 ```
 
 `currentDurability`, `maxDurability`, and damage amounts are finite non-negative gameplay numbers; current durability and damage may be fractional. Do not round damage to integers or impose a hidden minimum damage of `1`. Clamp subtraction to zero and use one documented precision normalization so tiny floating-point residues cannot prevent `HUSK` or collapse transitions. A Glyph with `maxDurability === 1` transitions directly from `HEALTHY` to `HUSK` only when an effective hit is at least its remaining durability; a smaller hit produces fractional `DAMAGED` durability. Do not create hidden durability merely to force a visible state step. A Husk cannot take durability damage, recover durability, or revive. While its creature is active, it must retain its stable Glyph ID, an authoritative owner ID, maximum durability, anchor/local position, deformation data, and gameplay outline footprint. Explicit body reassembly, morph, or validated Boss-split rules may update its anchor or owner without changing its identity or durability. It remains visible at the theme-defined low Husk tier so the creature silhouette does not shrink as it is consumed.
+
+Boolean status presence may use typed bit flags, but multiplier, duration, stack, source-event identity, and reassembly-episode data require explicit status-specific payload. Do not allocate a generic per-Cell `Map<statusId, object>` or let systems manipulate raw bits directly. Status mutation belongs behind named Glyph／status-store APIs, follows stable Glyph identity across owner transfer, and resets completely on Husk transition when the status is living-only, cleanup, pool reuse, and new-run creation.
 
 The authoritative pose composition is:
 
@@ -477,6 +507,10 @@ Local damage flow separates impact visualization from durability targets:
 14. Clamp and normalize durability after every immediate or arrival-time subtraction. A Glyph whose durability reaches zero enters `HUSK`, keeps its gameplay outline footprint, and becomes immune to further durability damage.
 15. When an affected owner has no living Glyphs, transition the creature to `COLLAPSING`; only after collapse resolution may death rewards and cleanup occur.
 
+Immediate direct, topology-transfer arrival, Damage Spread, and Modifier secondary damage must converge on one Runtime-owned durability-application outcome before mutating a Glyph. That boundary preserves the root attack／reaction-chain identity, damage route, causal Weapon Instance, base direct damage, Modifier bonuses, resolved pre-overkill amount, actual Durability delta, and previous／next Glyph state. Only an actual `Living → HUSK` transition may authorize Volatile, topology invalidation, or collapse work. Do not duplicate these decisions in weapon, pending-transfer, status, or renderer code.
+
+Run Modifier interaction, including the additive-from-base Crack／Disconnected formula, route eligibility, Overload threshold, same-owner Volatile topology, breadth-first waves, per-fixed-step processing budget, Slime latch, and status arming rules, is defined only in [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md). Modifier acquisition changes the current run's world rules; a pending direct transfer evaluates active world Modifier rules when it actually arrives, while its weapon-authored reserved base damage remains snapshotted.
+
 Primary quota selection must be local-first and topology-driven, never random or transferred to another owner. Damage Spread is the only explicit cross-owner secondary phase described here and remains spatial rather than topology-driven. Never implement damage by subtracting creature HP first, damaging every Glyph uniformly, reducing a whole creature container's alpha, or using render state as the hitbox source of truth.
 
 ## 11. Boss and material rules
@@ -514,9 +548,15 @@ no Glyph is copied or lost
 no new combat durability is created
 ```
 
+### Boss Run Modifier rewards
+
+Read [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md) before changing Boss reward timing, Modifier pools, Cell statuses, `PAUSED_MODIFIER`, or the related UI. A split Boss authorizes one reward at the Encounter level only after the shared Encounter formally reaches `DEFEATED`; child bodies never reward independently. Copy the reward token before Boss cleanup, keep XP reward separate, exclude already-owned Modifier definitions, and use a dedicated atomic selection transaction. Never route this reward through the XP `WEAPON | MODULE` offer type.
+
 ## 12. Weapon and upgrade rules
 
 Read [`docs/content/weapon-system.md`](docs/content/weapon-system.md) before changing this area. It defines the detailed permanent-unlock boundary, run acquisition, mixed three-card offers, ordered Module Slots, Rank upgrades, overwrite behavior, atomic commands, replacement semantics, UI flow, and prototype defaults. Do not duplicate a conflicting version of those rules in code comments or another document.
+
+Run Modifiers are a separate Boss-reward domain. They do not occupy Module Slots, do not use `WEAPON | MODULE` XP choices, and do not inherit the XP offer's exactly-three-card invariant when only two unowned Modifier definitions remain.
 
 Separate weapon concerns:
 
@@ -589,8 +629,8 @@ New combat features must first define their Glyph interaction instead of modifyi
 
 ### Battlefield visual-theme contract
 
-- `src/game/content/visuals/prototypeCombatVisualTheme.ts` is the one routinely tuned authoring source for battle-canvas base palettes, alpha, brightness-emphasis tiers, outlines, and XP transition／flash timing values. Every color field in this authoring config uses a `#RRGGBB` string; short hex, alpha-bearing hex, CSS color names, missing `#`, and non-hex characters are invalid. Alpha stays explicit beside the color instead of being packed into the string. `combatVisualTheme.ts` owns distinct authoring and prepared types, structural validation, one-time conversion, and the immutable prepared representation; neither file imports PixiJS or React. Material-, weapon-, and collapse-specific behavior durations remain with their owning validated content unless the timing belongs to the XP presentation lifecycle.
-- The theme covers semantic roles for the player, every player-attack family, ordinary-enemy appearance profiles and their shared emphasis ladder, Elite／Boss tiers, XP and other drops, hit／spread／transfer effects, Husk states, backgrounds, obstacles, and other battlefield elements. Base-palette hue／saturation／lightness and presentation brightness emphasis are separate concerns: sharing a tier must never force differently hued creatures toward the same pale tint. React-only menu／HUD styling remains a separate UI concern.
+- `src/game/content/visuals/prototypeCombatVisualTheme.ts` is the one routinely tuned authoring source for battle-canvas base palettes, alpha, brightness-emphasis tiers, outlines, XP transition／flash timing values, and Run Modifier semantic presentation profiles. Every color field in this authoring config uses a `#RRGGBB` string; short hex, alpha-bearing hex, CSS color names, missing `#`, and non-hex characters are invalid. Alpha stays explicit beside the color instead of being packed into the string. `combatVisualTheme.ts` owns distinct authoring and prepared types, structural validation, one-time conversion, and the immutable prepared representation; neither file imports PixiJS or React. Material-, weapon-, and collapse-specific behavior durations remain with their owning validated content; Modifier `attack／hold／settle`, amplitude, duty-cycle, suppression-priority, overlay-character, fragment-brightness, and effect-density values belong to the theme's Modifier roles because they jointly define battlefield readability.
+- The theme covers semantic roles for the player, every player-attack family, ordinary-enemy appearance profiles and their shared emphasis ladder, Elite／Boss tiers, XP and other drops, hit／spread／transfer effects, Run Modifier persistent／transient channels, Husk states, backgrounds, obstacles, and other battlefield elements. Base-palette hue／saturation／lightness and presentation brightness emphasis are separate concerns: sharing a tier must never force differently hued creatures toward the same pale tint. React-only menu／HUD styling remains a separate UI concern.
 - Creature and weapon content selects stable appearance／effect role IDs. It does not contain color literals, and the renderer must not grow a species or weapon `switch`. During `LOADING`, `prepareGameContent()` strictly validates every authoring color string, converts each one exactly once into a 24-bit numeric tint, validates non-aesthetic structure and numeric ranges, and freezes the prepared theme into `PreparedGameContent`. The GameHost passes that same prepared theme to Runtime and rendering instead of creating a second copy. Fixed steps, per-Glyph resolution, render snapshots, and Pixi synchronization consume only prepared numeric tints and must never parse color strings.
 - Do not reject a valid `#RRGGBB` authoring color because it violates a configured saturation／lightness bound, an inferred state-luminance order, or a cross-role brightness ceiling. Those are art-direction targets for browser visual tuning, not Runtime startup invariants. Structural role IDs, required non-empty palettes, alpha ranges, tier assignments, and non-color timing／gain relationships remain validated. Automated tests may verify conversion and structural behavior, but must not pin exact palette literals or prevent deliberate color experimentation.
 - XP presentation age derives from simulation／gameplay presentation time. Occasional flashes are deterministically staggered by stable drop ID, consume no gameplay RNG, never synchronize the whole drop field, and freeze across any complete gameplay pause. Pickup radius, reward value, and collection timing are independent of presentation state.
@@ -604,6 +644,8 @@ stage
     backgroundLayer
     dropLayer
     enemyGlyphLayer
+    modifierStatusLayer  persistent bounded overlays such as CRACKED fragments
+    modifierEffectLayer  short Runtime-authorized OVERLOAD／VOLATILE events
     projectileLayer
     effectLayer
   debugLayer
@@ -619,6 +661,10 @@ Rendering rules:
 - `BitmapText` is suitable for frequently changing counters or longer text whose characters do not need independent gameplay ownership.
 - For high-volume independent Glyph views, use atlas frames with pooled `Particle`/`Sprite` views according to required features.
 - `ParticleContainer` is appropriate only when particles share a base texture and do not require per-particle filters, masks, events, or blend modes.
+- Run Modifier visuals use bounded resolved channels: base appearance, persistent motion, persistent surface, transient deformation, and event overlay. Do not send an unbounded generic status list to PixiJS or let independent effects multiply scale, tint, displacement, and shake without a central priority／clamp resolver.
+- Modifier motion uses short validated `attackDurationMs／holdDurationMs／settleDurationMs` profiles. Persistent instability is mostly still with deterministic low-duty-cycle micro-bursts; no Modifier uses wall-clock phase, endless sine shake, long blur／glow tails, or renderer load to alter authoritative timing.
+- OVERLOAD compression requires independent `scaleX／scaleY` or an equivalent bounded directional-deformation contract in render snapshots; it must not mutate authoritative Glyph scale or collision. VOLATILE uses discrete resolved source pulses, never a radial ring or source-to-target line. DISCONNECTED render offsets remain small and never become canonical topology or hitbox input.
+- Compile CRACKED fragment frames from the shared Printable ASCII atlas during loading and render them through a pooled layer sharing the same atlas source. Use two or three validated fragments per visible CRACKED Cell with deterministic pattern selection. Do not rasterize Text, generate textures, create Containers, or attach filters／masks per Cell at hit time. Consider a custom particle shader／batcher only after the pooled-fragment stress profile proves it necessary.
 - Set only actually animated `dynamicProperties` on `ParticleContainer`. Any pooled layer whose tint or alpha changes by appearance state must enable and reset its color property explicitly.
 - Synchronize authoritative Glyph rotation through the render snapshot when a motion profile uses it. Before enabling rotation uploads on a shared high-population layer, measure the cost; if it is material, partition rotating and non-rotating Glyph batches without creating per-creature containers or display objects.
 - Set `boundsArea` when using `ParticleContainer`, especially with culling.
@@ -674,6 +720,7 @@ Track at minimum:
 - active entity/projectile/effect counts and Glyph counts split by `HEALTHY`, `DAMAGED`, and `HUSK`;
 - Range diagnostics when that Module is enabled: range-expired projectile count, active projectile path-distance budgets, orbit swept-collision candidates, and precise swept tests;
 - topology-transfer diagnostics: active pending transfers, total retained path Cells, arrival commits, invalid-target cancellations, path／state pool misses, and path-search time;
+- Run Modifier diagnostics: active definitions and authorization origins, Boss reward tokens, run-start-test authorization count, domain-separated offer-RNG use, Volatile active chains／current waves／next waves, resolved and deferred source events, maximum wave depth, scheduler pool misses, affected owners with deferred structural commits, DISCONNECTED topology-cache rebuild time, vulnerable component counts, active Crack／latch counts, Overload evaluations／successes, active／peak cracked-fragment particles, Modifier core／optional overlay counts, visual-budget suppressions, and status／effect pool misses;
 - pool capacity and pool misses;
 - draw calls when practical;
 - capped/dropped simulation steps;
@@ -688,6 +735,8 @@ Quality degradation order should be deliberate, for example:
 4. cap rendering at 30 FPS while preserving fixed simulation semantics.
 
 Do not degrade gameplay projectile accuracy, local damage correctness, or Boss HP invariants to improve visuals.
+
+`maxExplosionResolutionsPerFixedStep` is a frozen authoritative timing budget, not a hard Volatile-chain cap and not an adaptive renderer quality setting. Lower values may improve simulation p95 and wave readability but change authoritative propagation timing, so they must come from validated config and remain fixed for the run. Unprocessed explosion events remain queued across fixed steps and complete gameplay pauses; no event may be dropped, merged into a fake AoE, or applied early because PixiJS, particles, or pools are under pressure.
 
 Directional topology paths are searched and frozen once when the hit schedules a pending transfer. Advancing active transfers must be `O(active transfers + path steps reached this fixed step)` and must not rerun owner-wide topology search every step. Reuse path/state storage where practical, but never drop, apply early, or duplicate reserved damage because a visual or pool budget is exhausted; quality degradation may remove only nonessential particles, not the ordered Cell pulse, target-arrival timing, or validation semantics.
 
@@ -796,6 +845,31 @@ throttles uninterrupted orbit overlap per ball／owner at `200ms`
 does not commit an orbit re-hit gate when a preliminary sweep candidate yields no Impact Cells
 uses relative ball／owner swept motion so moving targets cannot cross the rendered contact without collision
 publishes weapon-specific Range previews without letting React derive combat values
+validates the run-start Modifier testing flag and produces no offer, authorization, or RNG side effect when it is false
+creates one run-start test offer only after a valid initial Weapon and before the first fixed step when the flag is true
+commits the run-start test offer through the normal Modifier transaction without consuming a Boss token, advancing the Boss RNG domain, or granting resume invulnerability
+clears the test authorization and consumed guard on run teardown, then creates at most one fresh authorization for the next valid run
+authorizes one Boss Modifier reward only after the Encounter reaches DEFEATED
+offers three unique unowned Modifiers when possible and two when exactly two remain
+rejects stale or duplicate Modifier commands without consuming the reward
+keeps Modifier and queued XP decisions continuously paused and resumes only once
+emits one Volatile explosion only for the first Living-to-Husk transition
+advances Volatile in stable breadth-first waves without dropping deferred events
+never resolves a chain's newly created next wave in the same fixed step
+keeps the Volatile processing budget frozen for the run and independent of Pixi load
+defers only the affected living owner's Slime structural commit while its Volatile chain can still deal damage
+classifies Disconnected from Living canonical components regardless of deformation distance
+protects every component at or above eighty percent of the largest component
+applies Disconnected only to actual direct targets, including transfer arrival targets
+carries the higher Disconnected multiplier through one Slime reassembly episode
+applies no damage when Overload adds Crack
+prevents one root attack event, including delayed transfers, from consuming its newly created Crack
+composes maximum Disconnected and Crack as two-times base direct damage rather than 2.24-times
+lets Spread and Volatile Husk transitions continue Volatile without inheriting other Modifier bonuses
+keeps Disconnected presentation mostly still, severity-driven, pause-frozen, and independent of authoritative Glyph positions
+presents Overload as one directional compression／radial event and Cracked as bounded pooled atlas fragments without per-Cell filters or runtime textures
+presents every resolved Volatile source as a discrete core topology pulse with same-wave simultaneity and cross-wave order
+resolves simultaneous Modifier visuals through bounded channels and fully resets pooled fragment／effect state on reuse
 ```
 
 ## 18. AI implementation workflow
@@ -805,10 +879,11 @@ Before changing code:
 1. Read the relevant section of `spec.md`.
 2. For player health, shields, incoming player damage, player death, run results, or game-over／return-to-menu work, read `docs/content/player-survival.md` completely.
 3. For weapon, loadout, Module, upgrade-card, or replacement work, read `docs/content/weapon-system.md` completely.
-4. Inspect nearby code and the current repository structure.
-5. Identify the owning layer and verify dependency direction.
-6. State assumptions only when the spec and relevant content document are silent.
-7. Prefer the smallest vertical slice that proves the architecture.
+4. For Run Modifier, Boss Modifier reward, Cell status, Modifier damage composition, `PAUSED_MODIFIER`, or related UI work, read `docs/content/run-modifiers.md` completely.
+5. Inspect nearby code and the current repository structure.
+6. Identify the owning layer and verify dependency direction.
+7. State assumptions only when the spec and relevant content document are silent.
+8. Prefer the smallest vertical slice that proves the architecture.
 
 When adding a feature:
 
@@ -841,5 +916,6 @@ Do not silently hard-code these product decisions when they materially affect im
 - analytics/telemetry collection;
 - the testing stack to add when tests are first implemented;
 - weapons beyond the confirmed first three, permanent unlock conditions, Module Rank tables beyond the confirmed Attack Speed／Projectile Count／Damage Spread／Range／Knockback prototype tables, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
+- same-name Run Modifier Rank／stack／replacement rules, eligible Modifier pools with fewer than two definitions, cross-owner Volatile geometry, future DISCONNECTED bridge／core criteria, and Boss Modifier reward cadence beyond the confirmed first Slime reward.
 
 Use a conservative temporary default only when it is easy to reverse, and record it next to the relevant contract.

@@ -124,6 +124,7 @@ export interface EnemyState {
   encounterId: number | null
   rootBossId: number | null
   splitReferenceCellCount: number
+  reassemblyEpisodeId: number
   trackingLoad: number
 }
 
@@ -172,6 +173,8 @@ export interface PendingDamageTransferState {
   sourceGlyphId: number
   targetGlyphId: number
   reservedDamage: number
+  impactDirectionX: number
+  impactDirectionY: number
   pathGlyphIds: number[]
   nextPathIndex: number
   remainingToNextPulseMs: number

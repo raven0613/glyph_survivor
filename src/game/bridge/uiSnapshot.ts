@@ -1,3 +1,5 @@
+import type { RunModifierOfferOrigin } from '../runtime/runModifierState.ts'
+
 export interface UiUpgradeChoice {
   readonly id: string
   readonly kind: 'WEAPON' | 'MODULE'
@@ -6,6 +8,14 @@ export interface UiUpgradeChoice {
   readonly description?: string
   readonly rankPreviews?: readonly Readonly<UiUpgradeRankPreview>[]
   readonly weaponTargetPreviews?: readonly Readonly<UiUpgradeWeaponTargetPreview>[]
+}
+
+export interface UiModifierChoice {
+  readonly id: string
+  readonly definitionId: string
+  readonly title: string
+  readonly description: string
+  readonly identityGlyph: string
 }
 
 export interface UiUpgradeRankPreview {
@@ -89,6 +99,10 @@ export interface UiSnapshot {
   readonly upgradeChoices: readonly Readonly<UiUpgradeChoice>[]
   readonly pendingUpgradeCount: number
   readonly activeUpgradeOfferId: string | null
+  readonly modifierChoices: readonly Readonly<UiModifierChoice>[]
+  readonly activeModifierOfferId: string | null
+  readonly activeModifierOfferOrigin: RunModifierOfferOrigin | null
+  readonly ownedModifierDefinitionIds: readonly string[]
   readonly recoverableError: string | null
 }
 
@@ -130,6 +144,9 @@ interface MachineSnapshotForUi {
     readonly upgradeChoices: readonly UiUpgradeChoice[]
     readonly pendingUpgradeCount: number
     readonly activeUpgradeOfferId: string | null
+    readonly modifierChoices?: readonly UiModifierChoice[]
+    readonly activeModifierOfferId?: string | null
+    readonly activeModifierOfferOrigin?: RunModifierOfferOrigin | null
     readonly recoverableError: string | null
     readonly canEnterRunResult: boolean
   }
@@ -155,6 +172,10 @@ export const INITIAL_UI_SNAPSHOT: Readonly<UiSnapshot> = Object.freeze({
   upgradeChoices: Object.freeze([]),
   pendingUpgradeCount: 0,
   activeUpgradeOfferId: null,
+  modifierChoices: Object.freeze([]),
+  activeModifierOfferId: null,
+  activeModifierOfferOrigin: null,
+  ownedModifierDefinitionIds: Object.freeze([]),
   recoverableError: null,
 })
 
@@ -167,6 +188,7 @@ export function createUiSnapshot(
   equippedWeapons: readonly Readonly<UiEquippedWeapon>[] =
     EMPTY_EQUIPPED_WEAPONS,
   maximumEquippedWeapons = 0,
+  ownedModifierDefinitionIds: readonly string[] = Object.freeze([]),
 ): Readonly<UiSnapshot> {
   if (typeof machineSnapshot.value !== 'string') {
     throw new TypeError('Game phase must be a string state value.')
@@ -201,6 +223,14 @@ export function createUiSnapshot(
       }),
     ),
   )
+  const modifierChoices = Object.freeze(
+    (machineSnapshot.context.modifierChoices ?? []).map((choice) =>
+      Object.freeze({ ...choice }),
+    ),
+  )
+  const copiedOwnedModifierDefinitionIds = Object.freeze([
+    ...ownedModifierDefinitionIds,
+  ])
   const copiedInitialWeaponChoices = Object.freeze(
     initialWeaponChoices.map((choice) => Object.freeze({ ...choice })),
   )
@@ -259,6 +289,12 @@ export function createUiSnapshot(
     upgradeChoices,
     pendingUpgradeCount: machineSnapshot.context.pendingUpgradeCount,
     activeUpgradeOfferId: machineSnapshot.context.activeUpgradeOfferId,
+    modifierChoices,
+    activeModifierOfferId:
+      machineSnapshot.context.activeModifierOfferId ?? null,
+    activeModifierOfferOrigin:
+      machineSnapshot.context.activeModifierOfferOrigin ?? null,
+    ownedModifierDefinitionIds: copiedOwnedModifierDefinitionIds,
     recoverableError: machineSnapshot.context.recoverableError,
   })
 }

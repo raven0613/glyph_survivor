@@ -57,6 +57,87 @@ export interface TopologyTransferAppearance<ColorValue = number>
   readonly pulseDurationMs: number
 }
 
+export interface EffectBeatTiming {
+  readonly attackDurationMs: number
+  readonly holdDurationMs: number
+  readonly settleDurationMs: number
+}
+
+export interface VolatileSourceClampAppearance extends EffectBeatTiming {
+  readonly minimumScale: number
+}
+
+export interface VolatileReleaseAppearance<ColorValue = number>
+  extends VisualColor<ColorValue>, EffectBeatTiming {
+  readonly delayMs: number
+  readonly startDistance: number
+  readonly endDistance: number
+  readonly glyphScale: number
+  readonly characters: readonly string[]
+}
+
+export interface VolatileNeighborJoltAppearance extends EffectBeatTiming {
+  readonly delayMs: number
+  readonly maximumOffset: number
+  readonly maximumRotation: number
+}
+
+export interface VolatileEffectAppearance<ColorValue = number> {
+  readonly sourceClamp: VolatileSourceClampAppearance
+  readonly release: VolatileReleaseAppearance<ColorValue>
+  readonly neighborJolt: VolatileNeighborJoltAppearance
+}
+
+export interface OverloadCompressionAppearance extends EffectBeatTiming {
+  readonly parallelScale: number
+  readonly perpendicularScale: number
+}
+
+export interface OverloadShockwaveAppearance<ColorValue = number>
+  extends VisualColor<ColorValue>, EffectBeatTiming {
+  readonly startRadius: number
+  readonly endRadius: number
+  readonly particleCount: number
+  readonly glyphScale: number
+  readonly characters: readonly string[]
+}
+
+export interface CrackedSurfaceAppearance {
+  readonly alphaMultiplier: number
+  readonly maximumFragmentOffset: number
+  readonly maximumFragmentRotation: number
+  readonly fragmentBrightnessGains: readonly number[]
+}
+
+export interface OverloadEffectAppearance<ColorValue = number> {
+  readonly compression: OverloadCompressionAppearance
+  readonly shockwave: OverloadShockwaveAppearance<ColorValue>
+  readonly crackedSurface: CrackedSurfaceAppearance
+}
+
+export interface DisconnectedAmbientAppearance extends EffectBeatTiming {
+  readonly intervalMs: number
+  readonly maximumSpacingOffset: number
+  readonly maximumJitterOffset: number
+  readonly maximumRotation: number
+}
+
+export interface DisconnectedHitShakeAppearance extends EffectBeatTiming {
+  readonly maximumOffset: number
+  readonly residualOffsetRatio: number
+  readonly maximumRotation: number
+}
+
+export interface DisconnectedEffectAppearance {
+  readonly ambient: DisconnectedAmbientAppearance
+  readonly hitShake: DisconnectedHitShakeAppearance
+}
+
+export interface RunModifierCompositionAppearance {
+  readonly maximumOffset: number
+  readonly maximumRotation: number
+}
+
 export interface GlyphAppearanceProfile<ColorValue = number> {
   readonly id: GlyphAppearanceProfileId
   readonly brightnessTierId: GlyphBrightnessTierId
@@ -125,6 +206,12 @@ export interface CombatVisualTheme<ColorValue = number> {
     readonly spreadFeedbackScaleBonus: number
     readonly spreadFeedbackDurationMs: number
     readonly topologyTransfer: TopologyTransferAppearance<ColorValue>
+    readonly runModifiers: {
+      readonly composition: RunModifierCompositionAppearance
+      readonly volatile: VolatileEffectAppearance<ColorValue>
+      readonly disconnected: DisconnectedEffectAppearance
+      readonly overload: OverloadEffectAppearance<ColorValue>
+    }
   }
 }
 

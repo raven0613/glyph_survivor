@@ -12,6 +12,10 @@ import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 export interface SceneLayers {
   readonly worldRoot: Container
   readonly enemyLayer: ParticleContainer<Particle>
+  readonly crackedSurfaceLayer: ParticleContainer<Particle>
+  readonly overloadDeformationLayer: Container
+  readonly overloadShockwaveLayer: ParticleContainer<Particle>
+  readonly volatileCoreOverlayLayer: ParticleContainer<Particle>
   readonly topologyTransferPulseLayer: ParticleContainer<Particle>
   readonly effectLayer: ParticleContainer<Particle>
   readonly flameLayer: ParticleContainer<Particle>
@@ -101,6 +105,48 @@ export function createSceneLayers(
       color: true,
     },
   })
+  const crackedSurfaceLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    label: 'cracked-glyph-surfaces',
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
+  const overloadDeformationLayer = new Container({
+    label: 'overload-deformations',
+    boundsArea: createWorldBounds(),
+  })
+  overloadDeformationLayer.eventMode = 'none'
+  overloadDeformationLayer.interactiveChildren = false
+  const overloadShockwaveLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    label: 'overload-shockwaves',
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
+  const volatileCoreOverlayLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    label: 'volatile-core-overlays',
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
   const projectileLayer = new ParticleContainer<Particle>({
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
@@ -168,8 +214,12 @@ export function createSceneLayers(
     backgroundLayer,
     dropLayer,
     enemyLayer,
+    crackedSurfaceLayer,
+    overloadDeformationLayer,
     topologyTransferPulseLayer,
     effectLayer,
+    overloadShockwaveLayer,
+    volatileCoreOverlayLayer,
     flameLayer,
     projectileLayer,
     orbitLayer,
@@ -180,6 +230,10 @@ export function createSceneLayers(
   return Object.freeze({
     worldRoot,
     enemyLayer,
+    crackedSurfaceLayer,
+    overloadDeformationLayer,
+    overloadShockwaveLayer,
+    volatileCoreOverlayLayer,
     topologyTransferPulseLayer,
     effectLayer,
     flameLayer,

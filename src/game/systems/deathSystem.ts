@@ -1,6 +1,7 @@
 import type { BossEncounterState } from '../runtime/worldEntities.ts'
 import { recordFormalKill } from '../runtime/runStatistics.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import { hasPendingVolatileSourcesForOwner } from '../runtime/volatileState.ts'
 
 function getEncounterCurrentDurability(
   world: WorldState,
@@ -37,6 +38,14 @@ function resolveEncounterDeath(
       }
     }
     if (encounter.collapseRemainingMs > 0) {
+      return
+    }
+    const hasPendingVolatileSources = world.enemies.some(
+      (enemy) =>
+        enemy.encounterId === encounter.id &&
+        hasPendingVolatileSourcesForOwner(world.volatileState, enemy.id),
+    )
+    if (hasPendingVolatileSources) {
       return
     }
 
@@ -89,6 +98,11 @@ export function runDeathSystem(world: WorldState, deltaMs = 0): void {
         enemy.collapseRemainingMs - deltaMs,
       )
       if (enemy.collapseRemainingMs === 0) {
+        if (
+          hasPendingVolatileSourcesForOwner(world.volatileState, enemy.id)
+        ) {
+          continue
+        }
         enemy.phase = 'DEAD'
         recordFormalKill(world.runStatistics)
       }

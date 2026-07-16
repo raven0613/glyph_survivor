@@ -3,6 +3,7 @@ import {
   isGlyphLivingState,
   type GlyphCellState,
 } from '../glyph/glyphStore.ts'
+export { findLivingConnectedComponents } from '../glyph/livingConnectedComponents.ts'
 
 const SLIME_LAYOUT_SPACING = 18
 const SLIME_LAYOUT_ASPECT_RATIO = 1.8
@@ -35,56 +36,6 @@ function compareCanonicalCells(
     first.topologyY - second.topologyY ||
     first.topologyX - second.topologyX ||
     first.id - second.id
-  )
-}
-
-export function findLivingConnectedComponents<T extends SlimeTopologyCell>(
-  cells: readonly T[],
-): T[][] {
-  const livingByCoordinate = new Map<string, T>()
-  for (const cell of cells) {
-    if (isGlyphLivingState(cell.state)) {
-      livingByCoordinate.set(`${cell.topologyX},${cell.topologyY}`, cell)
-    }
-  }
-
-  const visited = new Set<number>()
-  const components: T[][] = []
-  const orderedCells = [...livingByCoordinate.values()].sort(compareCanonicalCells)
-  const neighborOffsets = [
-    [0, -1],
-    [1, 0],
-    [0, 1],
-    [-1, 0],
-  ] as const
-
-  for (const start of orderedCells) {
-    if (visited.has(start.id)) {
-      continue
-    }
-    const component: T[] = []
-    const queue = [start]
-    visited.add(start.id)
-
-    for (let index = 0; index < queue.length; index += 1) {
-      const cell = queue[index]
-      component.push(cell)
-      for (const [offsetX, offsetY] of neighborOffsets) {
-        const neighbor = livingByCoordinate.get(
-          `${cell.topologyX + offsetX},${cell.topologyY + offsetY}`,
-        )
-        if (neighbor && !visited.has(neighbor.id)) {
-          visited.add(neighbor.id)
-          queue.push(neighbor)
-        }
-      }
-    }
-    component.sort(compareCanonicalCells)
-    components.push(component)
-  }
-
-  return components.sort(
-    (first, second) => first[0].id - second[0].id,
   )
 }
 
