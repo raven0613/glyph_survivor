@@ -132,10 +132,14 @@ function prepareCombatVisualTheme(
       spreadFeedbackAlpha: input.effects.spreadFeedbackAlpha,
       spreadFeedbackScaleBonus: input.effects.spreadFeedbackScaleBonus,
       spreadFeedbackDurationMs: input.effects.spreadFeedbackDurationMs,
-      transferLink: prepareVisualColor(
-        input.effects.transferLink,
-        'transfer link',
-      ),
+      topologyTransfer: {
+        ...prepareVisualColor(
+          input.effects.topologyTransfer,
+          'topology transfer',
+        ),
+        stepIntervalMs: input.effects.topologyTransfer.stepIntervalMs,
+        pulseDurationMs: input.effects.topologyTransfer.pulseDurationMs,
+      },
     },
   }
 }
@@ -308,7 +312,15 @@ function validateAndFreezeCombatVisualTheme(
     },
   )
   validateVisualColor(input.drops.other, 'other drop')
-  validateVisualColor(input.effects.transferLink, 'transfer link')
+  validateVisualColor(input.effects.topologyTransfer, 'topology transfer')
+  requirePositiveFinite(
+    input.effects.topologyTransfer.stepIntervalMs,
+    'topology transfer stepIntervalMs',
+  )
+  requirePositiveFinite(
+    input.effects.topologyTransfer.pulseDurationMs,
+    'topology transfer pulseDurationMs',
+  )
   requireFiniteRange(
     input.effects.spreadFeedbackAlpha,
     0,
@@ -407,7 +419,9 @@ function validateAndFreezeCombatVisualTheme(
       spreadFeedbackAlpha: input.effects.spreadFeedbackAlpha,
       spreadFeedbackScaleBonus: input.effects.spreadFeedbackScaleBonus,
       spreadFeedbackDurationMs: input.effects.spreadFeedbackDurationMs,
-      transferLink: freezeVisualColor(input.effects.transferLink),
+      topologyTransfer: Object.freeze({
+        ...input.effects.topologyTransfer,
+      }),
     }),
   })
   validateTierAssignments(theme)

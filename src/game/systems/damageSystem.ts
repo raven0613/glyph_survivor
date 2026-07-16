@@ -9,25 +9,22 @@ import {
   DAMAGE_PRIMARY_SCOPE,
   LOCAL_DAMAGE_SHAPE,
   type DamageClaim,
+  type DamageTransferReservation,
   type GlyphDamageEvent,
 } from '../glyph/localDamage.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
-import type {
-  DamageTransferLinkState,
-  EnemyState,
-} from '../runtime/worldEntities.ts'
+import type { EnemyState } from '../runtime/worldEntities.ts'
 import { isEnemyOutlineCollisionPhase } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { recordWeaponDamage } from '../runtime/runStatistics.ts'
 import { getDamageSpreadBandIndex } from './damageSpreadGeometry.ts'
+import { schedulePendingDamageTransfer } from './pendingDamageTransferSystem.ts'
+import { resolveOrbitContactDamageResult } from './orbitWeaponSystem.ts'
 import {
   selectGlyphDamage,
   type DamageSelectionCell,
   type DamageSelectionShape,
 } from './glyphDamageSelection.ts'
-
-const DAMAGE_TRANSFER_LINK_DURATION_MS = 120
-const MAX_ACTIVE_DAMAGE_TRANSFER_LINKS = 96
 
 type GlyphSelectionCell = DamageSelectionCell & { readonly glyph: GlyphCell }
 type MutableDamageSelectionCell = {
@@ -102,6 +99,8 @@ function getSearchRadius(
 function createOwnerSelectionCells(
   world: WorldState,
   enemy: EnemyState,
+  ownerX: number,
+  ownerY: number,
 ): GlyphSelectionCell[] {
   return world.glyphStore.getOwnerGlyphs(enemy.id).map((glyph) => ({
     glyph,
@@ -109,8 +108,8 @@ function createOwnerSelectionCells(
     state: glyph.state,
     topologyX: glyph.topologyX,
     topologyY: glyph.topologyY,
-    worldX: getGlyphWorldX(enemy.x, glyph),
-    worldY: getGlyphWorldY(enemy.y, glyph),
+    worldX: getGlyphWorldX(ownerX, glyph),
+    worldY: getGlyphWorldY(ownerY, glyph),
     collisionRadius: glyph.collisionRadius,
   }))
 }
@@ -126,6 +125,7 @@ function addDamageClaim(
   amount: number,
   isSpread: boolean,
   spreadVisualRoleId: DamageClaim['spreadVisualRoleId'],
+  transferReservation: DamageTransferReservation | null = null,
 ): void {
   const scratch = world.damageResolutionScratch
   const existingIndex = scratch.claimIndexByGlyphId.get(glyphId)
@@ -139,6 +139,7 @@ function addDamageClaim(
       existing.amount = amount
       existing.isSpread = isSpread
       existing.spreadVisualRoleId = spreadVisualRoleId
+      existing.transferReservation = transferReservation
     }
     return
   }
@@ -148,35 +149,10 @@ function addDamageClaim(
   claim.amount = amount
   claim.isSpread = isSpread
   claim.spreadVisualRoleId = spreadVisualRoleId
+  claim.transferReservation = transferReservation
   scratch.claims[scratch.claimCount] = claim
   scratch.claimIndexByGlyphId.set(glyphId, scratch.claimCount)
   scratch.claimCount += 1
-}
-
-function createDamageTransferLink(
-  world: WorldState,
-  source: GlyphSelectionCell,
-  target: GlyphSelectionCell,
-): void {
-  if (world.damageTransferLinks.length >= MAX_ACTIVE_DAMAGE_TRANSFER_LINKS) {
-    world.diagnostics.damageTransferLinkDropCount += 1
-    return
-  }
-  const link =
-    world.damageTransferLinkPool.pop() ?? ({} as DamageTransferLinkState)
-  Object.assign(link, {
-    id: world.nextDamageTransferLinkId,
-    sourceGlyphId: source.id,
-    targetGlyphId: target.id,
-    sourceX: source.worldX,
-    sourceY: source.worldY,
-    targetX: target.worldX,
-    targetY: target.worldY,
-    remainingMs: DAMAGE_TRANSFER_LINK_DURATION_MS,
-    durationMs: DAMAGE_TRANSFER_LINK_DURATION_MS,
-  })
-  world.nextDamageTransferLinkId += 1
-  world.damageTransferLinks.push(link)
 }
 
 function collectPrimaryDamageForOwner(
@@ -188,16 +164,22 @@ function collectPrimaryDamageForOwner(
   if (!isEnemyOutlineCollisionPhase(enemy.phase)) {
     return false
   }
+  const pathSearchStartedAtMs = performance.now()
+  const ownerX = event.lockedOwnerCollisionX ?? enemy.x
+  const ownerY = event.lockedOwnerCollisionY ?? enemy.y
   const selection = selectGlyphDamage(
-    createOwnerSelectionCells(world, enemy),
+    createOwnerSelectionCells(world, enemy, ownerX, ownerY),
     shape,
     event.targetMode,
+    event.frontierTraversal,
   )
+  world.diagnostics.topologyPathSearchTimeMs +=
+    performance.now() - pathSearchStartedAtMs
   if (selection.impactCells.length === 0) {
     return false
   }
 
-  for (const target of selection.damageTargets) {
+  for (const target of selection.immediateDamageTargets) {
     addDamageClaim(world, target.id, event.amount, false, null)
   }
   for (const impact of selection.impactCells) {
@@ -209,10 +191,25 @@ function collectPrimaryDamageForOwner(
     )
   }
   for (const transfer of selection.frontierTransfers) {
-    createDamageTransferLink(
+    const reservation: DamageTransferReservation = {
+      attackEventId: event.attackEventId,
+      sourceWeaponInstanceId: event.sourceWeaponInstanceId,
+      visualRoleId: event.visualRoleId,
+      ownerId: enemy.id,
+      sourceGlyphId: transfer.sourceImpactCell.id,
+      targetGlyphId: transfer.targetCell.id,
+      pathGlyphIds: transfer.pathCells.map(({ id }) => id),
+      sourceFlashDurationMs: getGlyphMaterialDefinition(
+        transfer.sourceImpactCell.glyph.material,
+      ).hitFlashDurationMs,
+    }
+    addDamageClaim(
       world,
-      transfer.sourceImpactCell,
-      transfer.targetCell,
+      transfer.targetCell.id,
+      event.amount,
+      false,
+      null,
+      reservation,
     )
   }
   return true
@@ -279,6 +276,14 @@ function applyDamageClaims(world: WorldState): number {
   let totalAppliedDamage = 0
   for (let index = 0; index < scratch.claimCount; index += 1) {
     const claim = scratch.claims[index]
+    if (claim.transferReservation) {
+      schedulePendingDamageTransfer(
+        world,
+        claim.transferReservation,
+        claim.amount,
+      )
+      continue
+    }
     const glyph = world.glyphStore.getById(claim.glyphId)
     if (!glyph) {
       continue
@@ -338,6 +343,19 @@ function resolveDamageEvent(
         collectPrimaryDamageForOwner(world, event, shape, enemy) ||
         hasPrimaryImpact
     }
+  }
+
+  if (
+    event.sourceOrbitAttackId !== undefined &&
+    event.primaryScope === DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER
+  ) {
+    resolveOrbitContactDamageResult(
+      world,
+      event.sourceOrbitAttackId,
+      event.ownerId,
+      event.attackEventId,
+      hasPrimaryImpact,
+    )
   }
 
   if (!hasPrimaryImpact) {

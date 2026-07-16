@@ -3,10 +3,18 @@ import {
   type GlyphCellState,
 } from '../glyph/glyphStore.ts'
 import {
+  DAMAGE_FRONTIER_TRAVERSAL,
   DAMAGE_TARGET_MODE,
+  type DamageFrontierTraversal,
   type DamageTargetMode,
 } from '../glyph/localDamage.ts'
 import { intersectsDamageShape } from './damageSpreadGeometry.ts'
+import {
+  createGlyphTopologyIndex,
+  findDeterministicTopologyPath,
+  findTopologyDistances,
+  type TopologyPathDirection,
+} from './glyphTopologyPath.ts'
 
 export { DAMAGE_TARGET_MODE } from '../glyph/localDamage.ts'
 export type { DamageTargetMode } from '../glyph/localDamage.ts'
@@ -42,19 +50,20 @@ export interface DamageSelectionCell {
 
 export interface GlyphDamageSelection<T extends DamageSelectionCell> {
   readonly impactCells: readonly T[]
-  readonly damageTargets: readonly T[]
+  readonly immediateDamageTargets: readonly T[]
   readonly frontierTransfers: readonly Readonly<{
     sourceImpactCell: T
     targetCell: T
+    pathCells: readonly T[]
   }>[]
 }
 
-const NEIGHBOR_OFFSETS = Object.freeze([
-  Object.freeze([0, -1] as const),
-  Object.freeze([1, 0] as const),
-  Object.freeze([0, 1] as const),
-  Object.freeze([-1, 0] as const),
-])
+interface ForwardCandidate<T extends DamageSelectionCell> {
+  readonly cell: T
+  readonly firstIntersection: number
+  readonly lateralDistance: number
+  readonly topologyDistance: number
+}
 
 function isLiving(cell: DamageSelectionCell): boolean {
   return cell.state !== GLYPH_CELL_STATE.HUSK
@@ -67,77 +76,124 @@ function distanceSquaredToShape(
   return (cell.worldX - shape.x) ** 2 + (cell.worldY - shape.y) ** 2
 }
 
-interface TopologyReach {
-  readonly distance: number
-  readonly sourceImpactCellId: number
+function normalizeDirection(
+  x: number,
+  y: number,
+): Readonly<TopologyPathDirection> | null {
+  const length = Math.hypot(x, y)
+  return length === 0 ? null : { x: x / length, y: y / length }
 }
 
-function findTopologyReach<T extends DamageSelectionCell>(
+function getSourceDirection(
+  source: DamageSelectionCell,
+  shape: DamageSelectionShape,
+  traversal: DamageFrontierTraversal,
+): Readonly<TopologyPathDirection> | null {
+  if (traversal.kind === DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION) {
+    return normalizeDirection(traversal.directionX, traversal.directionY)
+  }
+  return (
+    normalizeDirection(source.worldX - shape.x, source.worldY - shape.y) ??
+    (shape.kind === 'CONE'
+      ? normalizeDirection(shape.directionX, shape.directionY)
+      : null)
+  )
+}
+
+function getForwardCandidate<T extends DamageSelectionCell>(
+  source: T,
+  cell: T,
+  direction: Readonly<TopologyPathDirection>,
+  topologyDistance: number,
+): ForwardCandidate<T> | null {
+  const deltaX = cell.worldX - source.worldX
+  const deltaY = cell.worldY - source.worldY
+  const forwardDistance = deltaX * direction.x + deltaY * direction.y
+  if (forwardDistance <= 0) {
+    return null
+  }
+  const lateralDistance = Math.abs(
+    deltaX * direction.y - deltaY * direction.x,
+  )
+  if (lateralDistance > cell.collisionRadius) {
+    return null
+  }
+  const intersectionOffset = Math.sqrt(
+    Math.max(0, cell.collisionRadius ** 2 - lateralDistance ** 2),
+  )
+  const lastIntersection = forwardDistance + intersectionOffset
+  if (lastIntersection < 0) {
+    return null
+  }
+  return {
+    cell,
+    firstIntersection: Math.max(0, forwardDistance - intersectionOffset),
+    lateralDistance,
+    topologyDistance,
+  }
+}
+
+function selectTargetForSource<T extends DamageSelectionCell>(
   cells: readonly T[],
-  impactCells: readonly T[],
-): ReadonlyMap<number, Readonly<TopologyReach>> {
-  const cellsByCoordinate = new Map<string, T[]>()
-  for (const cell of cells) {
-    const key = `${cell.topologyX},${cell.topologyY}`
-    const occupants = cellsByCoordinate.get(key)
-    if (occupants) {
-      occupants.push(cell)
-    } else {
-      cellsByCoordinate.set(key, [cell])
-    }
-  }
-  for (const occupants of cellsByCoordinate.values()) {
-    occupants.sort((first, second) => first.id - second.id)
-  }
-
-  const reachById = new Map<number, TopologyReach>()
-  const queue = [...impactCells].sort((first, second) => first.id - second.id)
-  for (const cell of queue) {
-    reachById.set(cell.id, { distance: 0, sourceImpactCellId: cell.id })
-  }
-
-  for (let index = 0; index < queue.length; index += 1) {
-    const cell = queue[index]
-    const currentReach = reachById.get(cell.id)
-    if (!currentReach) {
-      continue
-    }
-    const nextDistance = currentReach.distance + 1
-    for (const [offsetX, offsetY] of NEIGHBOR_OFFSETS) {
-      const neighbors = cellsByCoordinate.get(
-        `${cell.topologyX + offsetX},${cell.topologyY + offsetY}`,
-      )
-      if (!neighbors) {
+  source: T,
+  selectedIds: ReadonlySet<number>,
+  topologyDistanceById: ReadonlyMap<number, number>,
+  direction: Readonly<TopologyPathDirection> | null,
+): T | undefined {
+  if (direction) {
+    const forwardCandidates: ForwardCandidate<T>[] = []
+    for (const cell of cells) {
+      const topologyDistance = topologyDistanceById.get(cell.id)
+      if (
+        topologyDistance === undefined ||
+        !isLiving(cell) ||
+        selectedIds.has(cell.id)
+      ) {
         continue
       }
-      for (const neighbor of neighbors) {
-        const previousReach = reachById.get(neighbor.id)
-        if (
-          previousReach &&
-          (previousReach.distance < nextDistance ||
-            (previousReach.distance === nextDistance &&
-              previousReach.sourceImpactCellId <=
-                currentReach.sourceImpactCellId))
-        ) {
-          continue
-        }
-        reachById.set(neighbor.id, {
-          distance: nextDistance,
-          sourceImpactCellId: currentReach.sourceImpactCellId,
-        })
-        queue.push(neighbor)
+      const candidate = getForwardCandidate(
+        source,
+        cell,
+        direction,
+        topologyDistance,
+      )
+      if (candidate) {
+        forwardCandidates.push(candidate)
       }
+    }
+    forwardCandidates.sort(
+      (first, second) =>
+        first.firstIntersection - second.firstIntersection ||
+        first.lateralDistance - second.lateralDistance ||
+        first.topologyDistance - second.topologyDistance ||
+        first.cell.id - second.cell.id,
+    )
+    if (forwardCandidates[0]) {
+      return forwardCandidates[0].cell
     }
   }
 
-  return reachById
+  return cells
+    .filter(
+      (cell) =>
+        isLiving(cell) &&
+        !selectedIds.has(cell.id) &&
+        topologyDistanceById.has(cell.id),
+    )
+    .sort(
+      (first, second) =>
+        (topologyDistanceById.get(first.id) ?? Number.POSITIVE_INFINITY) -
+          (topologyDistanceById.get(second.id) ?? Number.POSITIVE_INFINITY) ||
+        first.id - second.id,
+    )[0]
 }
 
-/** Separates local outline impacts from deterministic living durability targets. */
+/** Separates local outline impacts from deterministic remote damage paths. */
 export function selectGlyphDamage<T extends DamageSelectionCell>(
   cells: readonly T[],
   shape: DamageSelectionShape,
   targetMode: DamageTargetMode,
+  traversal: DamageFrontierTraversal,
 ): GlyphDamageSelection<T> {
   const impactCells = cells
     .filter((cell) => intersectsDamageShape(cell, shape))
@@ -147,53 +203,64 @@ export function selectGlyphDamage<T extends DamageSelectionCell>(
           distanceSquaredToShape(second, shape) || first.id - second.id,
     )
   if (impactCells.length === 0) {
-    return { impactCells, damageTargets: [], frontierTransfers: [] }
+    return {
+      impactCells,
+      immediateDamageTargets: [],
+      frontierTransfers: [],
+    }
   }
 
   const targetQuota =
     targetMode === DAMAGE_TARGET_MODE.SINGLE ? 1 : impactCells.length
-  const damageTargets = impactCells.filter(isLiving).slice(0, targetQuota)
-  if (damageTargets.length === targetQuota) {
-    return { impactCells, damageTargets, frontierTransfers: [] }
+  const immediateDamageTargets = impactCells
+    .filter(isLiving)
+    .slice(0, targetQuota)
+  if (immediateDamageTargets.length === targetQuota) {
+    return { impactCells, immediateDamageTargets, frontierTransfers: [] }
   }
 
-  const selectedIds = new Set(damageTargets.map((cell) => cell.id))
-  const impactIds = new Set(impactCells.map((cell) => cell.id))
-  const topologyReach = findTopologyReach(cells, impactCells)
-  const frontierTargets = cells
-    .filter(
-      (cell) =>
-        isLiving(cell) &&
-        !impactIds.has(cell.id) &&
-        topologyReach.has(cell.id),
-    )
-    .sort(
-      (first, second) =>
-        (topologyReach.get(first.id)?.distance ?? Number.POSITIVE_INFINITY) -
-          (topologyReach.get(second.id)?.distance ?? Number.POSITIVE_INFINITY) ||
-        distanceSquaredToShape(first, shape) -
-          distanceSquaredToShape(second, shape) ||
-        first.id - second.id,
-    )
-
-  const impactById = new Map(impactCells.map((cell) => [cell.id, cell]))
+  const topology = createGlyphTopologyIndex(cells)
+  const selectedIds = new Set(immediateDamageTargets.map((cell) => cell.id))
   const frontierTransfers: Array<{
     sourceImpactCell: T
     targetCell: T
+    pathCells: readonly T[]
   }> = []
-  for (const cell of frontierTargets) {
-    if (damageTargets.length >= targetQuota || selectedIds.has(cell.id)) {
+  for (const source of impactCells) {
+    if (
+      source.state !== GLYPH_CELL_STATE.HUSK ||
+      immediateDamageTargets.length + frontierTransfers.length >= targetQuota
+    ) {
       continue
     }
-    damageTargets.push(cell)
-    selectedIds.add(cell.id)
-    const sourceImpactCell = impactById.get(
-      topologyReach.get(cell.id)?.sourceImpactCellId ?? -1,
+    const direction = getSourceDirection(source, shape, traversal)
+    const topologyDistanceById = findTopologyDistances(topology, source.id)
+    const target = selectTargetForSource(
+      cells,
+      source,
+      selectedIds,
+      topologyDistanceById,
+      direction,
     )
-    if (sourceImpactCell) {
-      frontierTransfers.push({ sourceImpactCell, targetCell: cell })
+    if (!target) {
+      continue
     }
+    const pathCells = findDeterministicTopologyPath(
+      topology,
+      source.id,
+      target.id,
+      direction,
+    )
+    if (pathCells.length === 0) {
+      continue
+    }
+    selectedIds.add(target.id)
+    frontierTransfers.push({
+      sourceImpactCell: source,
+      targetCell: target,
+      pathCells,
+    })
   }
 
-  return { impactCells, damageTargets, frontierTransfers }
+  return { impactCells, immediateDamageTargets, frontierTransfers }
 }

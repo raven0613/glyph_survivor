@@ -51,6 +51,12 @@ export interface VisualColor<ColorValue = number> {
   readonly alpha: number
 }
 
+export interface TopologyTransferAppearance<ColorValue = number>
+  extends VisualColor<ColorValue> {
+  readonly stepIntervalMs: number
+  readonly pulseDurationMs: number
+}
+
 export interface GlyphAppearanceProfile<ColorValue = number> {
   readonly id: GlyphAppearanceProfileId
   readonly brightnessTierId: GlyphBrightnessTierId
@@ -118,7 +124,7 @@ export interface CombatVisualTheme<ColorValue = number> {
     readonly spreadFeedbackAlpha: number
     readonly spreadFeedbackScaleBonus: number
     readonly spreadFeedbackDurationMs: number
-    readonly transferLink: VisualColor<ColorValue>
+    readonly topologyTransfer: TopologyTransferAppearance<ColorValue>
   }
 }
 

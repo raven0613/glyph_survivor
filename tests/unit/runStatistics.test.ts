@@ -4,7 +4,10 @@ import { prepareGameContent } from '../../src/game/content/gameContent.ts'
 import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { ORBIT_ENERGY_BALL_WEAPON_ID } from '../../src/game/content/weapons/orbitEnergyBallWeapon.ts'
 import { PLAYER_ATTACK_VISUAL_ROLE } from '../../src/game/content/visuals/combatVisualTheme.ts'
-import { DAMAGE_TARGET_MODE } from '../../src/game/glyph/localDamage.ts'
+import {
+  DAMAGE_FRONTIER_TRAVERSAL,
+  DAMAGE_TARGET_MODE,
+} from '../../src/game/glyph/localDamage.ts'
 import { spawnProjectile } from '../../src/game/runtime/spawnProjectile.ts'
 import { synchronizeEquippedWeaponStatistics } from '../../src/game/runtime/runStatistics.ts'
 import { replaceWeapon } from '../../src/game/runtime/weaponLoadout.ts'
@@ -50,6 +53,11 @@ test('attributes only the actual clamped Glyph durability delta to the source We
     impactStrengthMultiplier: 1,
     impactDirectionX: 1,
     impactDirectionY: 0,
+    frontierTraversal: {
+      kind: DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION,
+      directionX: 1,
+      directionY: 0,
+    },
   })
 
   runDamageSystem(world)

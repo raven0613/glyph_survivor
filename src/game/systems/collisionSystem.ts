@@ -8,6 +8,7 @@ import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import type { GlyphCell } from '../glyph/glyphStore.ts'
 import { circlesIntersect } from './combatGeometry.ts'
 import {
+  DAMAGE_FRONTIER_TRAVERSAL,
   DAMAGE_PRIMARY_SCOPE,
   LOCAL_DAMAGE_SHAPE,
 } from '../glyph/localDamage.ts'
@@ -109,6 +110,11 @@ export function runCollisionSystem(world: WorldState): void {
         impactStrengthMultiplier: projectile.impactStrengthMultiplier,
         impactDirectionX: directionX,
         impactDirectionY: directionY,
+        frontierTraversal: {
+          kind: DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION,
+          directionX,
+          directionY,
+        },
       })
       break
     }

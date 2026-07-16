@@ -6,9 +6,9 @@ export function clearRenderSnapshot(snapshot: RenderSnapshot): void {
   clearRenderPlayerState(snapshot)
   snapshot.enemies.length = 0
   snapshot.effects.length = 0
+  snapshot.topologyTransferPulses.length = 0
   snapshot.projectiles.length = 0
   snapshot.orbits.length = 0
   snapshot.drops.length = 0
   snapshot.flameEmitters.length = 0
-  snapshot.damageTransferLinks.length = 0
 }

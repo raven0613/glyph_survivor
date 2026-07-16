@@ -7,6 +7,7 @@ import {
 } from '../../src/game/content/gameContent.ts'
 import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
+import { getGlyphMaterialDefinition } from '../../src/game/glyph/glyphMaterial.ts'
 import {
   GLYPH_CELL_STATE,
   type GlyphCell,
@@ -24,6 +25,7 @@ import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
 import { runDeathSystem } from '../../src/game/systems/deathSystem.ts'
 import { runDropSystem } from '../../src/game/systems/dropSystem.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
+import { runPendingDamageTransferSystem } from '../../src/game/systems/pendingDamageTransferSystem.ts'
 
 function createTestWorld(seed: string): WorldState {
   return createWorldState(
@@ -38,8 +40,8 @@ function createTestWorld(seed: string): WorldState {
 function spawnBat(world: WorldState): EnemyState {
   return spawnEnemy(
     world,
-    2_000,
-    2_000,
+    world.player.x,
+    world.player.y,
     300,
     getCreatureDefinition(world.content, 'enemy.bat'),
   )
@@ -140,6 +142,13 @@ test('applies impact response to a husk while damaging a remote living frontier'
   assert.equal(aGlyph.velocityX, 0)
 
   fireAtGlyph(world, enemy, bGlyph)
+
+  assert.equal(aGlyph.state, GLYPH_CELL_STATE.HEALTHY)
+  runPendingDamageTransferSystem(
+    world,
+    getGlyphMaterialDefinition(bGlyph.material).hitFlashDurationMs,
+  )
+  runDeathSystem(world)
 
   assert.equal(aGlyph.state, GLYPH_CELL_STATE.HUSK)
   assert.equal(aGlyph.velocityX, 0)

@@ -90,7 +90,14 @@ export interface OrbitAttackState {
   visualScale: number
   visualAlpha: number
   visualTint: number
-  readonly nextAllowedHitTimeByOwner: Map<number, number>
+  readonly contactStateByOwner: Map<number, OrbitOwnerContactState>
+}
+
+export interface OrbitOwnerContactState {
+  wasOverlapping: boolean
+  isOverlapping: boolean
+  pendingAttackEventId: number | null
+  nextContinuousHitTimeMs: number
 }
 
 export interface EnemyState {
@@ -156,14 +163,24 @@ export interface ProjectileState {
   visualTint: number
 }
 
-export interface DamageTransferLinkState {
+export interface PendingDamageTransferState {
   id: number
+  attackEventId: number
+  sourceWeaponInstanceId: number
+  visualRoleId: PlayerAttackVisualRoleId
+  ownerId: number
   sourceGlyphId: number
   targetGlyphId: number
-  sourceX: number
-  sourceY: number
-  targetX: number
-  targetY: number
+  reservedDamage: number
+  pathGlyphIds: number[]
+  nextPathIndex: number
+  remainingToNextPulseMs: number
+}
+
+export interface TopologyTransferPulseState {
+  id: number
+  transferId: number
+  glyphId: number
   remainingMs: number
   durationMs: number
 }

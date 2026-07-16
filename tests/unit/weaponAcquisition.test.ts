@@ -284,7 +284,12 @@ test('replacing an orbit weapon immediately destroys its attached attack state',
   )
   runOrbitWeaponSystem(world, 0)
   const [attachedOrbit] = world.orbitAttacks
-  attachedOrbit.nextAllowedHitTimeByOwner.set(99, 500)
+  attachedOrbit.contactStateByOwner.set(99, {
+    wasOverlapping: true,
+    isOverlapping: true,
+    pendingAttackEventId: null,
+    nextContinuousHitTimeMs: 200,
+  })
   const command = prepareWeaponOffer(
     world,
     incomingWeapon,
@@ -298,7 +303,7 @@ test('replacing an orbit weapon immediately destroys its attached attack state',
 
   assert.equal(result.ok, true)
   assert.equal(world.orbitAttacks.length, 0)
-  assert.equal(attachedOrbit.nextAllowedHitTimeByOwner.size, 0)
+  assert.equal(attachedOrbit.contactStateByOwner.size, 0)
 })
 
 test('rejects an invalid full-loadout replacement target atomically', () => {

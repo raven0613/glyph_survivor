@@ -92,8 +92,8 @@ test('keeps Projectile Count balls evenly spaced around the current base phase',
   assert.ok(Math.abs(normalizedOffsets[2] - (Math.PI * 4) / 3) < 1e-12)
   assert.equal(
     new Set(
-      world.orbitAttacks.map(({ nextAllowedHitTimeByOwner }) =>
-        nextAllowedHitTimeByOwner,
+      world.orbitAttacks.map(({ contactStateByOwner }) =>
+        contactStateByOwner,
       ),
     ).size,
     3,
@@ -117,8 +117,8 @@ test('sweeps Range deterministically between base and maximum orbit radii', () =
     Math.abs(Math.hypot(orbit.x - world.player.x, orbit.y - world.player.y) - 120) <
       1e-9,
   )
-  assert.equal(orbit.damageRadius, 14)
-  assert.equal(orbit.rehitCooldownMs, 500)
+  assert.equal(orbit.damageRadius, 16)
+  assert.equal(orbit.rehitCooldownMs, 200)
 })
 
 test('offsets multi-ball radial phases from the shared deterministic phase', () => {
@@ -206,45 +206,164 @@ test('rebases a Range profile revision without creating a false attack sweep', (
   assert.equal(orbit.previousX, orbit.x)
   assert.equal(orbit.previousY, orbit.y)
   assert.equal(world.glyphDamageQueue.count, 0)
-  assert.equal(orbit.nextAllowedHitTimeByOwner.has(target.id), false)
+  assert.equal(orbit.contactStateByOwner.has(target.id), false)
 })
 
-test('gates repeat hits per owner and starts cooldown only for a precise impact', () => {
+test('throttles continuous overlap per owner only after Damage System confirms an Impact Cell', () => {
   const world = createOrbitWorld()
   runOrbitWeaponSystem(world, 0)
   const [orbit] = world.orbitAttacks
-  const nearMiss = spawnEnemy(
-    world,
-    orbit.x + orbit.damageRadius + 30,
-    orbit.y,
+  const target = spawnEnemy(world, orbit.x, orbit.y, 0)
+  target.phase = 'ACTIVE'
+  runEnemySpatialIndexSystem(world)
+
+  runOrbitWeaponSystem(world, 0)
+  assert.equal(world.glyphDamageQueue.count, 1)
+  assert.equal(
+    orbit.contactStateByOwner.get(target.id)?.nextContinuousHitTimeMs,
     0,
   )
-  nearMiss.phase = 'ACTIVE'
-  runEnemySpatialIndexSystem(world)
+  runDamageSystem(world)
+  assert.equal(
+    orbit.contactStateByOwner.get(target.id)?.nextContinuousHitTimeMs,
+    200,
+  )
 
   runOrbitWeaponSystem(world, 0)
   assert.equal(world.glyphDamageQueue.count, 0)
+  world.runTimeMs = 199
+  runOrbitWeaponSystem(world, 0)
+  assert.equal(world.glyphDamageQueue.count, 0)
+  world.runTimeMs = 200
+  runOrbitWeaponSystem(world, 0)
+  assert.equal(world.glyphDamageQueue.count, 1)
+})
 
-  nearMiss.x = orbit.x
-  nearMiss.previousX = orbit.x
+test('tracks the continuous-contact throttle independently for each owner', () => {
+  const world = createOrbitWorld('orbit-per-owner-throttle')
+  runOrbitWeaponSystem(world, 0)
+  const [orbit] = world.orbitAttacks
+  const first = spawnEnemy(world, orbit.x, orbit.y - 10, 0)
+  const second = spawnEnemy(world, orbit.x, orbit.y + 10, 0)
+  first.phase = 'ACTIVE'
+  second.phase = 'ACTIVE'
   runEnemySpatialIndexSystem(world)
+
+  runOrbitWeaponSystem(world, 0)
+  assert.equal(world.glyphDamageQueue.count, 2)
+  runDamageSystem(world)
+
+  assert.equal(
+    orbit.contactStateByOwner.get(first.id)?.nextContinuousHitTimeMs,
+    200,
+  )
+  assert.equal(
+    orbit.contactStateByOwner.get(second.id)?.nextContinuousHitTimeMs,
+    200,
+  )
+})
+
+test('commits the orbit throttle when the confirmed Impact Cell is a Husk', () => {
+  const world = createOrbitWorld('orbit-husk-impact-throttle')
+  runOrbitWeaponSystem(world, 0)
+  const [orbit] = world.orbitAttacks
+  const target = spawnEnemy(world, orbit.x, orbit.y, 0)
+  target.phase = 'ACTIVE'
+  const [glyph] = world.glyphStore.getOwnerGlyphs(target.id)
+  world.glyphStore.applyDamage(glyph.id, glyph.currentDurability)
+  runEnemySpatialIndexSystem(world)
+
+  runOrbitWeaponSystem(world, 0)
+  runDamageSystem(world)
+
+  assert.equal(glyph.currentDurability, 0)
+  assert.equal(
+    orbit.contactStateByOwner.get(target.id)?.nextContinuousHitTimeMs,
+    200,
+  )
+})
+
+test('lets an orbit ball hit immediately after leaving and re-entering before 200ms', () => {
+  const world = createOrbitWorld('orbit-contact-reentry')
+  runOrbitWeaponSystem(world, 0)
+  const [orbit] = world.orbitAttacks
+  const target = spawnEnemy(world, orbit.x, orbit.y, 0)
+  target.phase = 'ACTIVE'
+  runEnemySpatialIndexSystem(world)
+
+  runOrbitWeaponSystem(world, 0)
+  runDamageSystem(world)
+
+  target.x = orbit.x + 100
+  target.y = orbit.y
+  target.previousX = target.x
+  target.previousY = target.y
+  runEnemySpatialIndexSystem(world)
+  world.runTimeMs = 25
+  runOrbitWeaponSystem(world, 0)
+  assert.equal(world.glyphDamageQueue.count, 0)
+
+  target.x = orbit.x
+  target.y = orbit.y
+  target.previousX = target.x
+  target.previousY = target.y
+  runEnemySpatialIndexSystem(world)
+  world.runTimeMs = 50
+  runOrbitWeaponSystem(world, 0)
+
+  assert.equal(world.glyphDamageQueue.count, 1)
+})
+
+test('does not start the orbit throttle when a queued contact no longer yields Impact Cells', () => {
+  const world = createOrbitWorld('orbit-contact-no-impact')
+  runOrbitWeaponSystem(world, 0)
+  const [orbit] = world.orbitAttacks
+  const target = spawnEnemy(world, orbit.x, orbit.y, 0)
+  target.phase = 'ACTIVE'
+  runEnemySpatialIndexSystem(world)
+
   runOrbitWeaponSystem(world, 0)
   assert.equal(world.glyphDamageQueue.count, 1)
 
-  const secondOwner = spawnEnemy(world, orbit.x, orbit.y, 0)
-  secondOwner.phase = 'ACTIVE'
+  target.phase = 'COLLAPSING'
+  target.x = orbit.x + 100
+  target.previousX = target.x
+  runDamageSystem(world)
+  assert.equal(
+    orbit.contactStateByOwner.get(target.id)?.nextContinuousHitTimeMs,
+    0,
+  )
+
+  target.phase = 'ACTIVE'
+  target.x = orbit.x
+  target.previousX = target.x
   runEnemySpatialIndexSystem(world)
   runOrbitWeaponSystem(world, 0)
-  assert.equal(world.glyphDamageQueue.count, 2)
+
+  assert.equal(world.glyphDamageQueue.count, 1)
+})
+
+test('detects a moving owner crossing a stationary orbit ball with relative sweep', () => {
+  const world = createOrbitWorld('orbit-relative-owner-sweep')
+  runOrbitWeaponSystem(world, 0)
+  const [orbit] = world.orbitAttacks
+  const target = spawnEnemy(world, orbit.x + 40, orbit.y, 0)
+  target.phase = 'ACTIVE'
+  target.previousX = orbit.x - 40
+  target.previousY = orbit.y
+  runEnemySpatialIndexSystem(world)
 
   runOrbitWeaponSystem(world, 0)
-  assert.equal(world.glyphDamageQueue.count, 2)
-  world.runTimeMs = 499
-  runOrbitWeaponSystem(world, 0)
-  assert.equal(world.glyphDamageQueue.count, 2)
-  world.runTimeMs = 500
-  runOrbitWeaponSystem(world, 0)
-  assert.equal(world.glyphDamageQueue.count, 4)
+  runDamageSystem(world)
+
+  assert.equal(
+    world.glyphStore.getOwnerGlyphs(target.id)[0].currentDurability,
+    0.4,
+  )
+  assert.equal(
+    orbit.contactStateByOwner.get(target.id)?.nextContinuousHitTimeMs,
+    200,
+  )
 })
 
 test('applies outward whole-body knockback while local damage stays shape-based', () => {

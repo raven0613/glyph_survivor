@@ -133,13 +133,13 @@ test('maps universal Modules to orbit-specific runtime parameters', () => {
     throw new Error('Expected owner-relative orbit profile.')
   }
 
-  assert.equal(profile.rehitCooldownMs, 500)
+  assert.equal(profile.rehitCooldownMs, 200)
   assert.equal(
     profile.attackPattern.angularSpeedRevolutionsPerSecond,
     0.9 * 1.15,
   )
   assert.equal(profile.attackPattern.orbitRadius, 80)
-  assert.equal(profile.damageShape.radius, 14)
+  assert.equal(profile.damageShape.radius, 16)
   assert.deepEqual(profile.damageSpreadProfile, {
     bandWidth: 24,
     bandDamageRatios: [0.2],
@@ -224,7 +224,7 @@ test('compiles each Range Rank into pattern-specific reach without changing area
       orbit.attackPattern.maximumOrbitRadius,
       expected.maximumOrbitRadius,
     )
-    assert.equal(orbit.damageShape.radius, 14)
-    assert.equal(orbit.rehitCooldownMs, 500)
+    assert.equal(orbit.damageShape.radius, 16)
+    assert.equal(orbit.rehitCooldownMs, 200)
   }
 })

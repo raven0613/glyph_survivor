@@ -145,7 +145,12 @@ export const PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING = {
     spreadFeedbackAlpha: 0.72,
     spreadFeedbackScaleBonus: 0.08,
     spreadFeedbackDurationMs: 140,
-    transferLink: { tint: '#5ea8b8', alpha: 0.62 },
+    topologyTransfer: {
+      tint: '#5ea8b8',
+      alpha: 0.62,
+      stepIntervalMs: 45,
+      pulseDurationMs: 120,
+    },
   },
 } satisfies CombatVisualThemeAuthoring
 

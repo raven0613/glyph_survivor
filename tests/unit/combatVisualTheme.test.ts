@@ -38,6 +38,38 @@ test('converts readable #RRGGBB authoring colors to runtime tints once', () => {
     prepared.playerSurvival.healthDamage.fragment.tint,
     parseExpectedTint(authoring.playerSurvival.healthDamage.fragment.tint),
   )
+  assert.equal(
+    prepared.effects.topologyTransfer.tint,
+    parseExpectedTint(authoring.effects.topologyTransfer.tint),
+  )
+})
+
+test('rejects invalid topology-transfer timing', () => {
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        topologyTransfer: {
+          ...theme.effects.topologyTransfer,
+          stepIntervalMs: 0,
+        },
+      },
+    }),
+  )
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        topologyTransfer: {
+          ...theme.effects.topologyTransfer,
+          pulseDurationMs: Number.NaN,
+        },
+      },
+    }),
+  )
 })
 
 test('rejects invalid player survival animation tuning', () => {

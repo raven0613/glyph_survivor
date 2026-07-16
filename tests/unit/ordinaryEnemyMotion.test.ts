@@ -25,7 +25,13 @@ function spawnActiveOrdinaryEnemy(definitionId: string) {
     BASIC_PROJECTILE_WEAPON_ID,
   )
   const definition = getCreatureDefinition(content, definitionId)
-  const enemy = spawnEnemy(world, 1_800, 2_000, 0, definition)
+  const enemy = spawnEnemy(
+    world,
+    world.player.x - 200,
+    world.player.y,
+    0,
+    definition,
+  )
   enemy.phase = 'ACTIVE'
   enemy.bodyMotionPhaseOffset = 0
   return { world, definition, enemy }

@@ -1,5 +1,3 @@
-import { calculateCameraView } from '../runtime/cameraTransform.ts'
-import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
@@ -19,9 +17,15 @@ import {
   type RenderPlayerState,
 } from './playerRenderSnapshot.ts'
 import { getDeathReviewPresentationTimeMs } from '../runtime/playerDeathReview.ts'
+import {
+  COLLAPSE_SCATTER_DISTANCE,
+  GOLDEN_ANGLE,
+  interpolate,
+  isWorldPositionVisible,
+} from './glyphRenderGeometry.ts'
+import { writeRenderGlyph } from './renderGlyphBuffer.ts'
+import { writeTopologyTransferRenderSnapshot } from './topologyTransferRenderSnapshot.ts'
 
-const COLLAPSE_SCATTER_DISTANCE = 42
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const MAX_BURST_PARTICLES_PER_GLYPH = 8
 const MAX_ACTIVE_IMPACT_PARTICLES = 192
 const HIT_BURST_SPREAD_RADIANS = 1.4
@@ -54,73 +58,14 @@ export interface RenderFlameEmitter {
   seed: number
 }
 
-export interface RenderDamageTransferLink {
-  id: number
-  sourceX: number
-  sourceY: number
-  targetX: number
-  targetY: number
-  alpha: number
-}
-
 export interface RenderSnapshot extends RenderPlayerState {
   readonly enemies: RenderGlyph[]
   readonly effects: RenderGlyph[]
+  readonly topologyTransferPulses: RenderGlyph[]
   readonly projectiles: RenderGlyph[]
   readonly orbits: RenderGlyph[]
   readonly drops: RenderGlyph[]
   readonly flameEmitters: RenderFlameEmitter[]
-  readonly damageTransferLinks: RenderDamageTransferLink[]
-}
-
-function interpolate(previous: number, current: number, alpha: number): number {
-  return previous + (current - previous) * alpha
-}
-
-function writeGlyph(
-  buffer: RenderGlyph[],
-  index: number,
-  id: number,
-  glyphFrame: number,
-  x: number,
-  y: number,
-  scale: number,
-  alpha: number,
-  tint: number,
-  rotation = 0,
-): void {
-  const glyph = buffer[index] ?? {
-    id,
-    glyphFrame,
-    x,
-    y,
-    rotation,
-    scale,
-    alpha,
-    tint,
-  }
-  glyph.id = id
-  glyph.glyphFrame = glyphFrame
-  glyph.x = x
-  glyph.y = y
-  glyph.rotation = rotation
-  glyph.scale = scale
-  glyph.alpha = alpha
-  glyph.tint = tint
-  buffer[index] = glyph
-}
-
-function isVisible(
-  x: number,
-  y: number,
-  camera: ReturnType<typeof calculateCameraView>,
-): boolean {
-  return (
-    x >= camera.left - GAME_CONFIG.renderMargin &&
-    x <= camera.right + GAME_CONFIG.renderMargin &&
-    y >= camera.top - GAME_CONFIG.renderMargin &&
-    y <= camera.bottom + GAME_CONFIG.renderMargin
-  )
 }
 
 export function createRenderSnapshot(): RenderSnapshot {
@@ -128,11 +73,11 @@ export function createRenderSnapshot(): RenderSnapshot {
     ...createRenderPlayerState(),
     enemies: [],
     effects: [],
+    topologyTransferPulses: [],
     projectiles: [],
     orbits: [],
     drops: [],
     flameEmitters: [],
-    damageTransferLinks: [],
   }
 }
 
@@ -151,7 +96,7 @@ function writeSpreadEffect(
   }
   const angle = glyphId * GOLDEN_ANGLE
   const distance = 5 + (1 - intensity) * 8
-  writeGlyph(
+  writeRenderGlyph(
     snapshot.effects,
     startIndex,
     -glyphId,
@@ -207,7 +152,7 @@ function writeImpactEffects(
         particleIndex % material.hitBurstCharacters.length
       ]
 
-    writeGlyph(
+    writeRenderGlyph(
       snapshot.effects,
       startIndex,
       glyphId * MAX_BURST_PARTICLES_PER_GLYPH + particleIndex,
@@ -291,11 +236,11 @@ export function writeRenderSnapshot(
         getGlyphWorldX(rootX, glyph) + Math.cos(collapseAngle) * collapseDistance
       const y =
         getGlyphWorldY(rootY, glyph) + Math.sin(collapseAngle) * collapseDistance
-      if (!isVisible(x, y, camera)) {
+      if (!isWorldPositionVisible(x, y, camera)) {
         continue
       }
 
-      writeGlyph(
+      writeRenderGlyph(
         snapshot.enemies,
         enemyCount,
         glyph.id,
@@ -349,6 +294,12 @@ export function writeRenderSnapshot(
   }
   snapshot.enemies.length = enemyCount
   snapshot.effects.length = effectCount
+  writeTopologyTransferRenderSnapshot(
+    world,
+    snapshot.topologyTransferPulses,
+    camera,
+    interpolationAlpha,
+  )
 
   let projectileCount = 0
   for (const projectile of world.projectiles) {
@@ -363,8 +314,8 @@ export function writeRenderSnapshot(
       interpolationAlpha,
     )
 
-    if (projectile.isAlive && isVisible(x, y, camera)) {
-      writeGlyph(
+    if (projectile.isAlive && isWorldPositionVisible(x, y, camera)) {
+      writeRenderGlyph(
         snapshot.projectiles,
         projectileCount,
         projectile.id,
@@ -384,10 +335,10 @@ export function writeRenderSnapshot(
   for (const orbit of world.orbitAttacks) {
     const x = interpolate(orbit.previousX, orbit.x, interpolationAlpha)
     const y = interpolate(orbit.previousY, orbit.y, interpolationAlpha)
-    if (!isVisible(x, y, camera)) {
+    if (!isWorldPositionVisible(x, y, camera)) {
       continue
     }
-    writeGlyph(
+    writeRenderGlyph(
       snapshot.orbits,
       orbitCount,
       orbit.id,
@@ -404,13 +355,13 @@ export function writeRenderSnapshot(
 
   let dropCount = 0
   for (const drop of world.drops) {
-    if (drop.isAlive && isVisible(drop.x, drop.y, camera)) {
+    if (drop.isAlive && isWorldPositionVisible(drop.x, drop.y, camera)) {
       const presentation = resolveExperienceDropPresentation(
         world.content.combatVisualTheme,
         presentationTimeMs - drop.spawnedAtRunTimeMs,
         drop.id,
       )
-      writeGlyph(
+      writeRenderGlyph(
         snapshot.drops,
         dropCount,
         drop.id,
@@ -428,7 +379,7 @@ export function writeRenderSnapshot(
 
   let flameEmitterCount = 0
   for (const emitter of world.flameEmitters) {
-    if (!isVisible(emitter.x, emitter.y, camera)) {
+    if (!isWorldPositionVisible(emitter.x, emitter.y, camera)) {
       continue
     }
     const output = snapshot.flameEmitters[flameEmitterCount] ?? ({} as RenderFlameEmitter)
@@ -451,27 +402,4 @@ export function writeRenderSnapshot(
   }
   snapshot.flameEmitters.length = flameEmitterCount
 
-  let damageTransferLinkCount = 0
-  for (const link of world.damageTransferLinks) {
-    if (
-      !isVisible(link.sourceX, link.sourceY, camera) &&
-      !isVisible(link.targetX, link.targetY, camera)
-    ) {
-      continue
-    }
-    const output =
-      snapshot.damageTransferLinks[damageTransferLinkCount] ??
-      ({} as RenderDamageTransferLink)
-    output.id = link.id
-    output.sourceX = link.sourceX
-    output.sourceY = link.sourceY
-    output.targetX = link.targetX
-    output.targetY = link.targetY
-    output.alpha =
-      Math.max(0, link.remainingMs / link.durationMs) *
-      world.content.combatVisualTheme.effects.transferLink.alpha
-    snapshot.damageTransferLinks[damageTransferLinkCount] = output
-    damageTransferLinkCount += 1
-  }
-  snapshot.damageTransferLinks.length = damageTransferLinkCount
 }

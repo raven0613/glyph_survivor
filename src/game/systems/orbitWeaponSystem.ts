@@ -1,9 +1,13 @@
 import { getGlyphWorldX, getGlyphWorldY } from '../glyph/glyphPosition.ts'
 import {
+  DAMAGE_FRONTIER_TRAVERSAL,
   DAMAGE_PRIMARY_SCOPE,
   LOCAL_DAMAGE_SHAPE,
 } from '../glyph/localDamage.ts'
-import type { OrbitAttackState } from '../runtime/worldEntities.ts'
+import type {
+  OrbitAttackState,
+  OrbitOwnerContactState,
+} from '../runtime/worldEntities.ts'
 import { isEnemyOutlineCollisionPhase } from '../runtime/worldEntities.ts'
 import type { WeaponInstance } from '../runtime/weaponLoadout.ts'
 import type { WorldState } from '../runtime/worldState.ts'
@@ -13,6 +17,44 @@ import type { ResolvedOrbitWeaponProfile } from './resolveWeaponProfile.ts'
 import { getPlayerAttackAppearance } from '../content/visuals/combatVisualTheme.ts'
 
 const FULL_CIRCLE_RADIANS = Math.PI * 2
+
+interface NormalizedDirection {
+  readonly x: number
+  readonly y: number
+}
+
+function normalizeDirection(x: number, y: number): NormalizedDirection | null {
+  const length = Math.hypot(x, y)
+  return length === 0 ? null : { x: x / length, y: y / length }
+}
+
+function getInstantaneousOrbitMotionDirection(
+  profile: ResolvedOrbitWeaponProfile,
+  phaseRadians: number,
+): NormalizedDirection {
+  const baseRadius = profile.attackPattern.orbitRadius
+  const radiusSpan =
+    profile.attackPattern.maximumOrbitRadius - baseRadius
+  const radius = getOrbitRadius(
+    baseRadius,
+    profile.attackPattern.maximumOrbitRadius,
+    phaseRadians,
+  )
+  const radiusDerivative = (radiusSpan * Math.sin(phaseRadians)) / 2
+  const cosine = Math.cos(phaseRadians)
+  const sine = Math.sin(phaseRadians)
+  const angularDirection = Math.sign(
+    profile.attackPattern.angularSpeedRevolutionsPerSecond,
+  )
+  const direction = normalizeDirection(
+    (radiusDerivative * cosine - radius * sine) * angularDirection,
+    (radiusDerivative * sine + radius * cosine) * angularDirection,
+  )
+  if (!direction) {
+    throw new Error('Orbit profile must provide non-zero authoritative motion.')
+  }
+  return direction
+}
 
 function findOrbit(
   world: WorldState,
@@ -68,7 +110,7 @@ function createOrbit(
     visualScale: profile.orbitPresentation.scale,
     visualAlpha: appearance.core.alpha,
     visualTint: appearance.core.tint,
-    nextAllowedHitTimeByOwner: new Map(),
+    contactStateByOwner: new Map(),
   }
   world.nextOrbitAttackId += 1
   world.orbitAttacks.push(orbit)
@@ -114,6 +156,8 @@ function updateResolvedValues(
 function findEarliestOrbitContactTime(
   world: WorldState,
   ownerId: number,
+  ownerPreviousX: number,
+  ownerPreviousY: number,
   ownerX: number,
   ownerY: number,
   orbit: OrbitAttackState,
@@ -123,12 +167,12 @@ function findEarliestOrbitContactTime(
     world.diagnostics.orbitSweepPreciseTestCount += 1
     const combinedRadius = glyph.collisionRadius + orbit.damageRadius
     const contactTime = getFirstSegmentCircleContactTime(
-      orbit.previousX,
-      orbit.previousY,
-      orbit.x,
-      orbit.y,
-      getGlyphWorldX(ownerX, glyph),
-      getGlyphWorldY(ownerY, glyph),
+      orbit.previousX - ownerPreviousX,
+      orbit.previousY - ownerPreviousY,
+      orbit.x - ownerX,
+      orbit.y - ownerY,
+      getGlyphWorldX(0, glyph),
+      getGlyphWorldY(0, glyph),
       combinedRadius,
     )
     if (contactTime !== null && contactTime < earliestContactTime) {
@@ -141,12 +185,61 @@ function findEarliestOrbitContactTime(
   return Number.isFinite(earliestContactTime) ? earliestContactTime : null
 }
 
-function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
-  for (const [ownerId, nextAllowedTime] of orbit.nextAllowedHitTimeByOwner) {
-    if (nextAllowedTime <= world.runTimeMs) {
-      orbit.nextAllowedHitTimeByOwner.delete(ownerId)
+function isOrbitOverlappingOwner(
+  world: WorldState,
+  ownerId: number,
+  ownerX: number,
+  ownerY: number,
+  orbit: OrbitAttackState,
+): boolean {
+  for (const glyph of world.glyphStore.getOwnerGlyphs(ownerId)) {
+    const deltaX = orbit.x - getGlyphWorldX(ownerX, glyph)
+    const deltaY = orbit.y - getGlyphWorldY(ownerY, glyph)
+    const combinedRadius = glyph.collisionRadius + orbit.damageRadius
+    if (
+      deltaX * deltaX + deltaY * deltaY <=
+      combinedRadius * combinedRadius
+    ) {
+      return true
     }
   }
+  return false
+}
+
+function prepareContactStatesForStep(orbit: OrbitAttackState): void {
+  for (const [ownerId, state] of orbit.contactStateByOwner) {
+    if (!state.isOverlapping && state.pendingAttackEventId === null) {
+      orbit.contactStateByOwner.delete(ownerId)
+      continue
+    }
+    state.wasOverlapping = state.isOverlapping
+    state.isOverlapping = false
+  }
+}
+
+function getOrCreateContactState(
+  orbit: OrbitAttackState,
+  ownerId: number,
+): OrbitOwnerContactState {
+  let state = orbit.contactStateByOwner.get(ownerId)
+  if (!state) {
+    state = {
+      wasOverlapping: false,
+      isOverlapping: false,
+      pendingAttackEventId: null,
+      nextContinuousHitTimeMs: 0,
+    }
+    orbit.contactStateByOwner.set(ownerId, state)
+  }
+  return state
+}
+
+function collideOrbit(
+  world: WorldState,
+  orbit: OrbitAttackState,
+  profile: ResolvedOrbitWeaponProfile,
+): void {
+  prepareContactStatesForStep(orbit)
 
   const midpointX = (orbit.previousX + orbit.x) / 2
   const midpointY = (orbit.previousY + orbit.y) / 2
@@ -155,21 +248,23 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
   const candidates = world.enemySpatialHash.queryCircle(
     midpointX,
     midpointY,
-    halfSweepLength + orbit.damageRadius + world.maximumEnemyQueryRadius,
+    halfSweepLength +
+      orbit.damageRadius +
+      world.maximumEnemyQueryRadius +
+      world.maximumEnemyStepDistance,
     world.collisionCandidates,
   )
   world.diagnostics.orbitSweepCandidateCount += candidates.length
 
   for (const enemy of candidates) {
-    if (
-      !isEnemyOutlineCollisionPhase(enemy.phase) ||
-      orbit.nextAllowedHitTimeByOwner.has(enemy.id)
-    ) {
+    if (!isEnemyOutlineCollisionPhase(enemy.phase)) {
       continue
     }
     const contactTime = findEarliestOrbitContactTime(
       world,
       enemy.id,
+      enemy.previousX,
+      enemy.previousY,
       enemy.x,
       enemy.y,
       orbit,
@@ -177,23 +272,52 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
     if (contactTime === null) {
       continue
     }
+    const contactState = getOrCreateContactState(orbit, enemy.id)
+    contactState.isOverlapping = isOrbitOverlappingOwner(
+      world,
+      enemy.id,
+      enemy.x,
+      enemy.y,
+      orbit,
+    )
+    const isNewContactEpisode = !contactState.wasOverlapping
+    if (
+      contactState.pendingAttackEventId !== null ||
+      (!isNewContactEpisode &&
+        world.runTimeMs < contactState.nextContinuousHitTimeMs)
+    ) {
+      continue
+    }
     const contactX =
       orbit.previousX + (orbit.x - orbit.previousX) * contactTime
     const contactY =
       orbit.previousY + (orbit.y - orbit.previousY) * contactTime
+    const ownerContactX =
+      enemy.previousX + (enemy.x - enemy.previousX) * contactTime
+    const ownerContactY =
+      enemy.previousY + (enemy.y - enemy.previousY) * contactTime
+    const traversalDirection =
+      normalizeDirection(
+        contactX - orbit.previousX,
+        contactY - orbit.previousY,
+      ) ??
+      normalizeDirection(
+        orbit.x - orbit.previousX,
+        orbit.y - orbit.previousY,
+      ) ??
+      getInstantaneousOrbitMotionDirection(profile, orbit.phaseRadians)
     const outwardX = contactX - world.player.x
     const outwardY = contactY - world.player.y
     const outwardLength = Math.hypot(outwardX, outwardY)
     const directionX = outwardLength > 0 ? outwardX / outwardLength : 1
     const directionY = outwardLength > 0 ? outwardY / outwardLength : 0
 
-    orbit.nextAllowedHitTimeByOwner.set(
-      enemy.id,
-      world.runTimeMs + orbit.rehitCooldownMs,
-    )
+    const attackEventId = getNextDamageEventId(world)
+    contactState.pendingAttackEventId = attackEventId
     world.glyphDamageQueue.enqueue({
-      attackEventId: getNextDamageEventId(world),
+      attackEventId,
       sourceWeaponInstanceId: orbit.sourceWeaponInstanceId,
+      sourceOrbitAttackId: orbit.id,
       visualRoleId: orbit.visualRoleId,
       primaryScope: DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER,
       ownerId: enemy.id,
@@ -214,7 +338,38 @@ function collideOrbit(world: WorldState, orbit: OrbitAttackState): void {
       rootKnockbackDistance: orbit.rootKnockbackDistance,
       rootKnockbackDirectionX: directionX,
       rootKnockbackDirectionY: directionY,
+      lockedOwnerCollisionX: ownerContactX,
+      lockedOwnerCollisionY: ownerContactY,
+      frontierTraversal: {
+        kind: DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION,
+        directionX: traversalDirection.x,
+        directionY: traversalDirection.y,
+      },
     })
+  }
+}
+
+export function resolveOrbitContactDamageResult(
+  world: WorldState,
+  orbitAttackId: number,
+  ownerId: number,
+  attackEventId: number,
+  hasImpactCells: boolean,
+): void {
+  const orbit = world.orbitAttacks.find(({ id }) => id === orbitAttackId)
+  const contactState = orbit?.contactStateByOwner.get(ownerId)
+  if (
+    !orbit ||
+    !contactState ||
+    contactState.pendingAttackEventId !== attackEventId
+  ) {
+    return
+  }
+
+  contactState.pendingAttackEventId = null
+  if (hasImpactCells) {
+    contactState.nextContinuousHitTimeMs =
+      world.runTimeMs + orbit.rehitCooldownMs
   }
 }
 
@@ -237,7 +392,7 @@ export function removeOrbitAttacksForWeapon(
 ): void {
   for (let index = world.orbitAttacks.length - 1; index >= 0; index -= 1) {
     if (world.orbitAttacks[index].sourceWeaponInstanceId === weaponInstanceId) {
-      world.orbitAttacks[index].nextAllowedHitTimeByOwner.clear()
+      world.orbitAttacks[index].contactStateByOwner.clear()
       world.orbitAttacks.splice(index, 1)
     }
   }
@@ -247,7 +402,7 @@ export function removeOrbitAttacksForWeapon(
 export function runOrbitWeaponSystem(world: WorldState, deltaMs: number): void {
   for (let index = world.orbitAttacks.length - 1; index >= 0; index -= 1) {
     if (!isOrbitStillEquipped(world, world.orbitAttacks[index])) {
-      world.orbitAttacks[index].nextAllowedHitTimeByOwner.clear()
+      world.orbitAttacks[index].contactStateByOwner.clear()
       world.orbitAttacks.splice(index, 1)
     }
   }
@@ -303,7 +458,7 @@ export function runOrbitWeaponSystem(world: WorldState, deltaMs: number): void {
         orbit.y = nextY
       }
       updateResolvedValues(world, orbit, profile)
-      collideOrbit(world, orbit)
+      collideOrbit(world, orbit, profile)
     }
   }
 }

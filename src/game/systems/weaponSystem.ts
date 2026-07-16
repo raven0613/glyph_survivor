@@ -3,6 +3,7 @@ import type { WorldState } from '../runtime/worldState.ts'
 import { selectBestProjectileTarget } from './targetSelection.ts'
 import { TARGET_STRATEGY } from '../content/weapons/weaponDefinition.ts'
 import {
+  DAMAGE_FRONTIER_TRAVERSAL,
   DAMAGE_PRIMARY_SCOPE,
   LOCAL_DAMAGE_SHAPE,
 } from '../glyph/localDamage.ts'
@@ -83,6 +84,9 @@ function emitConeAttack(
       impactStrengthMultiplier: profile.impactStrengthMultiplier,
       impactDirectionX: directionX,
       impactDirectionY: directionY,
+      frontierTraversal: {
+        kind: DAMAGE_FRONTIER_TRAVERSAL.FROM_SHAPE_ORIGIN,
+      },
     })
     world.diagnostics.attackEmissionCount += 1
     spawnFlameEmitter(

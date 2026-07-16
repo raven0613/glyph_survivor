@@ -10,11 +10,15 @@ import {
   PLAYER_ATTACK_VISUAL_ROLE,
   type PlayerAttackVisualRoleId,
 } from '../../src/game/content/visuals/combatVisualTheme.ts'
-import { DAMAGE_TARGET_MODE } from '../../src/game/glyph/localDamage.ts'
+import {
+  DAMAGE_FRONTIER_TRAVERSAL,
+  DAMAGE_TARGET_MODE,
+} from '../../src/game/glyph/localDamage.ts'
 import { createWorldState, spawnEnemy } from '../../src/game/runtime/worldState.ts'
 import { runDamageSystem } from '../../src/game/systems/damageSystem.ts'
-import { runDamagePresentationSystem } from '../../src/game/systems/damagePresentationSystem.ts'
 import { runEnemySpatialIndexSystem } from '../../src/game/systems/enemySpatialIndexSystem.ts'
+import { runPendingDamageTransferSystem } from '../../src/game/systems/pendingDamageTransferSystem.ts'
+import { getGlyphMaterialDefinition } from '../../src/game/glyph/glyphMaterial.ts'
 import { runGlyphMaterialSystem } from '../../src/game/systems/glyphMaterialSystem.ts'
 
 function createDamageWorld() {
@@ -63,6 +67,11 @@ function enqueueCircleAttack(
     impactStrengthMultiplier: 1,
     impactDirectionX: 1,
     impactDirectionY: 0,
+    frontierTraversal: {
+      kind: DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION,
+      directionX: 1,
+      directionY: 0,
+    },
   })
 }
 
@@ -152,7 +161,7 @@ test('damages living spread targets and follows the latest successful attack rol
   assert.equal(spreadGlyph.spreadFeedbackVisualRoleId, null)
 })
 
-test('keeps direct topology damage at full strength and emits a transfer link', () => {
+test('reserves full direct topology damage until the transfer arrives', () => {
   const world = createDamageWorld()
   const bat = spawnEnemy(
     world,
@@ -175,11 +184,24 @@ test('keeps direct topology damage at full strength and emits a transfer link', 
   })
   runDamageSystem(world)
 
-  assert.equal(glyphs[1].currentDurability, 0)
+  assert.equal(glyphs[1].currentDurability, 1)
   assert.equal(glyphs[2].currentDurability, 1)
-  assert.equal(world.damageTransferLinks.length, 1)
-  assert.equal(world.damageTransferLinks[0].sourceGlyphId, glyphs[0].id)
-  assert.equal(world.damageTransferLinks[0].targetGlyphId, glyphs[1].id)
+  assert.equal(world.pendingDamageTransfers.length, 1)
+  assert.equal('damageTransferLinks' in world, false)
+  assert.equal(
+    world.runStatistics.weaponByInstanceId.get(
+      world.weaponLoadout.equipped[0].id,
+    )?.totalDamage,
+    0,
+  )
+
+  runPendingDamageTransferSystem(
+    world,
+    getGlyphMaterialDefinition(glyphs[0].material).hitFlashDurationMs,
+  )
+
+  assert.equal(glyphs[1].currentDurability, 0)
+  assert.equal(world.pendingDamageTransfers.length, 0)
   assert.equal(
     world.runStatistics.weaponByInstanceId.get(
       world.weaponLoadout.equipped[0].id,
@@ -189,12 +211,8 @@ test('keeps direct topology damage at full strength and emits a transfer link', 
 
   const snapshot = createRenderSnapshot()
   writeRenderSnapshot(world, snapshot, 1)
-  assert.equal(snapshot.damageTransferLinks.length, 1)
-  assert.ok(snapshot.damageTransferLinks[0].alpha > 0)
-
-  runDamagePresentationSystem(world, 120)
-  assert.equal(world.damageTransferLinks.length, 0)
-  assert.equal(world.damageTransferLinkPool.length, 1)
+  assert.equal(snapshot.topologyTransferPulses.length, 1)
+  assert.equal('damageTransferLinks' in snapshot, false)
 })
 
 test('allows independent attack events to apply their spread once each', () => {

@@ -5,7 +5,6 @@ import { createPixiApp } from './createPixiApp.ts'
 import { createSceneLayers } from './createSceneLayers.ts'
 import { createFlameEmitterPool } from './flameEmitterPool.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
-import { createDamageTransferLinkPool } from './damageTransferLinkPool.ts'
 import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 import { createPlayerSurvivalView } from './createPlayerSurvivalView.ts'
 
@@ -46,9 +45,9 @@ export async function createRenderAdapter(
     scene.effectLayer,
     atlas.printableFrames,
   )
-  const damageTransferLinkViews = createDamageTransferLinkPool(
-    scene.damageTransferLinkLayer,
-    visualTheme.effects.transferLink.tint,
+  const topologyTransferPulseViews = createParticleLayerPool(
+    scene.topologyTransferPulseLayer,
+    atlas.printableFrames,
   )
   const dropViews = createParticleLayerPool(
     scene.dropLayer,
@@ -83,7 +82,7 @@ export async function createRenderAdapter(
       playerSurvivalView.sync(snapshot.playerSurvivalPresentation)
       enemyViews.sync(snapshot.enemies)
       effectViews.sync(snapshot.effects)
-      damageTransferLinkViews.sync(snapshot.damageTransferLinks)
+      topologyTransferPulseViews.sync(snapshot.topologyTransferPulses)
       projectileViews.sync(snapshot.projectiles)
       orbitViews.sync(snapshot.orbits)
       dropViews.sync(snapshot.drops)
@@ -100,7 +99,7 @@ export async function createRenderAdapter(
       // destroying Pixi resources retained by the GameHost.
       enemyViews.sync([])
       effectViews.sync([])
-      damageTransferLinkViews.sync([])
+      topologyTransferPulseViews.sync([])
       projectileViews.sync([])
       orbitViews.sync([])
       dropViews.sync([])
@@ -118,7 +117,7 @@ export async function createRenderAdapter(
       isDisposed = true
       enemyViews.clear()
       effectViews.clear()
-      damageTransferLinkViews.clear()
+      topologyTransferPulseViews.clear()
       projectileViews.clear()
       orbitViews.clear()
       dropViews.clear()

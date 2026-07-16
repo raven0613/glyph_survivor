@@ -25,15 +25,16 @@ import {
 } from './weaponLoadout.ts'
 import type {
   BossEncounterState,
-  DamageTransferLinkState,
   EnemyState,
   ExperienceDropState,
   FlameEmitterState,
   InputState,
   OrbitAttackState,
+  PendingDamageTransferState,
   PlayerState,
   ProjectileState,
   SpawnSide,
+  TopologyTransferPulseState,
 } from './worldEntities.ts'
 import { createUpgradeState, type UpgradeState } from './upgradeState.ts'
 import {
@@ -70,7 +71,14 @@ export interface WorldDiagnostics {
   spreadCandidateCount: number
   spreadPreciseTestCount: number
   damageClaimDedupCount: number
-  damageTransferLinkDropCount: number
+  activePendingTransferCount: number
+  retainedPendingTransferPathCellCount: number
+  pendingTransferArrivalCommitCount: number
+  pendingTransferInvalidTargetCancellationCount: number
+  pendingTransferStatePoolMisses: number
+  pendingTransferPathPoolMisses: number
+  topologyTransferPulsePoolMisses: number
+  topologyPathSearchTimeMs: number
   attackEmissionCount: number
   rangeExpiredProjectileCount: number
   orbitSweepCandidateCount: number
@@ -92,8 +100,11 @@ export interface WorldState {
   readonly glyphDamageQueue: GlyphDamageQueue
   readonly damageResolutionScratch: DamageResolutionScratch
   readonly damageCandidates: EnemyState[]
-  readonly damageTransferLinks: DamageTransferLinkState[]
-  readonly damageTransferLinkPool: DamageTransferLinkState[]
+  readonly pendingDamageTransfers: PendingDamageTransferState[]
+  readonly pendingDamageTransferPool: PendingDamageTransferState[]
+  readonly pendingDamageTransferPathPool: number[][]
+  readonly topologyTransferPulses: TopologyTransferPulseState[]
+  readonly topologyTransferPulsePool: TopologyTransferPulseState[]
   readonly enemies: EnemyState[]
   readonly enemyPool: EnemyState[]
   readonly enemyById: Map<number, EnemyState>
@@ -123,7 +134,8 @@ export interface WorldState {
   nextFlameEmitterId: number
   nextOrbitAttackId: number
   nextDamageEventId: number
-  nextDamageTransferLinkId: number
+  nextPendingDamageTransferId: number
+  nextTopologyTransferPulseId: number
   nextPlayerDamageEventId: number
   playerDamageCandidateCount: number
   collectedXpThisStep: number
@@ -131,6 +143,7 @@ export interface WorldState {
   activeEnemyCount: number
   ordinaryEnemySpawnCount: number
   maximumEnemyQueryRadius: number
+  maximumEnemyStepDistance: number
   firstWaveStarted: boolean
   pendingBossSpawnSide: SpawnSide | null
   slimeBossSpawned: boolean
@@ -186,7 +199,14 @@ export function createWorldState(
     spreadCandidateCount: 0,
     spreadPreciseTestCount: 0,
     damageClaimDedupCount: 0,
-    damageTransferLinkDropCount: 0,
+    activePendingTransferCount: 0,
+    retainedPendingTransferPathCellCount: 0,
+    pendingTransferArrivalCommitCount: 0,
+    pendingTransferInvalidTargetCancellationCount: 0,
+    pendingTransferStatePoolMisses: 0,
+    pendingTransferPathPoolMisses: 0,
+    topologyTransferPulsePoolMisses: 0,
+    topologyPathSearchTimeMs: 0,
     attackEmissionCount: 0,
     rangeExpiredProjectileCount: 0,
     orbitSweepCandidateCount: 0,
@@ -227,8 +247,11 @@ export function createWorldState(
     glyphDamageQueue: createGlyphDamageQueue(),
     damageResolutionScratch: createDamageResolutionScratch(),
     damageCandidates: [],
-    damageTransferLinks: [],
-    damageTransferLinkPool: [],
+    pendingDamageTransfers: [],
+    pendingDamageTransferPool: [],
+    pendingDamageTransferPathPool: [],
+    topologyTransferPulses: [],
+    topologyTransferPulsePool: [],
     enemies: [],
     enemyPool: [],
     enemyById: new Map(),
@@ -258,7 +281,8 @@ export function createWorldState(
     nextFlameEmitterId: 1,
     nextOrbitAttackId: 1,
     nextDamageEventId: 1,
-    nextDamageTransferLinkId: 1,
+    nextPendingDamageTransferId: 1,
+    nextTopologyTransferPulseId: 1,
     nextPlayerDamageEventId: 1,
     playerDamageCandidateCount: 0,
     collectedXpThisStep: 0,
@@ -266,6 +290,7 @@ export function createWorldState(
     activeEnemyCount: 0,
     ordinaryEnemySpawnCount: 0,
     maximumEnemyQueryRadius: content.maximumEnemyBroadPhaseRadius,
+    maximumEnemyStepDistance: 0,
     firstWaveStarted: false,
     pendingBossSpawnSide: null,
     slimeBossSpawned: false,

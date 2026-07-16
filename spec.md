@@ -258,11 +258,16 @@ Damage Targets 是本次實際降低 Current Durability 的 `HEALTHY` 或 `DAMAG
 
 1. 單體／Point 攻擊的 `targetQuota = 1`；AoE 的 `targetQuota = Damage Shape 內命中的不同輪廓 Cell 數量`。
 2. 優先選擇 Damage Shape 內的 `HEALTHY`／`DAMAGED` Cells。
-3. 若仍未補足 quota，從被命中的壞死區沿同一 body 的 canonical Glyph topology，依拓撲距離選擇最近的 `HEALTHY`／`DAMAGED` 邊界 Cells。即使剩餘存活 Cell 已位於怪物另一端，只要攻擊命中輪廓 hitbox，仍要正常扣除其 Durability。
-4. 每個 `HEALTHY`／`DAMAGED` Cell 在同一次攻擊中最多成為一次 Damage Target；若整個 body 的存活 Cells 少於 quota，就只傷害仍存活的不同 Cells，不把剩餘次數重複疊到最後一格。
-5. 等距候選使用穩定的 Glyph ID 次序裁決，確保結果可重現，不得隨機把傷害轉移到無關位置。
+3. 若仍未補足 quota，每個被命中的 `HUSK` Impact Cell 先依該次攻擊的 authoritative traversal direction，沿向前的直線方向尋找同一 body 內第一個 `HEALTHY`／`DAMAGED` Cell。候選必須位於來源 Cell 前方，且其 authoritative Glyph Circle 與該方向射線相交；先選沿射線最早相交者，再以較小橫向偏差、較短 topology distance 與穩定 Glyph ID 裁決。這個方向優先會讓點狀攻擊先沿軌跡鑽出一條洞。
+4. 只有當該來源 Husk 的向前射線已找不到任何存活 Cell，才代表這條方向通道已經鑽通；此時才改用 canonical Glyph topology distance，選擇最近的存活 frontier Cell，讓後續命中從洞口向旁邊蠶食。不得因側邊 Cell 的 topology distance 較短，就搶在仍存在的前方存活 Cell之前受傷。
+5. 每個 `HEALTHY`／`DAMAGED` Cell 在同一次攻擊中最多成為一次 Damage Target；若多個 Husk source 指向同一目標，依穩定來源順序保留第一條，其他來源繼續尋找下一個合法方向候選或 fallback。若整個 body 的存活 Cells 少於 quota，就只處理仍存活的不同 Cells，不把剩餘次數重複疊到最後一格。
+6. 等價候選與等長 topology path 使用穩定 Glyph ID 次序裁決，確保結果可重現，不得隨機把傷害轉移到無關位置。路徑本身在等長選擇中也應優先保持向前投影並降低橫向偏移，避免終點在前方、逐 Cell 傳導卻無故向側邊蛇行。
 
-Damage Shape 外因 quota 補位而受傷的遠端 Damage Targets 只改變 Durability 與生命狀態；受擊閃光、材質位移、粒子及其他主要命中特效仍只作用於 Damage Shape 內的 Impact Cells，無論那些 Impact Cells 是存活還是 `HUSK`。為了讓玩家讀懂這次同一 body 內的拓撲傷害轉移，Runtime 可以輸出由原命中位置連到遠端 Damage Target 的短暫暗亮細線；它只是一個 rendering-only 關聯提示，不得替遠端 Cell 補上 Material impulse、局部命中粒子或第二次傷害。
+不同攻擊形狀必須提供符合自身玩法的 traversal direction。Gameplay projectile 使用碰撞當下的實際 velocity direction，而不是初始發射角；持續移動的接觸武器使用 previous authoritative position 到實際 contact point 的 swept-motion direction，不能拿 knockback direction 冒充；Cone AREA attack 則讓每個 Husk Impact Cell 使用從該 Cone 的 muzzle origin 指向該 Cell 的局部射線，而不是讓整個扇形共用一條中心線。Projectile Count 產生的每一道 Cone 仍是獨立 attack event，使用自己的 origin 與方向。其他 Area DamageShape 若未來加入，也必須明確定義每個 Husk source 的方向，不能悄悄退回全域最近搜尋。
+
+Damage Shape 外選出的遠端 Damage Target 不得在原始命中步立刻降低 Durability。Runtime 必須建立包含來源 Impact Cell、完整 deterministic canonical-topology path、目標 Cell、保留傷害值與 attack identity 的 pending topology transfer。來源 Impact Cell 立即播放原本的主要受擊閃光；後續路徑 Cells 由來源往目標依序播放較暗但清楚可讀的 topology-transfer pulse。不得以兩端之間的直線、曲線或其他跨 Cell 線段取代逐 Cell 傳導。
+
+Pulse 抵達前，目標 Cell 必須維持原本的 Current Durability、生命狀態與亮度，不得提前顯示 `DAMAGED`／`HUSK` 或受擊亮度。Pulse 抵達目標的 fixed step，Runtime 才重新驗證 owner 與目標仍可受傷、套用保留的 Durability damage、更新傷害統計與 topology dirty state，並讓目標在同一步顯示受傷亮度／狀態變化；若這次傷害耗盡 body，collapse 判斷也只能在此後發生。若 owner 已離開戰鬥階段或目標已不再存活，該 pending transfer 終止且不靜默改打另一顆 Cell。中間路徑 Cells 不承受額外傷害、Material impulse、局部命中粒子或主要 hit flash。所有傳導時間使用 Gameplay simulation time，任何完整暫停都不得推進。
 
 ### Damage Spread Targets
 
@@ -270,7 +275,7 @@ Damage Spread 是附加在一次直接攻擊上的獨立能力軸，不是放大
 
 - 只有原始 Damage Shape 至少取得一個 Primary Impact Cell 時，該 attack event 才會解析擴散；直接攻擊完全落空時，外圍帶不能隔空造成傷害。
 - 每一圈的寬度由集中且可驗證的 `spreadBandWidth` content 參數定義；「一顆 Cell 距離」不綁定任何特定物種的 Glyph spacing。對 Shape 外的正距離 `d`，第 `n` 圈為 `(n - 1) × spreadBandWidth < d ≤ n × spreadBandWidth`。
-- Spread Targets 只包含範圍內仍為 `HEALTHY` 或 `DAMAGED` 的 Glyph Cells；`HUSK` 不承受擴散傷害，也不會由 topology frontier 把這份擴散轉移到遠方 Cell。
+- Spread Targets 只包含範圍內仍為 `HEALTHY` 或 `DAMAGED` 的 Glyph Cells；`HUSK` 不承受擴散傷害，也不會由 topology frontier 把這份擴散轉移到遠方 Cell。未來若某個明確能力允許 Husk 傳遞 Damage Spread，必須另外選用與 Cone AREA 相同的逐來源方向 traversal policy；在該能力存在前不得預設啟用。
 - 擴散可以跨越 owner。每個帶狀範圍內所有存活 Glyph Cells 都是候選，不只限於直接命中的生命體；若原本生命體的存活 Cells 都不在範圍內，它不吃擴散，但範圍內其他生命體的存活 Cells 仍會受傷。
 - Rank I 的第一圈承受主傷害 `20%`；Rank II 的第一、二圈分別承受 `20%`、`10%`；Rank III 的第一、二、三圈分別承受 `20%`、`10%`、`5%`。百分比以該次攻擊已解析的主傷害為基準。
 - 同一個 attack event 內，同一 Glyph Cell 最多降低一次 Durability，取所有直接／擴散候選中的最高傷害；直接主傷害與擴散重疊時以主傷害為準。單一 Cone 內部的幾何取樣都共享同一 event，不能讓同一 Cell 重複吃十幾次擴散；Projectile Count 產生的不同 Cone 則是彼此獨立的 attack events，因此重疊區可以各承受一次傷害。
@@ -287,9 +292,9 @@ Glyph Damage 必須從命中的局部區域開始，並沿著壞死邊界逐步�
 
 - 存活字母逐步變淡並成為 `HUSK`
 - `HUSK` 以極低亮度保留局部壞死痕跡
-- 壞死區沿 canonical topology 向最近的存活邊界蠶食
+- 壞死區先沿攻擊軌跡向前鑽孔，該方向鑽通後才向最近的存活邊界側向蠶食
 
-而不是整隻 Boss 一起變透明，也不是在未命中的隨機位置產生傷害。若命中範圍已全部壞死，直接傷害仍依上述 quota 與 topology 規則傳到同一 body 最近的存活邊界，直到必要時蠶食到怪物另一端；主要命中特效仍留在實際 Damage Shape 內，遠端只可顯示前述暗亮轉移線。Damage Spread 是另一個明確的空間規則，只有外圍帶內的存活 Cells 取得擴散傷害與擴散專屬回饋，不改寫這套 body topology 行為。
+而不是整隻 Boss 一起變透明，也不是在未命中的隨機位置產生傷害。若命中範圍已全部壞死，直接傷害先沿該武器的 traversal direction 尋找前方存活 Cell；只有該方向已經鑽通，才依 topology distance 傳向同一 body 最近的存活邊界並逐步向側面擴張。主要命中特效仍留在實際 Damage Shape 內，來源到遠端目標之間以較暗的逐 Cell topology-transfer pulse 顯示傳導順序；目標必須等 pulse 抵達才扣除 Durability 並顯示受擊亮度，絕不提前變色或畫跨越 Cells 的連線。Damage Spread 是另一個明確的空間規則，預設只有外圍帶內的存活 Cells 取得擴散傷害與擴散專屬回饋，不改寫這套 body topology 行為。
 
 玩家需要感受到："我正在從這裡把它逐步蠶食。"
 
@@ -435,7 +440,9 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 - Assisted `o` 是遠距、單體、有限修正的基準子彈。
 - 噴火槍沿玩家瞄準方向形成約 `90°` 的短程扇形 AREA attack；單一 Glyph 每次承受的傷害低於 assisted `o`，但可以同時侵蝕多個 Impact Cells。橘黃 `.`／`*` 火星是 rendering-only presentation，不是會各自造成傷害的 gameplay projectiles；首版噴火槍不自帶 Fire DoT。
-- 能量球以 Printable ASCII `O` 在玩家身邊持續旋轉，單次 Glyph 傷害低於 assisted `o`、高於噴火槍，並將命中的整個 creature root 往玩家外側擊退。軌道、碰撞、重複命中冷卻與 whole-body knockback 都由 Runtime 權威持有，光暈與拖尾才是 rendering-only。
+- 能量球以 Printable ASCII `O` 在玩家身邊持續旋轉，單次 Glyph 傷害低於 assisted `o`、高於噴火槍，並將命中的整個 creature root 往玩家外側擊退。軌道、碰撞、接觸狀態與 whole-body knockback 都由 Runtime 權威持有，光暈與拖尾才是 rendering-only。每顆球對每個 creature owner 獨立判定接觸：新進入或離開後再次進入必須立即可命中；只有連續重疊才以 content-defined `200ms` 最短成功命中間隔防止每個 fixed step 重複傷害，而且只有 Damage System 確認至少一個 Impact Cell 才能開始或刷新該節流。
+
+能量球的內、外有效圈不是兩個獨立設定。它們由球心的 base／resolved orbit radius 加減 Weapon Definition 的 authoritative damage-circle radius 推導，精確相交再納入目標 Glyph 自身半徑。若實測需要降低「看起來碰到卻沒有命中」的情況，應集中調大 damage-circle radius，使內圈向內、外圈向外對稱擴張；不得用平移 orbit radius 假裝增加接觸容錯。確切 prototype 數值與待調整狀態由武器系統文件集中保存。
 
 精確 prototype damage、cadence、幾何尺寸與實作順序記錄在 [`docs/content/weapon-system.md`](docs/content/weapon-system.md)，屬於集中管理、可經 playtest 調整的 content defaults。
 
@@ -490,7 +497,7 @@ Damage +10%
 - Range 已進入正式升級卡池，Rank I～III 的完整總倍率依序為 `×1.15`、`×1.30`、`×1.50`。Range 表示武器從玩家向外可到達的距離，不是放大 Damage Spread，也不能以同一個含糊欄位套用所有 AttackPattern：
   - assisted `o` 同時增加初次 target acquisition、維持原目標 lock 的距離，以及沿實際飛行路徑計算的 maximum travel distance；不改 projectile speed、DamageShape radius、修正角度或 steering responsiveness。
   - 噴火槍只延長從 muzzle origin 起算的 authoritative Cone 軸向長度；不改 `90°` 角度、muzzle distance、傷害、pulse interval 或 rendering-only 粒子數。
-  - 環繞能量球保留 `80` world-unit 的基礎軌道半徑，Range 只增加 deterministic radial sweep 的最大半徑；Rank I～III 的最大半徑依序為 `92`、`104`、`120`。球的直接傷害半徑維持 `14`，避免把 Range 重新混成 Attack Area。
+  - 環繞能量球保留 `80` world-unit 的基礎軌道半徑，Range 只增加 deterministic radial sweep 的最大半徑；Rank I～III 的最大半徑依序為 `92`、`104`、`120`。球的 base damage-circle radius 是獨立的 Weapon Definition tuning value，不隨 Range 放大，避免把 Range 重新混成 Attack Area。
 - Range 與 Damage Spread 同時存在時，Spread 的 `24` world-unit band width 與傷害比例不變；它從該次攻擊已解析的原始 DamageShape 外緣起算。Range 對能量球造成的徑向移動必須使用 authoritative swept collision，不能因 fixed-step 位移跨過 Glyph 而漏判。
 
 ---

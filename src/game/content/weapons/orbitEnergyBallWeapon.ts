@@ -31,12 +31,12 @@ export function prepareOrbitEnergyBallWeaponDefinition(): WeaponDefinition {
       },
       damageShape: {
         kind: DAMAGE_SHAPE.CIRCLE,
-        radius: 14,
+        radius: 16,
         targetMode: DAMAGE_TARGET_MODE.AREA,
       },
       destructionProfileId: DESTRUCTION_PROFILE.KNOCKBACK_CONTACT,
-      damageAmount: 0.6,
-      rehitCooldownMs: 500,
+      damageAmount: 0.8,
+      rehitCooldownMs: 200,
       rootKnockbackDistance: 20,
       orbitPresentation: {
         glyphFrame: getPrintableAsciiGlyphFrame('O'),

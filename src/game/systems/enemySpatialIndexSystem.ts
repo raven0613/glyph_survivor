@@ -30,6 +30,7 @@ export function runEnemySpatialIndexSystem(world: WorldState): void {
   world.activeEnemyCount = 0
   world.maximumEnemyQueryRadius =
     world.content.maximumEnemyBroadPhaseRadius
+  world.maximumEnemyStepDistance = 0
 
   for (const enemy of world.enemies) {
     enemy.trackingLoad = 0
@@ -39,6 +40,10 @@ export function runEnemySpatialIndexSystem(world: WorldState): void {
     }
 
     enemy.radius = updateEnemyRadius(world, enemy.id)
+    world.maximumEnemyStepDistance = Math.max(
+      world.maximumEnemyStepDistance,
+      Math.hypot(enemy.x - enemy.previousX, enemy.y - enemy.previousY),
+    )
     world.maximumEnemyQueryRadius = Math.max(
       world.maximumEnemyQueryRadius,
       enemy.radius,

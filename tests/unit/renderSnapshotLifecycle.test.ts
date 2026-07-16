@@ -49,13 +49,15 @@ test('clears all run-owned render data before returning to ready', () => {
     outerAlpha: 1,
     seed: 1,
   })
-  snapshot.damageTransferLinks.push({
+  snapshot.topologyTransferPulses.push({
     id: 7,
-    sourceX: 0,
-    sourceY: 0,
-    targetX: 1,
-    targetY: 1,
+    glyphFrame: 7,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    scale: 1,
     alpha: 1,
+    tint: 0xffffff,
   })
 
   clearRenderSnapshot(snapshot)
@@ -80,5 +82,5 @@ test('clears all run-owned render data before returning to ready', () => {
   assert.equal(snapshot.orbits.length, 0)
   assert.equal(snapshot.drops.length, 0)
   assert.equal(snapshot.flameEmitters.length, 0)
-  assert.equal(snapshot.damageTransferLinks.length, 0)
+  assert.equal(snapshot.topologyTransferPulses.length, 0)
 })

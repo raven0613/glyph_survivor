@@ -1,3 +1,8 @@
+import {
+  isPlayerAttackVisualRoleId,
+  type PlayerAttackVisualRoleId,
+} from '../content/visuals/combatVisualTheme.ts'
+
 export const DAMAGE_TARGET_MODE = Object.freeze({
   SINGLE: 'SINGLE',
   AREA: 'AREA',
@@ -22,6 +27,21 @@ export const DAMAGE_PRIMARY_SCOPE = Object.freeze({
 export type DamagePrimaryScope =
   (typeof DAMAGE_PRIMARY_SCOPE)[keyof typeof DAMAGE_PRIMARY_SCOPE]
 
+export const DAMAGE_FRONTIER_TRAVERSAL = Object.freeze({
+  FIXED_DIRECTION: 'FIXED_DIRECTION',
+  FROM_SHAPE_ORIGIN: 'FROM_SHAPE_ORIGIN',
+} as const)
+
+export type DamageFrontierTraversal =
+  | Readonly<{
+      kind: typeof DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION
+      directionX: number
+      directionY: number
+    }>
+  | Readonly<{
+      kind: typeof DAMAGE_FRONTIER_TRAVERSAL.FROM_SHAPE_ORIGIN
+    }>
+
 export interface DamageSpreadProfile {
   readonly bandWidth: number
   readonly bandDamageRatios: readonly number[]
@@ -30,6 +50,7 @@ export interface DamageSpreadProfile {
 interface BaseGlyphDamageEvent {
   readonly attackEventId: number
   readonly sourceWeaponInstanceId: number
+  readonly sourceOrbitAttackId?: number
   readonly visualRoleId: PlayerAttackVisualRoleId
   readonly shapeKind: LocalDamageShapeKind
   readonly shapeX: number
@@ -48,6 +69,9 @@ interface BaseGlyphDamageEvent {
   readonly rootKnockbackDistance?: number
   readonly rootKnockbackDirectionX?: number
   readonly rootKnockbackDirectionY?: number
+  readonly lockedOwnerCollisionX?: number
+  readonly lockedOwnerCollisionY?: number
+  readonly frontierTraversal: DamageFrontierTraversal
 }
 
 export type GlyphDamageEvent = BaseGlyphDamageEvent &
@@ -74,6 +98,18 @@ export interface DamageClaim {
   amount: number
   isSpread: boolean
   spreadVisualRoleId: PlayerAttackVisualRoleId | null
+  transferReservation: DamageTransferReservation | null
+}
+
+export interface DamageTransferReservation {
+  readonly attackEventId: number
+  readonly sourceWeaponInstanceId: number
+  readonly visualRoleId: PlayerAttackVisualRoleId
+  readonly ownerId: number
+  readonly sourceGlyphId: number
+  readonly targetGlyphId: number
+  readonly pathGlyphIds: readonly number[]
+  readonly sourceFlashDurationMs: number
 }
 
 export interface DamageResolutionScratch {
@@ -93,6 +129,7 @@ export function createDamageResolutionScratch(): DamageResolutionScratch {
 type MutableGlyphDamageEvent = {
   attackEventId: number
   sourceWeaponInstanceId: number
+  sourceOrbitAttackId?: number
   visualRoleId: PlayerAttackVisualRoleId
   primaryScope: DamagePrimaryScope
   ownerId?: number
@@ -113,6 +150,38 @@ type MutableGlyphDamageEvent = {
   rootKnockbackDistance: number
   rootKnockbackDirectionX: number
   rootKnockbackDirectionY: number
+  lockedOwnerCollisionX?: number
+  lockedOwnerCollisionY?: number
+  frontierTraversal: DamageFrontierTraversal
+}
+
+function prepareDamageFrontierTraversal(
+  traversal: DamageFrontierTraversal,
+): DamageFrontierTraversal {
+  if (traversal.kind === DAMAGE_FRONTIER_TRAVERSAL.FROM_SHAPE_ORIGIN) {
+    return Object.freeze({ kind: traversal.kind })
+  }
+  if (traversal.kind !== DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION) {
+    throw new TypeError('Unknown damage frontier traversal policy.')
+  }
+  const directionLength = Math.hypot(
+    traversal.directionX,
+    traversal.directionY,
+  )
+  if (
+    !Number.isFinite(traversal.directionX) ||
+    !Number.isFinite(traversal.directionY) ||
+    directionLength === 0
+  ) {
+    throw new RangeError(
+      'Damage frontier traversal direction must be finite and non-zero.',
+    )
+  }
+  return Object.freeze({
+    kind: traversal.kind,
+    directionX: traversal.directionX / directionLength,
+    directionY: traversal.directionY / directionLength,
+  })
 }
 
 function validateDamageSpreadProfile(
@@ -163,6 +232,23 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
           'sourceWeaponInstanceId must be a positive safe integer.',
         )
       }
+      if (
+        input.sourceOrbitAttackId !== undefined &&
+        (!Number.isSafeInteger(input.sourceOrbitAttackId) ||
+          input.sourceOrbitAttackId <= 0)
+      ) {
+        throw new RangeError(
+          'sourceOrbitAttackId must be a positive safe integer when provided.',
+        )
+      }
+      if (
+        input.sourceOrbitAttackId !== undefined &&
+        input.primaryScope !== DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER
+      ) {
+        throw new TypeError(
+          'Orbit contact damage must use a locked-owner primary scope.',
+        )
+      }
       if (!isPlayerAttackVisualRoleId(input.visualRoleId)) {
         throw new TypeError('Damage visualRoleId must be registered.')
       }
@@ -177,6 +263,30 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
         (!Number.isSafeInteger(input.ownerId) || input.ownerId <= 0)
       ) {
         throw new RangeError('Locked ownerId must be a positive safe integer.')
+      }
+      const hasLockedOwnerCollisionX =
+        input.lockedOwnerCollisionX !== undefined
+      const hasLockedOwnerCollisionY =
+        input.lockedOwnerCollisionY !== undefined
+      if (
+        hasLockedOwnerCollisionX !== hasLockedOwnerCollisionY ||
+        (hasLockedOwnerCollisionX &&
+          (!Number.isFinite(input.lockedOwnerCollisionX) ||
+            !Number.isFinite(input.lockedOwnerCollisionY))) ||
+        (hasLockedOwnerCollisionX &&
+          input.primaryScope !== DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER)
+      ) {
+        throw new RangeError(
+          'Locked-owner collision position must be a finite coordinate pair on a locked-owner event.',
+        )
+      }
+      if (
+        input.sourceOrbitAttackId !== undefined &&
+        !hasLockedOwnerCollisionX
+      ) {
+        throw new RangeError(
+          'Orbit contact damage must snapshot the owner collision position.',
+        )
       }
       if (!Number.isFinite(input.amount) || input.amount <= 0) {
         throw new RangeError('damage amount must be finite and greater than zero.')
@@ -224,6 +334,9 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
 
       const damageSpreadProfile = input.damageSpreadProfile ?? null
       validateDamageSpreadProfile(damageSpreadProfile)
+      const frontierTraversal = prepareDamageFrontierTraversal(
+        input.frontierTraversal,
+      )
       const rootKnockbackDistance = input.rootKnockbackDistance ?? 0
       const rootKnockbackDirectionX = input.rootKnockbackDirectionX ?? 0
       const rootKnockbackDirectionY = input.rootKnockbackDirectionY ?? 0
@@ -238,14 +351,18 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
 
       const event = events[eventCount] ?? ({} as MutableGlyphDamageEvent)
       Object.assign(event, input)
+      event.sourceOrbitAttackId = input.sourceOrbitAttackId
       event.ownerId =
         input.primaryScope === DAMAGE_PRIMARY_SCOPE.LOCKED_OWNER
           ? input.ownerId
           : undefined
+      event.lockedOwnerCollisionX = input.lockedOwnerCollisionX
+      event.lockedOwnerCollisionY = input.lockedOwnerCollisionY
       event.damageSpreadProfile = damageSpreadProfile
       event.rootKnockbackDistance = rootKnockbackDistance
       event.rootKnockbackDirectionX = rootKnockbackDirectionX
       event.rootKnockbackDirectionY = rootKnockbackDirectionY
+      event.frontierTraversal = frontierTraversal
       events[eventCount] = event
       activeEventIds.add(input.attackEventId)
       eventCount += 1
@@ -263,7 +380,3 @@ export function createGlyphDamageQueue(): GlyphDamageQueue {
     },
   })
 }
-import {
-  isPlayerAttackVisualRoleId,
-  type PlayerAttackVisualRoleId,
-} from '../content/visuals/combatVisualTheme.ts'

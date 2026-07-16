@@ -6,7 +6,10 @@ import { createRenderSnapshot, writeRenderSnapshot } from '../../src/game/bridge
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import { GLYPH_CELL_STATE } from '../../src/game/glyph/glyphStore.ts'
 import { getGlyphMaterialDefinition } from '../../src/game/glyph/glyphMaterial.ts'
-import { DAMAGE_TARGET_MODE } from '../../src/game/glyph/localDamage.ts'
+import {
+  DAMAGE_FRONTIER_TRAVERSAL,
+  DAMAGE_TARGET_MODE,
+} from '../../src/game/glyph/localDamage.ts'
 import {
   createWorldState,
   spawnEnemy,
@@ -126,8 +129,8 @@ test('applies real Slime displacement to a surviving hit glyph and springs it ba
   )
   const slime = spawnEnemy(
     world,
-    2_000,
-    2_000,
+    world.player.x,
+    world.player.y,
     0,
     content.slimeBossDefinition,
   )
@@ -181,7 +184,13 @@ test('caps simultaneous ASCII impact particles under large area hits', () => {
     content,
     BASIC_PROJECTILE_WEAPON_ID,
   )
-  const slime = spawnEnemy(world, 2_000, 2_000, 0, content.slimeBossDefinition)
+  const slime = spawnEnemy(
+    world,
+    world.player.x,
+    world.player.y,
+    0,
+    content.slimeBossDefinition,
+  )
   slime.phase = 'ACTIVE'
 
   for (const glyph of world.glyphStore.getOwnerGlyphs(slime.id)) {
@@ -243,6 +252,11 @@ test('keeps the eye accent while using the Slime hit color family', () => {
     impactStrengthMultiplier: 1,
     impactDirectionX: 1,
     impactDirectionY: 0,
+    frontierTraversal: {
+      kind: DAMAGE_FRONTIER_TRAVERSAL.FIXED_DIRECTION,
+      directionX: 1,
+      directionY: 0,
+    },
   })
   runDamageSystem(world)
 

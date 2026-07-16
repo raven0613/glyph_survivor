@@ -12,7 +12,7 @@ import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 export interface SceneLayers {
   readonly worldRoot: Container
   readonly enemyLayer: ParticleContainer<Particle>
-  readonly damageTransferLinkLayer: Container
+  readonly topologyTransferPulseLayer: ParticleContainer<Particle>
   readonly effectLayer: ParticleContainer<Particle>
   readonly flameLayer: ParticleContainer<Particle>
   readonly projectileLayer: ParticleContainer<Particle>
@@ -105,11 +105,18 @@ export function createSceneLayers(
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
   })
-  const damageTransferLinkLayer = new Container({
-    label: 'damage-transfer-links',
+  const topologyTransferPulseLayer = new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    label: 'topology-transfer-pulses',
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
   })
-  damageTransferLinkLayer.eventMode = 'none'
-  damageTransferLinkLayer.interactiveChildren = false
   const orbitLayer = new ParticleContainer<Particle>({
     texture: atlas.printableFrames[0],
     boundsArea: createWorldBounds(),
@@ -161,7 +168,7 @@ export function createSceneLayers(
     backgroundLayer,
     dropLayer,
     enemyLayer,
-    damageTransferLinkLayer,
+    topologyTransferPulseLayer,
     effectLayer,
     flameLayer,
     projectileLayer,
@@ -173,7 +180,7 @@ export function createSceneLayers(
   return Object.freeze({
     worldRoot,
     enemyLayer,
-    damageTransferLinkLayer,
+    topologyTransferPulseLayer,
     effectLayer,
     flameLayer,
     projectileLayer,

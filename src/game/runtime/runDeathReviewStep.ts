@@ -1,5 +1,4 @@
 import { runCleanupSystem } from '../systems/cleanupSystem.ts'
-import { runDamagePresentationSystem } from '../systems/damagePresentationSystem.ts'
 import { runDeathReviewCollapseSystem } from '../systems/deathReviewCollapseSystem.ts'
 import { runDeathReviewMovementSystem } from '../systems/deathReviewMovementSystem.ts'
 import { runFlamePresentationSystem } from '../systems/flamePresentationSystem.ts'
@@ -49,7 +48,6 @@ export function runDeathReviewStep(
     GAME_CONFIG,
   )
   runGlyphMaterialSystem(world, deltaMs)
-  runDamagePresentationSystem(world, deltaMs)
   runFlamePresentationSystem(world, deltaMs)
   runDeathReviewMovementSystem(world, deltaMs, GAME_CONFIG)
   runDeathReviewCollapseSystem(world, deltaMs)

@@ -3,7 +3,6 @@ import { runAimSystem } from '../systems/aimSystem.ts'
 import { runCollisionSystem } from '../systems/collisionSystem.ts'
 import { runDamageSystem } from '../systems/damageSystem.ts'
 import { runDeathSystem } from '../systems/deathSystem.ts'
-import { runDamagePresentationSystem } from '../systems/damagePresentationSystem.ts'
 import { runDirectorSystem } from '../systems/directorSystem.ts'
 import { runDropSystem } from '../systems/dropSystem.ts'
 import { runEnemySpatialIndexSystem } from '../systems/enemySpatialIndexSystem.ts'
@@ -23,6 +22,7 @@ import { runSlimeSplitSystem } from '../systems/slimeSplitSystem.ts'
 import { runOrbitWeaponSystem } from '../systems/orbitWeaponSystem.ts'
 import { runPlayerContactSystem } from '../systems/playerContactSystem.ts'
 import { runPlayerSurvivalSystem } from '../systems/playerSurvivalSystem.ts'
+import { runPendingDamageTransferSystem } from '../systems/pendingDamageTransferSystem.ts'
 import { runStatisticsSystem } from '../systems/runStatisticsSystem.ts'
 import { finalizeRunResult } from './runResult.ts'
 import { beginWorldDeathReview } from './runDeathReviewStep.ts'
@@ -47,7 +47,6 @@ export function runSimulationStep(
   runAimSystem(world)
   runMovementSystem(world, deltaMs)
   runGlyphMaterialSystem(world, deltaMs)
-  runDamagePresentationSystem(world, deltaMs)
   runEnemySpatialIndexSystem(world)
   runDirectorSystem(world, deltaMs)
   runBossSpawnSystem(world)
@@ -58,6 +57,7 @@ export function runSimulationStep(
   runProjectileTargetingSystem(world, deltaMs)
   runProjectileSystem(world, deltaMs)
   runCollisionSystem(world)
+  runPendingDamageTransferSystem(world, deltaMs)
   runDamageSystem(world)
   runSlimeSplitSystem(world)
   runDeathSystem(world, deltaMs)
