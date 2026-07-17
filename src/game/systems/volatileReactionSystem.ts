@@ -61,6 +61,39 @@ function promoteNextWave(
   )
 }
 
+function advanceWaveIntervals(world: WorldState, deltaMs: number): void {
+  for (const chain of world.volatileState.activeChains) {
+    if (chain.waveIntervalRemainingMs === null) {
+      continue
+    }
+    chain.waveIntervalRemainingMs = Math.max(
+      0,
+      chain.waveIntervalRemainingMs - deltaMs,
+    )
+    if (chain.waveIntervalRemainingMs > 0) {
+      continue
+    }
+    chain.waveIntervalRemainingMs = null
+    promoteNextWave(world, chain)
+  }
+}
+
+function startCompletedWaveIntervals(
+  world: WorldState,
+  waveIntervalMs: number,
+): void {
+  for (const chain of world.volatileState.activeChains) {
+    if (
+      chain.currentWaveIndex < chain.currentWave.length ||
+      chain.nextWave.length === 0 ||
+      chain.waveIntervalRemainingMs !== null
+    ) {
+      continue
+    }
+    chain.waveIntervalRemainingMs = waveIntervalMs
+  }
+}
+
 function resolveExplosion(
   world: WorldState,
   chain: VolatileReactionChain,
@@ -167,15 +200,21 @@ function updateDiagnostics(world: WorldState): void {
   let deferredCount = 0
   let currentWaveCount = 0
   let nextWaveCount = 0
+  let intervalCountdownCount = 0
   for (const chain of world.volatileState.activeChains) {
     const currentCount = chain.currentWave.length - chain.currentWaveIndex
     currentWaveCount += currentCount
     nextWaveCount += chain.nextWave.length
     deferredCount += currentCount + chain.nextWave.length
+    if (chain.waveIntervalRemainingMs !== null) {
+      intervalCountdownCount += 1
+    }
   }
   world.diagnostics.deferredVolatileExplosionCount = deferredCount
   world.diagnostics.activeVolatileCurrentWaveEventCount = currentWaveCount
   world.diagnostics.activeVolatileNextWaveEventCount = nextWaveCount
+  world.diagnostics.activeVolatileIntervalCountdownCount =
+    intervalCountdownCount
   world.diagnostics.volatileSchedulerPoolMisses =
     world.volatileState.schedulerPoolMissCount
   world.diagnostics.volatileCorePresentationPoolMisses =
@@ -188,8 +227,14 @@ function updateDiagnostics(world: WorldState): void {
   )
 }
 
-/** Resolves current BFS waves under one fair global fixed-step budget. */
-export function runVolatileReactionSystem(world: WorldState): void {
+/** Advances wave intervals and resolves current BFS waves under one fair budget. */
+export function runVolatileReactionSystem(
+  world: WorldState,
+  deltaMs: number,
+): void {
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) {
+    throw new RangeError('Volatile deltaMs must be finite and non-negative.')
+  }
   world.diagnostics.volatileExplosionsResolvedThisStep = 0
   const profile = world.runModifierState.resolvedProfile.volatile
   if (!profile || world.volatileState.activeChains.length === 0) {
@@ -197,8 +242,8 @@ export function runVolatileReactionSystem(world: WorldState): void {
     return
   }
   world.volatileState.activeChains.sort((first, second) => first.id - second.id)
+  advanceWaveIntervals(world, deltaMs)
   for (const chain of world.volatileState.activeChains) {
-    promoteNextWave(world, chain)
     chain.currentWave.sort(
       (first, second) => first.sourceGlyphId - second.sourceGlyphId,
     )
@@ -229,6 +274,7 @@ export function runVolatileReactionSystem(world: WorldState): void {
     resolveExplosion(world, chain, event)
     remainingBudget -= 1
   }
+  startCompletedWaveIntervals(world, profile.waveIntervalMs)
   removeCompletedChains(world)
   updateDiagnostics(world)
 }

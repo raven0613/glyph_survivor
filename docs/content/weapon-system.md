@@ -55,9 +55,24 @@
 ### Module Slot
 
 - Weapon Instance 內有順序的固定位置。
-- 首版所有武器固定具有 `4` 個 Module Slots；數值仍由 Weapon Definition 明確保存並在 content preparation 驗證，Runtime／UI 不得各自重複常數。
+- 首版所有武器必須符合同一個 Module Slot count 約束；每把武器的 current count 由它的 Weapon Definition 明確保存，共同約束由 [`weaponDefinition.ts`](../../src/game/content/weapons/weaponDefinition.ts) 驗證。Runtime／UI 不得另寫預設數字。
 - Slot 為空，或保存一個 module definition ID 與目前 Rank。
 - Slot index 在武器存續期間保持穩定，供 UI 預覽與原子 command 使用。
+
+### Numeric authoring 與測試來源
+
+Production tuning values 不以本文為 source of truth。Current values 只存在下列 validated authoring modules，並在 LOADING 進入 immutable prepared content：
+
+- assisted `o`：[`basicProjectileWeapon.ts`](../../src/game/content/weapons/basicProjectileWeapon.ts) 與 [`projectileTracking.ts`](../../src/game/content/weapons/projectileTracking.ts)；
+- 噴火槍：[`flamethrowerWeapon.ts`](../../src/game/content/weapons/flamethrowerWeapon.ts)；
+- 環繞能量球：[`orbitEnergyBallWeapon.ts`](../../src/game/content/weapons/orbitEnergyBallWeapon.ts)；
+- Module Rank payload、emission spacing 與 Damage Spread 參數：[`prototypeWeaponModules.ts`](../../src/game/content/upgrades/prototypeWeaponModules.ts)；
+- XP curve：[`levelProgression.ts`](../../src/game/content/upgrades/levelProgression.ts)；
+- loadout-wide content values：[`gameContent.ts`](../../src/game/content/gameContent.ts)。
+
+本文只保存參數名稱、單位、公式、相對關係、ownership、validation 與行為不變量，不複製 current default。其他產品／工程文件也必須連到上述 authoring source，不得抄出另一份 prototype value。
+
+Production-content tests 遵守相同規則：content wiring tests 對照 canonical authoring／preparation function或驗證schema、identity與freeze；system／integration tests從該test world的prepared Weapon Definition、resolved Weapon Profile與prepared Module Rank payload推導期望值。只有數學常數、明確不可調產品不變量，或由測試自行建立且不代表production config的公式／validation fixture可以直接寫numeric literal。單純調整authoring default不應要求修改本文或一般behavior assertion。
 
 ### Upgrade Offer
 
@@ -75,7 +90,7 @@
 
 ## 4. 本局裝備欄
 
-- 首版 `maximumEquippedWeapons` 的 validated run/content default 為 `3`；它不是可以散落在系統與 UI 中的 magic number。
+- `maximumEquippedWeapons` 必須從 [`gameContent.ts`](../../src/game/content/gameContent.ts) 的 prepared content 讀取；它不是可以散落在系統、UI 或測試中的預設數字。
 - 一局開始時恰好裝備一把初始武器。
 - 首版同一個 weapon definition 不得同時存在多個已裝備 instances；未來若允許重複，仍必須以不同 instance IDs 分開管理。
 - 每把武器有獨立 cooldown 與 Runtime attack state。不得保留一個全域 cooldown 代表全部武器。
@@ -115,19 +130,19 @@ Module 的「綁定」精確定義如下：
 - 覆蓋只改變指定 Slot，不得改動同武器的其他 Slots。
 - 同 Module 升階只改變原 Slot 的 Rank，不建立重複 Slot 或額外 investment object。
 
-Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內同一 Module 的投資階段。效果應由 content 提供明確、可驗證的 rank table。每一列保存該 Rank 的**完整總效果**，不是從前一 Rank 再疊乘的增量；例如 Attack Speed II 的 `×1.30` 不得解讀成先乘 Rank I 的 `1.15` 再乘 `1.30`。不得把 `I`、`II`、`III` 寫成互不相干、容易漂移的 definitions。
+Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內同一 Module 的投資階段。效果應由 content 提供明確、可驗證的 rank table。每一列保存該 Rank 的**完整總效果**，不是從前一 Rank 再疊乘的增量。不得把 `I`、`II`、`III` 寫成互不相干、容易漂移的 definitions。
 
-已實作的首批 prototype Modules 最大 Rank 都是 III：
+已實作的首批 prototype Modules 與 effect payload 語意如下；current Rank values 只讀取 [`prototypeWeaponModules.ts`](../../src/game/content/upgrades/prototypeWeaponModules.ts)：
 
-| Module | Rank I | Rank II | Rank III | 效果值語意 |
-| --- | ---: | ---: | ---: | --- |
-| Attack Speed | `×1.15` | `×1.30` | `×1.50` | 總 attack-rate multiplier；interval 由 base interval 除以此值 |
-| Projectile Count | `2` | `3` | `4` | 一次 AttackPattern 的總 emission／stream／ball 數量，不是額外增加量 |
-| Damage Spread | `20%` | `20% / 10%` | `20% / 10% / 5%` | 從原始 DamageShape 外緣起算；數列依序是第一、二、三圈承受的 resolved main damage 比例 |
-| Range | `×1.15` | `×1.30` | `×1.50` | 武器可到達距離的完整總倍率；依 AttackPattern 編譯成 acquisition／travel、Cone length 或 maximum radial-sweep radius |
-| Knockback | `×1.25` | `×1.60` | `×2.00` | 武器 impact／root knockback strength 的總 multiplier |
+| Module | Effect payload 語意 |
+| --- | --- |
+| Attack Speed | Rank保存完整總attack-rate multiplier；interval由base interval除以該prepared value |
+| Projectile Count | Rank保存一次AttackPattern的總emission／stream／ball數量，不是額外增加量 |
+| Damage Spread | Rank保存從原始DamageShape外緣起算的完整band-ratio陣列 |
+| Range | Rank保存武器可到達距離的完整總倍率；依AttackPattern編譯成acquisition／travel、Cone length或maximum radial-sweep radius |
+| Knockback | Rank保存武器impact／root knockback strength的完整總multiplier |
 
-每個 Damage Spread Rank 的數列已包含該階完整效果；Rank III 不是在 Rank II 之外再疊加另一組第一、二圈傷害。Range III 的 `×1.50` 也代表相對於該武器 base reach 的完整總倍率，不得在 Range II 的 `×1.30` 上再次乘算。Module effect schema 必須允許 discriminated rank payload，例如 spread 的完整 band ratios，不能假設所有 Module 都只有一個 `totalMultiplier`。這些倍率／比例集中在 content，可經 playtest 替換，不是不可改動的產品常數。其他 Module 可以有不同最大 Rank 或非線性 rank table。
+每個 Damage Spread Rank 的數列已包含該階完整效果；後一 Rank 不是在前一 Rank 之外再疊加另一組舊 bands。Range 的每個 Rank 也代表相對於該武器 base reach 的完整總倍率，不得在前一 Rank 上再次乘算。Module effect schema 必須允許 discriminated rank payload，例如 spread 的完整 band ratios，不能假設所有 Module 都只有一個 `totalMultiplier`。這些倍率／比例集中在 content，可經 playtest 替換，不是不可改動的產品常數。其他 Module 可以有不同最大 Rank 或非線性 rank table。
 
 ### 6.1 未來 Player Survival Modules
 
@@ -154,35 +169,26 @@ Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內�
 
 ### 7.1 XP 曲線與升級觸發
 
-首版以 `level`、`xpIntoLevel` 與 `pendingUpgradeCount` 表示升級進度。`xpIntoLevel` 是目前等級內已累積的 XP，不是已花費 XP 的 lifetime total。由目前等級 `L` 升到下一級所需 XP 使用以下 validated prototype curve：
+首版以 `level`、`xpIntoLevel` 與 `pendingUpgradeCount` 表示升級進度。`xpIntoLevel` 是目前等級內已累積的 XP，不是已花費 XP 的 lifetime total。由目前等級 `L` 升到下一級所需 XP 使用 [`levelProgression.ts`](../../src/game/content/upgrades/levelProgression.ts) 的 prepared parameters：
 
 ```text
-L <= 10: xpToNext(L) = 3 + L × (L + 3) / 2
-L > 10:  xpToNext(L) = 68 + 12 × (L - 10)
+L <= earlyLevelLimit:
+  xpToNext(L) = earlyBaseXp + L × (L + 3) / 2
+
+L > earlyLevelLimit:
+  xpToNext(L) = lateBaseXp
+                + lateXpPerLevel × (L - earlyLevelLimit)
 ```
 
-`L` 是升級前的目前等級。前十次門檻如下：
-
-| 升級 | 本級所需 XP | 累積 XP |
-| --- | ---: | ---: |
-| Lv1 → 2 | 5 | 5 |
-| Lv2 → 3 | 8 | 13 |
-| Lv3 → 4 | 12 | 25 |
-| Lv4 → 5 | 17 | 42 |
-| Lv5 → 6 | 23 | 65 |
-| Lv6 → 7 | 30 | 95 |
-| Lv7 → 8 | 38 | 133 |
-| Lv8 → 9 | 47 | 180 |
-| Lv9 → 10 | 57 | 237 |
-| Lv10 → 11 | 68 | 305 |
+`L` 是升級前的目前等級。本文不複製 current threshold table；Runtime與tests都由同一份prepared progression計算。
 
 XP 結算遵守以下規則：
 
-- 首版 Z、BO、BAT 每次合法死亡 reward 都提供 `1 XP`，先用一致獎勵隔離曲線測量；不同普通敵人、Elite 與 Boss 的差異化 reward 之後由 content 明確定義，不得讓 Boss／Elite 意外繼承普通敵人的 fallback `1 XP`。
+- 首版 Z、BO、BAT 使用各自 prepared creature content 提供的合法死亡 XP reward；不同普通敵人、Elite 與 Boss 的差異化 reward 必須由content明確定義，不得讓Boss／Elite意外繼承普通敵人的fallback。
 - 同一 fixed step 撿到的 XP 先累加，再以 `while` 逐級扣除門檻；所有超額 XP 必須保留。
 - 每跨過一級就增加一次 `pendingUpgradeCount`。一次跨多級只建立第一個 active offer，其餘選擇排隊，並在前一個 commit 後依更新後的 loadout 重新產生。
 - 第一次武器卡保證依 `offerSequence === 0` 判斷，不依 `level === 2`；大額 XP 一次跨多級不得重複觸發首次保證。
-- 第一個升級的 playtest 目標是約擊敗五隻普通敵人、開局約 `8–15` 秒。這是節奏驗收目標，不是寫死的時間門檻；若實測偏慢，優先調整 curve content，而不是在系統中加入特例。
+- 第一個升級的playtest節奏目標不是寫死的Gameplay時間門檻；若實測偏慢，優先調整curve與reward content，而不是在系統中加入特例。量測目標若需要版本化，應另存明確balance-acceptance artifact，不得混成Runtime default。
 - `xpToNext`、門檻表與 reward values 都是 validated content parameters。升級系統只能讀取準備完成的 curve，不得散落重複公式。
 
 ### 7.2 XP 掉落物呈現
@@ -252,7 +258,7 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 
 每個 damaging attack 仍必須產生 stable attack event ID、明確 DamageShape、Damage Amount、Impact parameters，以及可選的 immutable DamageSpreadProfile。Current Durability 與 Damage Amount 允許有限正小數；不做整數四捨五入，也沒有最低 `1` 點傷害。傷害扣除後限制在零以上，並使用同一個集中數值精度規則把接近零的浮點殘值正規化為零。Projectile spawn 時複製本次攻擊需要的 resolved values；在途 projectile 不得每步回查可能已升階或被替換的 Weapon Instance。
 
-### 9.1 首三把武器與 prototype combat defaults
+### 9.1 首三把武器與 authoring sources
 
 首版武器身分依 TargetStrategy、AttackPattern、DamageShape 與 DestructionProfile 分離，不得把非 projectile 武器塞入 single-projectile profile 的假欄位：
 
@@ -264,24 +270,24 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 
 三把武器各自引用 semantic attack-presentation roles，實際色系與 alpha 由集中 Battlefield Visual Theme 決定。Attack event 必須 snapshot 這個 `PlayerAttackVisualRoleId`，使 projectile travel、Cone pulse 或 orbit contact 延後解析 Damage Spread 時仍保留來源色系。直接 Impact feedback 使用怪物自己的 Appearance Profile；Spread Target feedback 使用來源 attack role 的 `accent` tint。所有玩家攻擊核心 role 都高於 XP 新生／閃爍峰值與怪物受擊峰值；Weapon content 與 renderer 不保存另一套固定色值，也不得依武器 ID 寫 spread 顏色分支。
 
-傷害高低比較以「一個 Damage Target 每次有效命中」為單位：assisted `o` 的 `1.0` 高於能量球的 `0.6`，能量球再高於噴火槍的 `0.125`。AREA 武器可以同時選中多個 Damage Targets，因此總傷害與清怪能力不能只用這個單次數值比較。以基礎 `Max Durability = 1` 的 Cell 為例，未加成的 assisted `o` 可一次歸零、能量球需要兩次有效命中、噴火槍需要八次直接 pulse；Current Durability 可以在過程中保留小數。
+傷害高低比較以「一個 Damage Target 每次有效命中」為單位：產品關係保持 `assisted o damage > orbit damage > flamethrower damage`。Current values 分別只存在三把武器的authoring definition；AREA武器可以同時選中多個Damage Targets，因此總傷害與清怪能力不能只用單次數值比較。對任意Cell，需要的有效命中數由`ceil(Current Durability / prepared damageAmount)`推導，本文不保存由current tuning值算出的命中次數。
 
 #### Assisted `o`
 
 - 遠距單體基準武器；保留有限的 assisted correction，錯過或失去原目標後永久轉為 ballistic。
-- Prototype base values：`damageAmount = 1.0`、`fireIntervalMs = 220`、`trackingRange = 700`、`projectileSpeed = 620`、`maximumTravelDistance = 1,116`。原本由 `1,800 ms` lifetime 間接形成的同等路徑長度已遷移為明確 distance budget；Runtime 依每步實際 travelled path 扣除，不再讓 lifetime 暗中兼任 Range contract。
+- Current base profile與tracking values只存在[`basicProjectileWeapon.ts`](../../src/game/content/weapons/basicProjectileWeapon.ts)及[`projectileTracking.ts`](../../src/game/content/weapons/projectileTracking.ts)。Maximum travel distance是明確distance budget；Runtime依每步實際travelled path扣除，不讓lifetime暗中兼任Range contract。
 - Gameplay projectile 使用小寫 `o`；projectile position、collision、target 與 damage 都由 Runtime 權威持有。
-- 若安裝 Range，初次 target acquisition range、對原目標的 lock-maintenance range，以及沿 projectile 實際彎曲路徑消耗的 maximum travel distance 都套用該 Rank 的完整總倍率。Rank I～III 分別解析成 acquisition／lock `805／910／1,050`，以及 maximum travel distance 約 `1,283／1,451／1,674`；projectile speed、DamageShape radius、assisted correction angle 與 steering responsiveness 不變。每顆在途 projectile 使用 emission-time distance snapshot，最後一段部分距離仍必須有一次 collision 機會。
+- 若安裝 Range，初次 target acquisition range、對原目標的 lock-maintenance range，以及沿 projectile 實際彎曲路徑消耗的 maximum travel distance 都套用該 Rank 的 prepared完整總倍率；projectile speed、DamageShape radius、assisted correction angle與steering responsiveness不變。每顆在途projectile使用emission-time distance snapshot，最後一段部分距離仍必須有一次collision機會。
 - 若安裝 Damage Spread，外圍距離以 projectile 的本次原始 point／circle impact shape 為起點。
-- 無論是否安裝 Damage Spread，直接命中 `HUSK` 時，使用 projectile 碰撞當下經 assisted correction 後的實際 velocity direction，優先選擇該向前射線第一個相交的同 body 存活 Cell；只有射線上已沒有存活 Cell，才 fallback 到 topology distance 最近的 frontier。遠端主傷害不受 spread band 距離限制，也不會因此把擴散轉移過去。Runtime 建立逐 Cell pending transfer，pulse 抵達前目標維持原 Durability／狀態／亮度，抵達時才套用 `1.0` 傷害與目標受擊亮度；不得畫端點連線。
+- 無論是否安裝 Damage Spread，直接命中 `HUSK` 時，使用 projectile 碰撞當下經 assisted correction 後的實際 velocity direction，優先選擇該向前射線第一個相交的同 body 存活 Cell；只有射線上已沒有存活 Cell，才 fallback 到 topology distance 最近的 frontier。遠端主傷害不受 spread band 距離限制，也不會因此把擴散轉移過去。Runtime 建立逐 Cell pending transfer，pulse 抵達前目標維持原 Durability／狀態／亮度，抵達時才套用 emission-time prepared damage 與目標受擊亮度；不得畫端點連線。
 
-#### 90° 短程噴火槍
+#### 短程寬角噴火槍
 
 - 沿玩家目前的 authoritative aim direction 攻擊，不執行敵人 target selection 或 tracking。
-- Prototype base values：`fullAngle = 90°`、`range = 160`、`damageIntervalMs = 250`、`damageAmount = 0.125`、`muzzleDistance = 20`。這是從原本 `0.25` 直接砍半後的新基準值。
-- 若安裝 Range，只對從 muzzle origin 起算的 authoritative Cone 軸向長度套用完整總倍率。Rank I～III 的 Cone length 分別為 `184／208／240`，因此從 player root 起算的最遠 reach 是 `204／228／260`；`fullAngle = 90°`、`muzzleDistance = 20`、damage、pulse interval 與 rendering-only particle count 都不變。
+- Current base profile只存在[`flamethrowerWeapon.ts`](../../src/game/content/weapons/flamethrowerWeapon.ts)。
+- 若安裝 Range，只對從 muzzle origin 起算的 authoritative Cone 軸向長度套用prepared完整總倍率；full angle、muzzle distance、damage、pulse interval與rendering-only particle count都不變。
 - 每次 damage interval 產生一次瞬時 authoritative Cone DamageShape。Broad phase 可以用包覆圓查詢 owner，但 precise hit 必須逐一測試完整 Glyph outline 與 Cone，包括 `HUSK`。
-- Cone 是 AREA attack；每個 owner 的 target quota 等於其 distinct Impact Cells 數量，living Impact Cells 優先。每個造成缺額的 Husk Impact Cell 都使用從該 Cone stream 的 muzzle origin 穿過自身的局部射線，優先鑽向該射線第一個存活 Cell；不能讓整個約 `90°` 扇形的所有 Husk 共用平行中心軸。只有一條局部射線已鑽通時，該來源才 fallback 到最近 topology frontier。多來源必須去重，同一 attack event 不能讓同一目標重複受傷。只有實際 Cone 內的 Impact Cells 取得 primary hit flash、粒子與 Material response；遠端目標等各自的逐 Cell pulse 抵達才扣傷害並顯示受擊亮度。
+- Cone 是 AREA attack；每個 owner 的 target quota 等於其 distinct Impact Cells 數量，living Impact Cells 優先。每個造成缺額的 Husk Impact Cell 都使用從該 Cone stream 的 muzzle origin 穿過自身的局部射線，優先鑽向該射線第一個存活 Cell；不能讓整個扇形的所有 Husk 共用平行中心軸。只有一條局部射線已鑽通時，該來源才 fallback 到最近 topology frontier。多來源必須去重，同一 attack event 不能讓同一目標重複受傷。只有實際 Cone 內的 Impact Cells 取得 primary hit flash、粒子與 Material response；遠端目標等各自的逐 Cell pulse 抵達才扣傷害並顯示受擊亮度。
 - 一道 Cone stream 的一次 pulse 是一個 attack event。Cone 內的所有幾何取樣、Impact Cells 與 owner queries 都共享同一 event ID，不能讓同一 Cell 因落入多個取樣區而重複吃直接或擴散傷害。Projectile Count 產生的每一道 Cone stream 則各自建立 event；多道 Cone 重疊時，每一道火仍可各造成一次傷害。
 - 若安裝 Damage Spread，bands 從**整個 authoritative Cone 的外圍**向外計算，包括其弧形遠端與兩側邊界；不得由每顆 rendering 火星、每個 Cone 取樣點或每個 Impact Cell 各自產生擴散圈。
 - `.`、`*` 飛散使用集中設定的 fire-spectrum presentation roles，且仍是 rendering-only presentation；調整其實際色值或把視覺密度降為零時，傷害結果必須完全相同。不得把每顆火星建立成 gameplay projectile。
@@ -290,18 +296,18 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 #### 環繞能量球
 
 - 能量球核心使用 Printable ASCII `O`。軌道相位、world position、collision radius、damage 與 per-owner re-hit cooldown 都是 Runtime 權威資料；Renderer 不得自行繞著玩家計算 gameplay position。
-- Prototype base values：`ballCount = 1`、`orbitRadius = 80`、`damageRadius = 16`、`angularSpeed = 0.9 revolutions/second`、`damageAmount = 0.6`、`rehitCooldownMs = 200`、`rootKnockbackDistance = 20`。`damageRadius` 已由 `14` 保守調高為 `16`，後續仍可依實機手感集中調整。
-- `orbitRadius` 是玩家 root 到球心的軌道半徑，`damageRadius` 是以球心為中心的 authoritative Circle 半徑；內圈與外圈不是兩個獨立 content fields。基礎軌道在不計目標 Glyph 自身 collision radius 時形成 `80 - 16 = 64` 到 `80 + 16 = 96` 的球心傷害環帶；精確相交仍須再納入各 Glyph 的 authoritative collision radius。若要同時讓內圈往內、外圈往外增加視覺接觸容錯，應集中調高 `damageRadius`；修改 `orbitRadius` 只會平移整個環帶，不得拿來冒充對稱擴張。
-- 若安裝 Range，`orbitRadius = 80` 仍是每顆球 deterministic radial sweep 的最小／基礎半徑，完整總倍率只決定 maximum radius；Rank I～III 的 sweep range 分別為 `80～92`、`80～104`、`80～120`。Range 不放大 Weapon Definition 的 base `damageRadius`，避免把 Range 混成 Attack Area；多球維持等角度分布並使用穩定錯開的 radial phase，不能全部同時移到外圈。
+- Current base profile只存在[`orbitEnergyBallWeapon.ts`](../../src/game/content/weapons/orbitEnergyBallWeapon.ts)。
+- `orbitRadius` 是玩家 root 到球心的軌道半徑，`damageShape.radius` 是以球心為中心的 authoritative contact Circle 半徑；內圈與外圈不是兩個獨立 content fields。不計目標 Glyph 自身 collision radius時，球心傷害環帶為`orbitRadius - damageShape.radius`到`orbitRadius + damageShape.radius`；精確相交仍須再納入各Glyph的authoritative collision radius。若要同時讓內圈往內、外圈往外增加視覺接觸容錯，應集中調高contact radius；修改orbit radius只會平移整個環帶，不得拿來冒充對稱擴張。
+- 若安裝 Range，prepared base orbit radius仍是每顆球deterministic radial sweep的最小／基礎半徑，prepared完整總倍率只決定maximum radius。Range不放大Weapon Definition的base contact radius，避免把Range混成Attack Area；多球維持等角度分布並使用穩定錯開的radial phase，不能全部同時移到外圈。
 - 每顆球是依附 Weapon Instance 的 persistent attack，不是一般 `ProjectileState`。武器被替換或移除時，所屬球、hit history 與 instance-owned state 一起終止。
-- 球的 Circle 與完整 Glyph outline 精確相交；命中後不消失。接觸紀錄以「每顆球 × 每個 creature owner」獨立保存：球新進入某個 owner，或離開後再次進入時，這個新 contact episode 必須立即可命中，不受上一段持續接觸計時限制；只有球與該 owner 連續重疊時，成功命中才以 `200ms` 為最短間隔節流，避免每個 fixed step 都造成傷害。即使 Attack Speed 讓球在 `200ms` 內繞完一圈，離開後重新接觸仍應立即命中。
-- Broad／precise sweep 找到 owner 候選本身不得開始或刷新節流；只有 Damage System 確認本次 DamageShape 至少取得一個 Impact Cell 時，才提交該次成功命中並開始 `200ms`。Husk 也是合法 Impact Cell；其直接傷害若建立 pending topology transfer，仍視為這次成功接觸，但遠端目標要等 pulse 抵達才受傷。
+- 球的 Circle 與完整 Glyph outline 精確相交；命中後不消失。接觸紀錄以「每顆球 × 每個 creature owner」獨立保存：球新進入某個 owner，或離開後再次進入時，這個新 contact episode 必須立即可命中，不受上一段持續接觸計時限制；只有球與該 owner 連續重疊時，成功命中才以prepared `rehitCooldownMs`節流，避免每個fixed step都造成傷害。即使Attack Speed讓球在該cooldown內繞完一圈，離開後重新接觸仍應立即命中。
+- Broad／precise sweep 找到 owner 候選本身不得開始或刷新節流；只有 Damage System 確認本次 DamageShape 至少取得一個 Impact Cell 時，才提交該次成功命中並開始prepared `rehitCooldownMs`。Husk也是合法Impact Cell；其直接傷害若建立pending topology transfer，仍視為這次成功接觸，但遠端目標要等pulse抵達才受傷。
 - 球與移動中的 creature 必須以雙方 previous-to-current authoritative motion 做 relative swept-circle broad／precise collision，並以實際 contact point 建立本次 Circle DamageShape；不得只測 fixed-step 終點，也不得只掃球而把 owner 當作靜止。Range Rank 改變時保留共同 phase，但 profile-revision rebase 不能被誤判成一條長距離 sweep attack。
 - 能量球在程式上是小型 Circle AREA，而不是 SINGLE Point。每個 Husk Impact source 的 traversal direction 使用 previous authoritative ball position 到實際 contact point 的 swept-motion direction，包含 Range 造成的徑向分量；不得拿玩家到球心的向外方向代替。
 - 擊退方向仍由玩家 root 指向球心，將整個 creature root 向外推離玩家；它與 traversal direction 是兩個獨立欄位。所有 active outline Glyphs 隨 root 位移。只有實際 Impact Cells 同時取得局部 Material hit response，遠端 pending Damage Targets 不得取得局部位移或 primary hit effect，並在 pulse 抵達時才扣傷害與改變亮度。
 - 若安裝 Damage Spread，bands 從這次直接接觸所使用的 authoritative ball Circle 外緣向外計算，不從每個被球碰到的 Cell 再各自產生一圈。擴散本身不複製能量球的 whole-body knockback。
 - 主球 `O` 是 authoritative attack 的 render representation；光暈、拖尾與周圍粒子是 rendering-only。暫停時軌道與 gameplay-synchronized presentation time 都不前進。
-- 本武器已完成 persistent orbit、每球／owner contact episode、`200ms` 連續接觸節流、成功 Impact Cell 才提交 gate、球／owner relative swept collision、whole-body knockback 與 replacement cleanup，並已加入開發版 unlock snapshot 與卡池。
+- 本武器已完成 persistent orbit、每球／owner contact episode、prepared cooldown連續接觸節流、成功 Impact Cell才提交gate、球／owner relative swept collision、whole-body knockback與replacement cleanup，並已加入開發版unlock snapshot與卡池。
 
 ### 9.1 Directional topology-frontier transfer
 
@@ -332,29 +338,29 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 
 首批實際進入 prototype content pool 的 Module 是 Attack Speed、Projectile Count、Damage Spread 與 Knockback，並使用第 6 節的 Rank table。舊 Attack Area prototype 已遷移成 Damage Spread，不再放大三把武器原始 DamageShape：
 
-- Attack Speed：assisted `o` 縮短 firing interval；噴火槍縮短 Cone damage interval；能量球提高 authoritative angular speed，使球更快繞行。`rehitCooldownMs = 200` 只限制同一球／owner 的連續接觸成功命中，不隨 Attack Speed 縮短；離開後再次進入的新 contact episode 仍立即可命中。
-- Projectile Count：Rank I～III 的總數依序是 `2`、`3`、`4`。assisted `o` 的相鄰 emission 方向間隔為 `8°`；噴火槍相鄰 Cone stream 的中心方向間隔為 `10°`；能量球在完整 `360°` 軌道上依總球數等距分布。
+- Attack Speed：assisted `o` 縮短 firing interval；噴火槍縮短 Cone damage interval；能量球提高 authoritative angular speed，使球更快繞行。Prepared `rehitCooldownMs` 只限制同一球／owner 的連續接觸成功命中，不隨 Attack Speed 縮短；離開後再次進入的新 contact episode 仍立即可命中。
+- Projectile Count：每個 Rank 的 prepared `totalCount`、assisted `o` 的 `projectileAngleSpacingRadians` 與噴火槍的 `coneAngleSpacingRadians` 都由 Module definition 提供；能量球在完整軌道上依 prepared 總球數等距分布。
 - Damage Spread：三把武器都使用本節下方的共同空間與 Rank 規則，差別只在它們各自的原始 point／circle、Cone 或 orbit-contact Circle。
 - Knockback：放大 Impact Cells 收到的 local impact strength；若武器明確具有 whole-body knockback profile，也同時放大其 authoritative root impulse。Root displacement 與 local Glyph Material response 是兩個分離效果。
 
-Projectile Count 的首三把武器語意與 prototype 數值如下：
+Projectile Count 的首三把武器語意如下；current Rank values 與 spacing 只讀取 [`prototypeWeaponModules.ts`](../../src/game/content/upgrades/prototypeWeaponModules.ts)：
 
-- assisted `o`：同一次 volley 只執行一次初始 target query，所有 projectile 共用該初始 target；方向以瞄準軸為中心對稱排列，相鄰方向相差 `8°`。每顆 projectile 仍有自己的 authoritative state、碰撞與 emission-time profile snapshot。
-- 噴火槍：Cone streams 以瞄準軸為中心對稱排列，相鄰中心方向相差 `10°`；每道 Cone 都是獨立 attack event，重疊處不互相取消傷害，且每道都有對應 rendering-only emitter summary。
-- 能量球：同軌道的 authoritative balls 依 `ballIndex / totalCount × 360°` 等距錯開。Rank 改變時保留共同 base phase，並重新均分所有現存／新增球，不讓新增球固定從世界零角度插入。
+- assisted `o`：同一次 volley 只執行一次初始 target query，所有 projectile 共用該初始 target；方向以瞄準軸為中心對稱排列，相鄰方向使用 prepared `projectileAngleSpacingRadians`。每顆 projectile 仍有自己的 authoritative state、碰撞與 emission-time profile snapshot。
+- 噴火槍：Cone streams 以瞄準軸為中心對稱排列，相鄰中心方向使用 prepared `coneAngleSpacingRadians`；每道 Cone 都是獨立 attack event，重疊處不互相取消傷害，且每道都有對應 rendering-only emitter summary。
+- 能量球：同軌道的 authoritative balls 依 `ballIndex / totalCount` 所佔的完整軌道比例等距錯開。Rank 改變時保留共同 base phase，並重新均分所有現存／新增球，不讓新增球固定從世界零角度插入。
 
 Range 的 Rank table、獨立 content definition、首三把武器的 resolved mapping，以及 assisted `o`／噴火槍 Runtime 行為已完成；該 definition 目前刻意不註冊進正式 Module pool。在能量球 radial sweep／swept collision 與 weapon-specific preview 完成前仍不得進入 card pool。Duration、Pierce 與 Element 仍須先定義跨武器、非 no-op 且無隱藏負面效果的語意。尤其不能把 orbit 的固定 radius 直接向外搬來冒充 Range，因為那會永久製造新的近身死角。
 
 ### 10.1 Range 的共同規則
 
-Range Rank I～III 保存相對於 Weapon Definition base reach 的完整總倍率 `×1.15／×1.30／×1.50`。Resolver 必須依 discriminated AttackPattern 編譯明確欄位，不得新增一個被所有武器盲目共用的含糊 `rangeMultiplier` hot-path 判斷：
+Range 每個 Rank 保存相對於 Weapon Definition base reach 的完整 prepared `totalMultiplier`；resolved reach 為 `base reach × totalMultiplier`。Resolver 必須依 discriminated AttackPattern 編譯明確欄位，不得新增一個被所有武器盲目共用的含糊 `rangeMultiplier` hot-path 判斷：
 
-1. Assisted `o`：同時解析 initial acquisition、lock-maintenance 與 maximum path-distance budget。基礎 acquisition／lock 是 `700`，基礎 maximum travel distance 是 `1,116`；各 Rank 的 resolved 結果依第 9.1 節。距離 budget 依實際 travelled path 扣除，speed 與 guidance profile 不變；final partial segment 仍參與 collision，pool reuse 必須完整 reset 剩餘距離。
-2. 噴火槍：只解析 authoritative Cone length `160 → 184／208／240`。同一次 emission 的 Damage Event 與 Flame Emitter snapshot 必須取得同一 resolved length；Renderer 只把該 snapshot 視覺化，不能從最遠火星位置反推命中。
-3. 能量球：保留 base radius `80` 與 Weapon Definition 的 base contact `damageRadius = 16`，只把 maximum radial-sweep radius 解析為 `92／104／120`。每顆球的 angle 與 radial phase 都由 Runtime 依共同 phase、ball index 與 total count 確定性求出；Attack Speed 可以讓共同 phase 更快前進，但 Range 不改 `rehitCooldownMs` 或 contact Circle 大小。
+1. Assisted `o`：同時解析 initial acquisition、lock-maintenance 與 maximum path-distance budget。Base acquisition／lock 與 base maximum travel distance 分別讀取 prepared tracking profile 與 Weapon Definition。距離 budget 依實際 travelled path 扣除，speed 與 guidance profile 不變；final partial segment 仍參與 collision，pool reuse 必須完整 reset 剩餘距離。
+2. 噴火槍：只以 Weapon Definition 的 base Cone length 乘上 prepared Rank `totalMultiplier` 解析 authoritative Cone length。同一次 emission 的 Damage Event 與 Flame Emitter snapshot 必須取得同一 resolved length；Renderer 只把該 snapshot 視覺化，不能從最遠火星位置反推命中。
+3. 能量球：保留 Weapon Definition 的 base `orbitRadius` 與 contact `damageRadius`，只將 maximum radial-sweep radius 解析為 `orbitRadius × totalMultiplier`。每顆球的 angle 與 radial phase 都由 Runtime 依共同 phase、ball index 與 total count 確定性求出；Attack Speed 可以讓共同 phase 更快前進，但 Range 不改 prepared `rehitCooldownMs` 或 contact Circle 大小。
 4. 能量球每步使用球與 owner 雙方 previous-to-current motion 的 relative swept Circle 查詢。Broad phase 包覆完整相對 motion，precise phase 對 authoritative Glyph circles 求實際 contact point；Damage Event、Damage Spread、local Material response 與 outward whole-body knockback 都以該接觸位置／方向解析。Profile revision 可以重新對齊新 sweep range，但不得把 upgrade snap 當成一次穿越整段空間的攻擊。
 5. Range 不改任何 Damage Spread Rank 的 `bandWidth` 或 ratios。Assisted `o` 仍從實際 projectile contact Circle 外緣、噴火槍從延長後的完整 Cone 外緣、能量球從本次接觸 Circle 外緣開始 spread；Range 只改原始攻擊可到達的位置／長度。
-6. Upgrade choice 可以顯示通用 Rank multiplier，但 weapon target 與 confirm preview 必須由 Runtime 提供實際 before／after summary，例如 `Target 700 → 805 / Travel 1116 → 1283`、`Cone 160 → 184`、`Sweep 80 → 80–92`。React 不得讀 content registry 或自行重算這些數字。
+6. Upgrade choice 可以顯示通用 Rank multiplier，但 weapon target 與 confirm preview 必須由 Runtime 提供實際 before／after summary，分別表達 assisted target／travel、Cone length 或 orbit base-to-maximum sweep。React 不得讀 content registry 或自行重算這些數字。
 7. Range content 可以在未註冊進正式 offer pool 的狀態下分階段完成 schema 與行為；只有三把確認武器都具備非 no-op mapping、必要 preview 與驗證後，才以同一個可見切片啟用卡片。
 
 ### 10.2 Damage Spread 的共同規則
@@ -362,8 +368,8 @@ Range Rank I～III 保存相對於 Weapon Definition base reach 的完整總倍�
 Damage Spread 先完成原始攻擊的 Impact Cells 與直接 Damage Targets，再以同一 attack event 解析外圍擴散：
 
 1. 原始 DamageShape 必須先取得至少一個 Primary Impact Cell；完全落空的 attack event 不觸發 spread。接著以該 event 的**原始完整 DamageShape**為零距離邊界，求每顆候選 Glyph Circle 到 Shape 的最短外部距離；Shape 內或與 Shape 相交者不是 spread-only target。
-2. 首版 `spreadBandWidth` 為 `24` world units，由集中、可驗證的 Module content 參數提供。對正距離 `d`，第 `n` 圈為 `(n - 1) × spreadBandWidth < d ≤ n × spreadBandWidth`。`24` 是可調整的 prototype default，不得複製成各武器、敵人物種或系統中的散落常數。
-3. Rank I 的 band ratios 為 `[0.20]`；Rank II 為 `[0.20, 0.10]`；Rank III 為 `[0.20, 0.10, 0.05]`。每個比例乘上這次 emission／contact 已解析且已 snapshot 的 main damage。
+2. `bandWidth` 由 prepared Damage Spread Module definition 提供。對正距離 `d`，第 `n` 圈為 `(n - 1) × bandWidth < d ≤ n × bandWidth`。Weapon、creature、system、renderer 與測試不得複製 current width。
+3. 每個 Rank 的 prepared `bandDamageRatios` 是該階完整的 band-ratio 陣列；每個比例乘上這次 emission／contact 已解析且已 snapshot 的 main damage。Runtime 不得把前一 Rank 陣列再叠加一次。
 4. 只選取 `HEALTHY`／`DAMAGED` Cells。`HUSK` 既不承受 spread，也不會把 spread 透過 owner topology 轉移給遠端存活 Cell。未來若明確能力允許 Husk 傳遞 spread，必須另外 opt in 9.1 節的 Area 逐來源方向 policy，行為比照 Cone；目前不得預設啟用。
 5. 不限制 owner。所有精確落在 band 內的存活 Cells 都受傷，包括沒有被原始 Shape 命中的其他生命體；若直接命中的 owner 沒有存活 Cell 位於 bands 內，該 owner 只承受原本直接傷害。
 6. 以 `(attackEventId, glyphId)` 合併同一 event 的所有候選，最多套用一次最高傷害。直接主傷害與 spread 重疊時主傷害勝出；多圈邊界、broad-phase 重複、Cone 內部取樣或多個 Impact Cells 都不能疊出額外次數。
@@ -392,7 +398,7 @@ Modifier reward 使用獨立的 React overlay與Runtime transaction，不應把�
 
 React 可以使用 CSS、SVG 或 Web Animations 呈現文字聚合、staggered entry、3D tilt、neon border、scanline、glitch、code diff 與 Rank compile 等效果。動畫應以 `transform`／`opacity` 為主，避免以 React state 驅動每一幀，並提供 `prefers-reduced-motion` 路徑。
 
-Damage Spread 卡與 target preview 顯示該 Rank 的完整 band ratios，例如 Rank II 顯示 `20% / 10%`；Projectile Count 顯示該 Rank 的總數，例如 Rank II 顯示 `3 emissions`。Range 卡可以列出完整 Rank multiplier，但選擇 target weapon 與確認 transaction 時必須顯示 Runtime-authored、weapon-specific before／after reach，例如 assisted acquisition／travel、Cone length 或 orbit sweep interval。不得把這些效果偽裝成不相干的 multiplier，或由 React 自行推算。這些仍是 UI-sized immutable summaries。
+Damage Spread 卡與 target preview 顯示該 prepared Rank 的完整 `bandDamageRatios`；Projectile Count 顯示該 prepared Rank 的 `totalCount`。Range 卡可以列出 prepared `totalMultiplier`，但選擇 target weapon 與確認 transaction 時必須顯示 Runtime-authored、weapon-specific before／after reach，例如 assisted acquisition／travel、Cone length 或 orbit sweep interval。不得把這些效果偽裝成不相干的 multiplier，或由 React 自行推算。這些仍是 UI-sized immutable summaries。
 
 整個決策鏈都維持完全暫停：
 
@@ -458,9 +464,9 @@ React 只接收 UI-sized immutable summaries，例如：
 - does not let enemy RNG consumption change upgrade offers
 - intersects cone boundaries against authoritative Glyph circles, including Husks
 - keeps rendering-only flame particles from changing cone damage results
-- preserves fractional durability for `0.125` flame damage and normalizes near-zero residue to `HUSK`
+- preserves fractional durability for the prepared flamethrower `damageAmount` and normalizes near-zero residue to `HUSK`
 - classifies every spread band from the exterior of the original whole DamageShape
-- applies Rank I／II／III spread ratios as complete `[20%]`、`[20%, 10%]`、`[20%, 10%, 5%]` effects
+- applies every configured Damage Spread Rank's complete prepared `bandDamageRatios` without compounding prior Ranks
 - damages every living Glyph Cell in spread bands across owners while excluding Husks
 - never topology-transfers spread when no living Cell lies inside the bands
 - preserves full direct topology-frontier damage when the primary impact is a Husk, independent of spread distance
@@ -475,18 +481,18 @@ React 只接收 UI-sized immutable summaries，例如：
 - pulses the actual path Cells in order below primary-hit emphasis without drawing a transfer line
 - keeps the remote target unchanged until arrival, then commits reserved damage and target brightness together
 - cancels an invalid arrival target without retargeting or duplicate damage
-- compiles Projectile Count Rank I／II／III as total counts `2`、`3`、`4`
-- emits one assisted projectile volley from one target query with centered `8°` spacing
-- emits independent centered Cone events with `10°` spacing and allows overlap damage
+- compiles every configured Projectile Count Rank from its prepared `totalCount`
+- emits one assisted projectile volley from one target query with centered prepared `projectileAngleSpacingRadians`
+- emits independent centered Cone events with prepared `coneAngleSpacingRadians` and allows overlap damage
 - keeps orbit balls evenly phase-spaced when Projectile Count changes
-- compiles Range Rank I／II／III as complete `×1.15／×1.30／×1.50` reach multipliers without compounding prior Ranks
+- compiles every configured Range Rank from its complete prepared `totalMultiplier` without compounding prior Ranks
 - extends assisted acquisition、lock maintenance 與 maximum travelled path distance without changing projectile speed、radius 或 guidance profile
 - lets a projectile's final partial Range segment participate in collision and fully resets its pooled distance state
 - extends the authoritative Cone and rendering-only Flame Emitter with one identical resolved length while preserving angle、damage、cadence 與 particle count
 - keeps Damage Spread band width／ratios unchanged and starts it from the Range-adjusted primary shape exterior
-- sweeps each orbit ball from base radius `80` to the resolved maximum while keeping contact radius `16` and deterministic multi-ball phase offsets
+- sweeps each orbit ball from its prepared base `orbitRadius` to the resolved maximum while keeping its prepared contact `damageRadius` and deterministic multi-ball phase offsets
 - detects orbit contacts across the complete previous-to-current swept Circle without treating a Range Rank rebase as a long attack
-- lets a new orbit contact episode hit immediately while throttling only continuous overlap per ball／owner at `200ms`
+- lets a new orbit contact episode hit immediately while throttling only continuous overlap per ball／owner at the prepared `rehitCooldownMs`
 - starts or refreshes an orbit re-hit gate only after Damage System confirms at least one Impact Cell
 - detects orbit contact from relative ball／owner motion so a moving enemy cannot visually cross the ball without an authoritative hit
 - preserves whole-body knockback、replacement cleanup 與 pause behavior after Range is installed
@@ -504,7 +510,7 @@ React 只接收 UI-sized immutable summaries，例如：
 - keeps queued level-ups paused between consecutive offers
 - snapshots in-flight attack values so later Module changes do not rewrite them
 - preserves Glyph Impact Cell、Damage Target、Husk 與 topology-frontier invariants for every upgraded attack
-- keeps orbit phase deterministic, tracks contact episodes per ball／owner, throttles continuous overlap at `200ms`, and clears its balls and hit history with its Weapon Instance
+- keeps orbit phase deterministic, tracks contact episodes per ball／owner, throttles continuous overlap at the prepared `rehitCooldownMs`, and clears its balls and hit history with its Weapon Instance
 
 ## 15. 首版實作切片
 
@@ -514,10 +520,10 @@ React 只接收 UI-sized immutable summaries，例如：
 4. **已完成**：以 Attack Speed、舊 Attack Area prototype、Knockback 證明空格安裝、同類升階、最大 Rank 拒絕、滿格覆蓋、stale offer 拒絕與連續 pending offer 的原子流程；並將 ordered Slots 編譯成 revisioned `ResolvedWeaponProfile`，保留在途 attack 的 emission-time snapshot。Attack Area 在這一步只是用來驗證管線，不再代表目前確認的產品方向。
 5. **已完成**：接上武器卡的原子取得交易；未滿上限時建立空 Slots 的新 Weapon Instance，滿裝時要求明確 replacement instance、保留 equipment position、摧毀舊實例投資與 runtime state，且不改動其他武器。替換不清除獨立在途 projectile，其攻擊資料繼續使用生成時 snapshot；instance-attached orbit 則依明確 lifecycle rule 立即終止並清除 hit history。
 6. **已完成**：以 Canvas 上方的 React DOM overlay 完成三張卡、武器 target、Module Slot overwrite、weapon replacement、返回／確認與 recoverable error 流程。UI 使用純 preview view-model 組出最終 command，Runtime 仍原子重驗；並加入鍵盤 `1–3`／Tab／Enter／Escape 操作、初始 focus、responsive layout、staggered text aggregation、3D tilt、neon scanline、glitch 與 code-diff compile 動畫，且提供 `prefers-reduced-motion` 路徑。
-7. **已完成**：實作 Runtime-owned persistent orbit 能量球、精確 Glyph Circle impact、每球／owner contact episode、新接觸立即命中、`200ms` 連續重疊節流、成功 Impact Cell 才提交 gate、球／owner relative swept motion、whole-body outward knockback、Module 對應語意、render snapshot 與 replacement cleanup；基礎 contact radius 亦由 `14` 調為 `16`，並已加入開發版 unlock snapshot 與卡池。
-8. **Damage Spread 核心已完成，directional transfer 待重作**：把舊 Attack Area Module 遷移為 Damage Spread，加入 discriminated Rank payload、`24` world-unit 原始 Shape 外圍 band geometry、跨 owner living-Cell 查詢、attack-event 最高值去重、小數 Durability 正規化、噴火槍 `0.125` rebalance 與 spread feedback。三把武器共用同一套 spread 契約，同時保持各自 point／Cone／orbit Circle 的原始 Shape；卡片與 target preview 由 Runtime 提供完整 Rank 摘要。現有 topology-frontier 使用最近目標、立即傷害與 source-to-target 直線，三者皆已過時；必須依 9.1 節改成武器專屬方向優先、鑽通後 fallback、逐 Cell pulse，以及抵達時才扣傷害／更新目標亮度。在全部完成前不得把 directional transfer 標記為完成。
-9. **已完成**：加入 Projectile Count。Rank I～III 使用總數 `2／3／4`；assisted `o` 使用 `8°` 間隔的一次 target-query volley，噴火槍使用 `10°` 間隔的獨立 Cone events，能量球維持共同 base phase 並均分完整軌道；卡片與 target preview 顯示 Runtime-authored total-count summary，並記錄實際 attack emission diagnostics。
-10. **已完成**：加入 Range。Rank I～III 使用完整總倍率 `×1.15／×1.30／×1.50`，並以 pattern-specific resolved fields 保持三把武器的語意差異。Assisted `o` 使用 emission-time maximum path-distance snapshot、實際 travelled-path 扣除、final partial collision 與 pool reset，acquisition／lock 也讀取 resolved range；噴火槍的 Damage Event、Damage Spread geometry 與 Flame Emitter 共用同一 resolved Cone length；能量球以 deterministic radial sweep 在基礎半徑與 resolved maximum radius 間往返，使用前一步到目前位置的 swept collision，且安裝／升階造成的 profile rebase 不會被誤算成長距離掃掠。卡片 target 與確認畫面顯示 Runtime-authored、weapon-specific 的升級前後距離摘要；完整驗證後 Range 已加入正式 Module card pool。
+7. **已完成**：實作 Runtime-owned persistent orbit 能量球、精確 Glyph Circle impact、每球／owner contact episode、新接觸立即命中、prepared `rehitCooldownMs` 連續重疊節流、成功 Impact Cell 才提交 gate、球／owner relative swept motion、whole-body outward knockback、Module 對應語意、render snapshot 與 replacement cleanup，並已加入開發版 unlock snapshot 與卡池。
+8. **Damage Spread 核心已完成，directional transfer 待重作**：把舊 Attack Area Module 遷移為 Damage Spread，加入 discriminated Rank payload、prepared `bandWidth` 的原始 Shape 外圍 band geometry、跨 owner living-Cell 查詢、attack-event 最高值去重、小數 Durability 正規化、prepared 噴火槍 damage rebalance 與 spread feedback。三把武器共用同一套 spread 契約，同時保持各自 point／Cone／orbit Circle 的原始 Shape；卡片與 target preview 由 Runtime 提供完整 Rank 摘要。現有 topology-frontier 使用最近目標、立即傷害與 source-to-target 直線，三者皆已過時；必須依 9.1 節改成武器專屬方向優先、鑽通後 fallback、逐 Cell pulse，以及抵達時才扣傷害／更新目標亮度。在全部完成前不得把 directional transfer 標記為完成。
+9. **已完成**：加入 Projectile Count。各 Rank 使用 prepared `totalCount`；assisted `o` 使用 prepared `projectileAngleSpacingRadians` 的一次 target-query volley，噴火槍使用 prepared `coneAngleSpacingRadians` 的獨立 Cone events，能量球維持共同 base phase 並均分完整軌道；卡片與 target preview 顯示 Runtime-authored total-count summary，並記錄實際 attack emission diagnostics。
+10. **已完成**：加入 Range。各 Rank 使用完整 prepared `totalMultiplier`，並以 pattern-specific resolved fields 保持三把武器的語意差異。Assisted `o` 使用 emission-time maximum path-distance snapshot、實際 travelled-path 扣除、final partial collision 與 pool reset，acquisition／lock 也讀取 resolved range；噴火槍的 Damage Event、Damage Spread geometry 與 Flame Emitter 共用同一 resolved Cone length；能量球以 deterministic radial sweep 在基礎半徑與 resolved maximum radius 間往返，使用前一步到目前位置的 swept collision，且安裝／升階造成的 profile rebase 不會被誤算成長距離掃掠。卡片 target 與確認畫面顯示 Runtime-authored、weapon-specific 的升級前後距離摘要；完整驗證後 Range 已加入正式 Module card pool。
 11. **後續切片**：逐項評估 Duration、Pierce、Explosion、Fire、Ice、Lightning，每項先定義跨武器與 Glyph interaction，再擴充渲染。
 
 ## 16. 尚待內容調校
@@ -535,4 +541,4 @@ React 只接收 UI-sized immutable summaries，例如：
 - 未來是否以明確能力修改 `maximumEquippedWeapons` 或 replacement retention policy。
 - Player Survival Modules 的 Rank tables、跨武器聚合、current-value 調整與效果移除語意；確認前不得加入 card pool，詳見 [`player-survival.md`](player-survival.md)。
 
-本文件已列出的武器傷害、cadence、幾何尺寸、Module 倍率／band ratios 與 XP curve 仍是易於替換、必須驗證的 prototype defaults；實作不得把它們複製成散落的系統常數。上述尚未確認項目則不得由工程自行補完或提升成 `spec.md`／`AGENTS.md` 的永久規則。
+武器傷害、cadence、幾何尺寸、Module 倍率／band ratios 與 XP curve 的 current defaults 只存在第 2 節連結的 validated authoring sources；本文件只保留契約與公式，不得成為第二份 balance table。上述尚未確認項目則不得由工程自行補完或提升成 `spec.md`／`AGENTS.md` 的永久規則。

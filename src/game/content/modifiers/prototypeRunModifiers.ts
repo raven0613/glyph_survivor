@@ -24,6 +24,7 @@ export function preparePrototypeRunModifiers(): readonly Readonly<RunModifierDef
         maximumExplosionDamage: 0.75,
         intraOwnerTopologyDepth: 1,
         maxExplosionResolutionsPerFixedStep: 64,
+        waveIntervalMs: 400,
       },
     }),
     defineRunModifier({

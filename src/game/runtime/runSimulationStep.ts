@@ -65,7 +65,7 @@ export function runSimulationStep(
   runCollisionSystem(world)
   runPendingDamageTransferSystem(world, deltaMs)
   runDamageSystem(world)
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, deltaMs)
   runSlimeSplitSystem(world)
   runDisconnectedTopologySystem(world)
   runDeathSystem(world, deltaMs)

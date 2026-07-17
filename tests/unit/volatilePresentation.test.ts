@@ -146,7 +146,7 @@ test('writes the first domino as source clamp plus two axis-only core overlays',
   const world = createWorld('volatile-render-domino')
   const bat = spawnActiveBat(world)
   const sourceGlyphId = killMiddleGlyph(world, bat.id)
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   const release = world.content.combatVisualTheme.effects.runModifiers.volatile.release
   runModifierPresentationSystem(
     world,

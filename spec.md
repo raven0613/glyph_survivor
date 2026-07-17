@@ -442,18 +442,18 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 - Assisted `o` 是遠距、單體、有限修正的基準子彈。
 - 噴火槍沿玩家瞄準方向形成約 `90°` 的短程扇形 AREA attack；單一 Glyph 每次承受的傷害低於 assisted `o`，但可以同時侵蝕多個 Impact Cells。橘黃 `.`／`*` 火星是 rendering-only presentation，不是會各自造成傷害的 gameplay projectiles；首版噴火槍不自帶 Fire DoT。
-- 能量球以 Printable ASCII `O` 在玩家身邊持續旋轉，單次 Glyph 傷害低於 assisted `o`、高於噴火槍，並將命中的整個 creature root 往玩家外側擊退。軌道、碰撞、接觸狀態與 whole-body knockback 都由 Runtime 權威持有，光暈與拖尾才是 rendering-only。每顆球對每個 creature owner 獨立判定接觸：新進入或離開後再次進入必須立即可命中；只有連續重疊才以 content-defined `200ms` 最短成功命中間隔防止每個 fixed step 重複傷害，而且只有 Damage System 確認至少一個 Impact Cell 才能開始或刷新該節流。
+- 能量球以 Printable ASCII `O` 在玩家身邊持續旋轉，單次 Glyph 傷害低於 assisted `o`、高於噴火槍，並將命中的整個 creature root 往玩家外側擊退。軌道、碰撞、接觸狀態與 whole-body knockback 都由 Runtime 權威持有，光暈與拖尾才是 rendering-only。每顆球對每個 creature owner 獨立判定接觸：新進入或離開後再次進入必須立即可命中；只有連續重疊才以 prepared `rehitCooldownMs` 防止每個 fixed step 重複傷害，而且只有 Damage System 確認至少一個 Impact Cell 才能開始或刷新該節流。
 
-能量球的內、外有效圈不是兩個獨立設定。它們由球心的 base／resolved orbit radius 加減 Weapon Definition 的 authoritative damage-circle radius 推導，精確相交再納入目標 Glyph 自身半徑。若實測需要降低「看起來碰到卻沒有命中」的情況，應集中調大 damage-circle radius，使內圈向內、外圈向外對稱擴張；不得用平移 orbit radius 假裝增加接觸容錯。確切 prototype 數值與待調整狀態由武器系統文件集中保存。
+能量球的內、外有效圈不是兩個獨立設定。它們由球心的 base／resolved orbit radius 加減 Weapon Definition 的 authoritative damage-circle radius 推導，精確相交再納入目標 Glyph 自身半徑。若實測需要降低「看起來碰到卻沒有命中」的情況，應集中調整 Weapon Definition 的 damage-circle radius，使內圈向內、外圈向外對稱擴張；不得用平移 orbit radius 假裝增加接觸容錯。Current value 與待調整狀態以對應 authoring definition 為準，武器系統文件只保留此公式與語意。
 
-精確 prototype damage、cadence、幾何尺寸與實作順序記錄在 [`docs/content/weapon-system.md`](docs/content/weapon-system.md)，屬於集中管理、可經 playtest 調整的 content defaults。
+武器的 damage、cadence、幾何尺寸與其他 current prototype values 只存在各自 validated authoring definition：[`basicProjectileWeapon.ts`](src/game/content/weapons/basicProjectileWeapon.ts)、[`flamethrowerWeapon.ts`](src/game/content/weapons/flamethrowerWeapon.ts) 與 [`orbitEnergyBallWeapon.ts`](src/game/content/weapons/orbitEnergyBallWeapon.ts)。[`docs/content/weapon-system.md`](docs/content/weapon-system.md) 只記錄欄位語意、公式、相對關係與行為契約，不複製目前數值。
 
 武器的永久解鎖與單局取得是不同流程：
 
 - 新武器在一場遊戲結束後，回到主選單透過 Meta Progression 永久解鎖。
 - 玩家開始一局時，先從已永久解鎖的武器中選擇一把初始武器；選定前不開始 fixed simulation。
 - 單局內的新武器只會從本局升級三選一的武器卡取得，且不得出現尚未永久解鎖的武器。
-- 首版一局最多裝備三把武器；`3` 是可驗證、可調整的 run/content default，不是散落在各系統的 magic number。
+- 一局的最大裝備數由 prepared run／content `maximumEquippedWeapons` 決定；文件、Runtime、UI 與測試都不得重複 current default。
 - 裝備已滿時選擇武器卡，玩家可以指定要替換的武器；被替換武器在本局的全部 Module 投資會消失。
 
 武器、單局裝備、混合卡池、Module Slot、覆蓋與升階的詳細產品／工程契約記錄在 [`docs/content/weapon-system.md`](docs/content/weapon-system.md)。
@@ -496,11 +496,11 @@ Damage +10%
 - Module 不能卸下、退款、搬到另一把武器或重新分配；玩家只能保留、升階或覆蓋摧毀它。
 - 覆蓋能力讓後期 Build 可以調整方向，但不能繞過 Weapon Instance、Slot、Rank 或卡片選擇規則。
 - 首批已實作的通用 Module 是 Attack Speed、Projectile Count、Damage Spread、Range 與 Knockback，先採 Rank I～III。舊有 Attack Area prototype 只曾用來驗證 Rank／Slot 管線，已由 Damage Spread 取代，不再作為首批玩家能力軸。Rank table 保存各階的完整總效果，不把 Rank II、III 當成對前一階再次疊加；精確 prototype 效果記錄在武器系統文件。
-- Range 已進入正式升級卡池，Rank I～III 的完整總倍率依序為 `×1.15`、`×1.30`、`×1.50`。Range 表示武器從玩家向外可到達的距離，不是放大 Damage Spread，也不能以同一個含糊欄位套用所有 AttackPattern：
+- Range 的每個 Rank 保存相對於 base reach 的完整總倍率，current Rank payload 只由 [`prototypeWeaponModules.ts`](src/game/content/upgrades/prototypeWeaponModules.ts) 提供。Range 表示武器從玩家向外可到達的距離，不是放大 Damage Spread，也不能以同一個含糊欄位套用所有 AttackPattern：
   - assisted `o` 同時增加初次 target acquisition、維持原目標 lock 的距離，以及沿實際飛行路徑計算的 maximum travel distance；不改 projectile speed、DamageShape radius、修正角度或 steering responsiveness。
   - 噴火槍只延長從 muzzle origin 起算的 authoritative Cone 軸向長度；不改 `90°` 角度、muzzle distance、傷害、pulse interval 或 rendering-only 粒子數。
-  - 環繞能量球保留 `80` world-unit 的基礎軌道半徑，Range 只增加 deterministic radial sweep 的最大半徑；Rank I～III 的最大半徑依序為 `92`、`104`、`120`。球的 base damage-circle radius 是獨立的 Weapon Definition tuning value，不隨 Range 放大，避免把 Range 重新混成 Attack Area。
-- Range 與 Damage Spread 同時存在時，Spread 的 `24` world-unit band width 與傷害比例不變；它從該次攻擊已解析的原始 DamageShape 外緣起算。Range 對能量球造成的徑向移動必須使用 authoritative swept collision，不能因 fixed-step 位移跨過 Glyph 而漏判。
+  - 環繞能量球保留 Weapon Definition 的 base orbit radius；Range 只增加 deterministic radial sweep 的 maximum radius。球的 base damage-circle radius 是獨立的 Weapon Definition tuning value，不隨 Range 放大，避免把 Range 重新混成 Attack Area。
+- Range 與 Damage Spread 同時存在時，Spread 使用 [`prototypeWeaponModules.ts`](src/game/content/upgrades/prototypeWeaponModules.ts) 準備的 band width 與傷害比例，不因 Range 改變；它從該次攻擊已解析的原始 DamageShape 外緣起算。Range 對能量球造成的徑向移動必須使用 authoritative swept collision，不能因 fixed-step 位移跨過 Glyph 而漏判。
 
 ---
 
@@ -526,9 +526,11 @@ Run Modifier 是 Boss 被正式擊敗後取得的本局世界規則。它和武�
 
 ### VOLATILE — 不穩定結構
 
-Cell 第一次進入 `HUSK` 時，對同 owner、canonical topology distance `1` 的四方向 Living neighbors 造成一次爆裂傷害。傷害依 Dead Source Cell 的 Max Durability 增加並受 content-defined cap 限制；爆裂造成的新 Husk 會在後續 fixed-step wave 各自繼續爆裂。
+Cell 第一次進入 `HUSK` 時，對同 owner、canonical topology distance `1` 的四方向 Living neighbors 造成一次爆裂傷害。傷害依 Dead Source Cell 的 Max Durability 增加並受 content-defined cap 限制；爆裂造成的新 Husk 會加入後續 breadth-first wave，各完整 waves 之間依 prepared `waveIntervalMs` 的 Gameplay simulation time 間隔繼續爆裂。
 
-Volatile 首版不跨 owner、不讀畫面距離，也不繼承原攻擊的 Damage Spread、Material impulse、whole-body knockback、DISCONNECTED 或 OVERLOAD。每個 stable Glyph 整局最多產生一次爆裂。`maxExplosionResolutionsPerFixedStep` 只限制每步解析量，不是整條 chain 的硬上限；未處理事件必須保留至後續 fixed steps，不能因 PixiJS、粒子、pool 或 frame budget 被丟棄。
+Volatile 首版不跨 owner、不讀畫面距離，也不繼承原攻擊的 Damage Spread、Material impulse、whole-body knockback、DISCONNECTED 或 OVERLOAD。每個 stable Glyph 整局最多產生一次爆裂。`maxExplosionResolutionsPerFixedStep` 只限制每步解析量，不是整條 chain 的硬上限；`waveIntervalMs` 則只控制一個完整 wave 排空後到下一 wave 可解析前的停頓。兩者都是一局內凍結的 Gameplay config，完整暫停不推進 interval；未處理事件必須保留至後續 fixed steps，不能因 PixiJS、粒子、pool 或 frame budget 被丟棄。
+
+`waveIntervalMs` 的 prototype default 不在產品文件複製，唯一 authoring source 是 [`prototypeRunModifiers.ts`](src/game/content/modifiers/prototypeRunModifiers.ts) 的 VOLATILE definition config；完整 scheduler 語意與驗證契約見 [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md)。
 
 視覺上，每個真正解析的 Husk source 做一次短促內縮與四方向 topology shock；同 wave 同時、下一 wave 接棒，前一格只留下極短 afterimage，形成快速骨牌。VOLATILE 不畫圓形shockwave或連線，與OVERLOAD的一次徑向衝擊保持明確差異。
 
@@ -550,9 +552,9 @@ Crack 無層數、無 duration，重複施加是 no-op。下一個不同 root at
 
 視覺上，qualifying重擊讓主目標沿impact axis快速壓縮、短暫頓住後回彈，同時只釋放一次短徑向ASCII shockwave。取得`CRACKED`的neighbors以共用atlas的二至三片pooled fragments呈現同一字元，碎片只有小幅位置／亮度差，不改變authoritative Cell、字元身分或hitbox。
 
-Modifier 的傷害 bonus 都從同一份 base Direct Damage 計算後相加，再對每顆 target只提交一次。Crack 與最大 DISCONNECTED 同時成立時的首版總效果上限為 base direct damage的 `×2.00`，不是兩個倍率相乘的 `×2.24`。Final Direct Damage可以協助觸發 OVERLOAD或造成Husk並啟動VOLATILE，但Volatile自身不再取得其他Modifier加成。
+Modifier 的傷害 bonus 都從同一份 base Direct Damage 計算後相加，再對每顆 target只提交一次。Crack 與 DISCONNECTED 同時成立時，使用兩者 prepared multiplier 對 base damage 的增量相加，不把兩個 multiplier 相乘。Final Direct Damage可以協助觸發 OVERLOAD或造成Husk並啟動VOLATILE，但Volatile自身不再取得其他Modifier加成。
 
-完整公式、prototype config參數、Cell status payload、傷害route interaction、Volatile wave scheduler、Slime structural ordering、Boss reward transaction與驗證契約集中在 [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md)。
+完整公式、config欄位語意、Cell status payload、傷害route interaction、Volatile wave scheduler、Slime structural ordering、Boss reward transaction與驗證契約集中在 [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md)；current authoring values 只存在 [`prototypeRunModifiers.ts`](src/game/content/modifiers/prototypeRunModifiers.ts)。
 
 ---
 

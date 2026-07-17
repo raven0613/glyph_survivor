@@ -100,7 +100,7 @@ test('composes all three Modifiers once and prevents VOLATILE from feeding bonus
   assert.equal(hasGlyphStatus(left, GLYPH_STATUS_FLAG.CRACKED), true)
   assert.equal(hasGlyphStatus(right, GLYPH_STATUS_FLAG.CRACKED), true)
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.equal(left.currentDurability, 0.65)
   assert.equal(right.currentDurability, 0.65)

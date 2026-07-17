@@ -18,6 +18,7 @@ export interface VolatileReactionChain {
   currentWaveIndex: number
   nextWave: VolatileExplosionEvent[]
   waveDepth: number
+  waveIntervalRemainingMs: number | null
 }
 
 export interface VolatilePresentationEvent {
@@ -109,6 +110,7 @@ export function createVolatileReactionChain(
     currentWaveIndex: 0,
     nextWave: chain.nextWave ?? [],
     waveDepth: 0,
+    waveIntervalRemainingMs: null,
   })
   chain.currentWave.length = 0
   chain.nextWave.length = 0

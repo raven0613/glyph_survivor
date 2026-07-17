@@ -8,6 +8,7 @@ export interface RunModifierDiagnostics {
   deferredVolatileExplosionCount: number
   activeVolatileCurrentWaveEventCount: number
   activeVolatileNextWaveEventCount: number
+  activeVolatileIntervalCountdownCount: number
   maximumObservedVolatileWaveDepth: number
   volatileSchedulerPoolMisses: number
   volatileCorePresentationPoolMisses: number
@@ -46,6 +47,7 @@ export function createRunModifierDiagnostics(): RunModifierDiagnostics {
     deferredVolatileExplosionCount: 0,
     activeVolatileCurrentWaveEventCount: 0,
     activeVolatileNextWaveEventCount: 0,
+    activeVolatileIntervalCountdownCount: 0,
     maximumObservedVolatileWaveDepth: 0,
     volatileSchedulerPoolMisses: 0,
     volatileCorePresentationPoolMisses: 0,

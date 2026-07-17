@@ -37,11 +37,11 @@ These rules come directly from `spec.md` and must survive refactors:
 - One structurally validated combat visual theme is the sole authoring source of truth for combat-world base palettes, alpha, brightness-emphasis tiers, outlines, and XP palette-transition／flash timing. Every tunable color literal in that authoring config uses strict `#RRGGBB` string form; alpha remains a separate numeric field. Product documents preserve semantic color identities and ordering targets, but Runtime preparation must not reject a valid color because of its hue, saturation, lightness, or effective luminance. Content, systems, render adapters, and React styles must not duplicate battle-canvas color values.
 - Boss materials must differ in hit response, recovery, destruction, and death behavior.
 - Weapon identity comes from target logic, attack shape, and destruction shape—not only numeric damage.
-- The confirmed first three weapon identities are the assisted single-target `o`, a short-range approximately 90-degree aimed flamethrower Cone, and a Runtime-owned orbiting `O` with whole-body outward knockback. Their tunable prototype values live in `docs/content/weapon-system.md`.
-- Flamethrower sparks are rendering-only particles and never deal damage. The orbiting ball's phase, position, collision, contact episodes, re-hit gating, and knockback are authoritative Runtime state. Each ball／creature-owner pair may hit immediately on a new or re-entered contact episode; only continuous overlap is throttled, at the current content-defined `200ms`, and the gate commits only after Damage System confirms at least one Impact Cell.
+- The confirmed first three weapon identities are the assisted single-target `o`, a short-range approximately right-angle aimed flamethrower Cone, and a Runtime-owned orbiting `O` with whole-body outward knockback. Their semantics live in `docs/content/weapon-system.md`; current tunable values live only in the validated weapon authoring modules linked from that document.
+- Flamethrower sparks are rendering-only particles and never deal damage. The orbiting ball's phase, position, collision, contact episodes, re-hit gating, and knockback are authoritative Runtime state. Each ball／creature-owner pair may hit immediately on a new or re-entered contact episode; only continuous overlap is throttled by its prepared `rehitCooldownMs`, and the gate commits only after Damage System confirms at least one Impact Cell.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
-- Projectile Count is a prepared total-count effect: the confirmed prototype Ranks are `2／3／4`. One assisted volley shares one initial target query and uses centered `8°` spacing; Cone streams use centered `10°` spacing and independent attack-event IDs; orbit balls share one base phase and divide the full orbit evenly.
-- Range is the next confirmed Module contract, with complete Rank multipliers `×1.15／×1.30／×1.50`; it is not implemented yet. It increases assisted acquisition／lock／path-distance reach, authoritative Cone length, or an orbit's maximum radial-sweep radius while preserving that orbit's base radius and contact-circle size. It never enlarges Damage Spread bands or silently changes projectile speed, Cone angle, cadence, or re-hit cooldown.
+- Projectile Count is a prepared total-count effect whose Rank payloads and centered assisted／Cone spacing come only from the prepared Module config. One assisted volley shares one initial target query; Cone streams use independent attack-event IDs; orbit balls share one base phase and divide the full orbit evenly.
+- Range is a complete-Rank-multiplier contract whose current Rank payloads come only from prepared Module config. It increases assisted acquisition／lock／path-distance reach, authoritative Cone length, or an orbit's maximum radial-sweep radius while preserving that orbit's base radius and contact-circle size. It never enlarges Damage Spread bands or silently changes projectile speed, Cone angle, cadence, or re-hit cooldown.
 - Permanent weapon unlocks happen outside a run. A run receives a frozen set of unlocked weapon definitions, starts with exactly one selected weapon, and may acquire only those unlocked weapons through level-up cards.
 - Level-up offers mix weapon cards and universal Module cards. The first upgrade must contain at least one eligible weapon card.
 - XP overflow is never discarded. Crossing multiple level thresholds queues the same number of upgrade decisions, and gameplay remains paused between those decisions.
@@ -52,8 +52,8 @@ These rules come directly from `spec.md` and must survive refactors:
 - Run Modifiers are Runtime-owned world rules for the current run, not Weapon Modules. They occupy no Module Slot, survive weapon replacement, disappear with the run, may coexist when their definition IDs differ, and cannot be acquired twice unless a future explicit Rank contract says otherwise. Because a Boss reward may arrive before the Weapon／Module Build is mature, every first-pass Modifier must create a useful decision on its own rather than require a particular weapon, Module, Rank, or another Modifier to function.
 - A Boss Encounter authorizes exactly one Modifier reward only after its complete collapse resolves and it formally enters `DEFEATED`. The reward normally offers three unique, unowned definitions and may offer two when exactly two eligible definitions remain; it never inserts a Modifier into the XP weapon／Module offer domain.
 - Modifier development may enable one validated Boolean Runtime config flag, `enableRunStartModifierOfferForTesting`. It authorizes exactly one normal Modifier offer after a valid initial Weapon Instance exists but before the first fixed step. It never consumes a Boss token or advances the Boss-offer RNG domain; the selected definition becomes genuinely owned, so the later Boss reward excludes it normally. The release path keeps the flag false.
-- The confirmed first Run Modifiers are `VOLATILE`, `DISCONNECTED`, and `OVERLOAD`. Their formulas, damage-route interaction matrix, Cell-status payloads, Slime latch behavior, reward transaction, and prototype config parameters live only in `docs/content/run-modifiers.md`.
-- Volatile is initially a same-owner, canonical-topology depth-one reaction. Every stable Glyph can emit at most one Volatile explosion when it first enters `HUSK`; chained events advance in Runtime-owned breadth-first waves and no authoritative event may be discarded because a fixed-step processing budget, pool, renderer, or particle budget is exhausted.
+- The confirmed first Run Modifiers are `VOLATILE`, `DISCONNECTED`, and `OVERLOAD`. Their formulas, damage-route interaction matrix, Cell-status payloads, Slime latch behavior, reward transaction, and prototype-config semantics live only in `docs/content/run-modifiers.md`; current tunable authoring values live in the validated config modules linked from that document and must not be duplicated as document defaults.
+- Volatile is initially a same-owner, canonical-topology depth-one reaction. Every stable Glyph can emit at most one Volatile explosion when it first enters `HUSK`; chained events advance in Runtime-owned breadth-first waves separated by the frozen content-defined Gameplay simulation-time interval, and no authoritative event may be discarded because a fixed-step processing budget, pool, renderer, or particle budget is exhausted.
 - Disconnected classifies Living canonical connected components, never screen-space separation. Overload applies a non-damaging, non-stacking `CRACKED` status to Living canonical neighbors after a sufficiently heavy direct hit; Crack affects only a later direct attack from a different root attack event.
 - Modifier bonuses are composed once from the same base direct damage and committed through one authoritative durability-application boundary. Modifier handlers must not recursively multiply one another, duplicate Damage Spread, inherit unrelated Material impulse, or grow scattered `if (hasModifierX)` branches across weapon systems.
 - Modifier presentation uses short attack／hold／settle beats with a visible stop point and a fast, clean finish. Disconnected owns restrained component-level instability, Overload owns one directional compression／radial impact plus a persistent cracked surface, and Volatile owns discrete topology-wave pulses. Long glow tails, continuous ambient shaking, radial Volatile rings, and unbounded status-effect stacking violate their visual identities.
@@ -370,6 +370,31 @@ Derive independent Modifier-offer RNG domains from the run seed. At minimum, `BO
 
 Validate `enableRunStartModifierOfferForTesting` as a Boolean before entering `READY` and freeze it for the run. It is developer Runtime config, not a React setting, persisted player preference, query-string command, or mutable mid-run switch. When false it must create no authorization, offer, or RNG side effect.
 
+### Tunable numeric source of truth
+
+Every tunable production value has exactly one validated authoring source. Current values belong only to the relevant config／content module and enter gameplay through its immutable prepared representation. Product documents, architecture documents, comments, UI code, Runtime systems, render adapters, and tests must not copy a current production default as a second source of truth.
+
+The first-pass authoring sources are:
+
+- weapon combat profiles: the definition modules under `src/game/content/weapons/`;
+- Weapon Module Rank payloads, spacing, and Damage Spread parameters: `src/game/content/upgrades/prototypeWeaponModules.ts`;
+- level progression: `src/game/content/upgrades/levelProgression.ts`;
+- Run Modifier parameters: `src/game/content/modifiers/prototypeRunModifiers.ts`;
+- combat presentation values: `src/game/content/visuals/prototypeCombatVisualTheme.ts`;
+- Runtime-only developer switches and loop／host settings: the validated config modules under `src/game/runtime/`.
+
+Detailed content documents preserve parameter names, formulas, units, relative ordering, ownership, validation constraints, and behavioral invariants, and link directly to the authoring source. They do not list the current tunable default. When a formula needs a value, use the prepared field name symbolically rather than substituting today's number.
+
+Production-content tests follow the same boundary:
+
+- content wiring tests compare a registry entry with its canonical authoring／preparation function, or verify schema, validation, identity, and freezing; they do not maintain a second numeric snapshot;
+- system and integration tests derive expected production behavior from the prepared definition, resolved profile, or prepared Rank payload used by that test world;
+- an explicit numeric literal is allowed when it is a mathematical constant, an asserted non-tunable product invariant, or a test-local fixture whose test constructs the input definition and does not claim that the number is the production default;
+- formula and validation tests may use deliberately chosen boundary fixtures, but their names and setup must make that isolation clear;
+- changing one authoring default should require no behavior-test or document edit unless the semantic contract, formula, validation boundary, or a deliberately versioned balance-acceptance artifact also changes.
+
+Do not add a scattered “balance snapshot” assertion merely to notice config edits. If a future release needs locked balance approval, introduce one explicit, versioned content-baseline artifact with clear ownership instead of duplicating values across ordinary unit tests.
+
 ### World and camera
 
 - The gameplay world is a fixed `4000 × 4000` world-unit square. The render canvas remains viewport-sized; do not allocate a `4000 × 4000` HTML canvas or render texture for the world.
@@ -554,7 +579,7 @@ Read [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md) before cha
 
 ## 12. Weapon and upgrade rules
 
-Read [`docs/content/weapon-system.md`](docs/content/weapon-system.md) before changing this area. It defines the detailed permanent-unlock boundary, run acquisition, mixed three-card offers, ordered Module Slots, Rank upgrades, overwrite behavior, atomic commands, replacement semantics, UI flow, and prototype defaults. Do not duplicate a conflicting version of those rules in code comments or another document.
+Read [`docs/content/weapon-system.md`](docs/content/weapon-system.md) before changing this area. It defines the detailed permanent-unlock boundary, run acquisition, mixed three-card offers, ordered Module Slots, Rank upgrades, overwrite behavior, atomic commands, replacement semantics, UI flow, and links to the validated authoring sources for current tuning values. Do not duplicate a conflicting version of those rules or current defaults in code comments, tests, or another document.
 
 Run Modifiers are a separate Boss-reward domain. They do not occupy Module Slots, do not use `WEAPON | MODULE` XP choices, and do not inherit the XP offer's exactly-three-card invariant when only two unowned Modifier definitions remain.
 
@@ -580,7 +605,7 @@ Weapon content and runtime state must remain separate:
 - A Module Slot is authoritative run state containing either nothing or one module definition ID plus Rank. Slot usage is not a second independently mutable capacity total.
 - `ResolvedWeaponProfile` is disposable derived data compiled from the Weapon Definition plus ordered Slots. Rebuild it only when Slots or Ranks change; never treat it as the investment source of truth.
 
-The first-pass `maximumEquippedWeapons` default is `3`, but it must live in validated run／content configuration rather than repeated literals. Every first-pass Weapon Definition must explicitly declare exactly `4` Module Slots; Runtime and UI must read that prepared value instead of repeating a magic number. First-pass Modules occupy one Slot, and one Weapon Instance cannot hold the same Module in multiple Slots.
+The current `maximumEquippedWeapons` value lives only in validated run／content configuration. Every first-pass Weapon Definition must explicitly declare a Module Slot count accepted by the shared Weapon Definition validator. Runtime, UI, documents, and tests must read or derive those prepared values instead of repeating current defaults. First-pass Modules occupy one Slot, and one Weapon Instance cannot hold the same Module in multiple Slots.
 
 Module placement follows one deterministic transaction rule:
 
@@ -603,7 +628,7 @@ Gameplay projectiles are the only projectile-like objects that participate in da
 
 - An assisted projectile snapshots its actual normalized velocity at contact as the traversal direction. Use the corrected impact trajectory, not merely its launch direction.
 - The flamethrower's authoritative damage comes from fixed-step Cone DamageShape pulses. One Cone stream pulse is one attack event: all internal geometry samples share its deduplication scope, while additional Cone streams created by Projectile Count use independent event IDs. Each Husk Impact Cell forms its own local traversal ray from that stream's muzzle origin through the Cell; do not use one parallel center-axis direction for every Cell in the Cone. Its `.`, `*`, and related sparks use the configured fire-spectrum palette and only visualize that shape; changing their configured color or density must not change gameplay or spread.
-- An orbiting ball that damages enemies is an instance-attached authoritative Circle AREA attack. Runtime owns its deterministic orbit phase, world position, collision radius, per-ball／owner contact episodes, pause behavior, and cleanup when its Weapon Instance disappears. New entry or re-entry is immediately eligible to hit; only uninterrupted overlap uses the content-defined `200ms` minimum successful-hit interval. A broad- or precise-phase owner candidate does not commit that gate: Damage System must first confirm at least one Impact Cell, including a Husk Impact Cell that schedules a pending topology transfer. Collision uses relative previous-to-current motion for both the ball and moving owner so authoritative contact agrees with interpolated presentation. Traversal direction comes from the resolved ball motion to the actual contact point, including radial movement; this is distinct from outward whole-body knockback. Renderer-owned halo and trail particles do not collide.
+- An orbiting ball that damages enemies is an instance-attached authoritative Circle AREA attack. Runtime owns its deterministic orbit phase, world position, collision radius, per-ball／owner contact episodes, pause behavior, and cleanup when its Weapon Instance disappears. New entry or re-entry is immediately eligible to hit; only uninterrupted overlap uses the prepared `rehitCooldownMs` minimum successful-hit interval. A broad- or precise-phase owner candidate does not commit that gate: Damage System must first confirm at least one Impact Cell, including a Husk Impact Cell that schedules a pending topology transfer. Collision uses relative previous-to-current motion for both the ball and moving owner so authoritative contact agrees with interpolated presentation. Traversal direction comes from the resolved ball motion to the actual contact point, including radial movement; this is distinct from outward whole-body knockback. Renderer-owned halo and trail particles do not collide.
 - When a weapon explicitly applies whole-body knockback, Runtime displaces the creature root in an authoritative, bounded way so every active outline Glyph, including Husks, follows it. Local Material impulse and hit presentation remain restricted to actual Impact Cells; pending remote Damage Targets receive neither. Never reuse knockback direction as traversal direction unless the weapon contract explicitly makes them identical.
 
 - Every fired gameplay projectile uses an explicit tracking profile.
@@ -620,7 +645,7 @@ The confirmed Range Module follows pattern-specific contracts rather than mutati
 - Assisted projectiles increase initial acquisition range, lock-maintenance range, and a separately authored maximum path-distance budget by the same complete Rank multiplier. Consume that budget from actual travelled distance, snapshot it at emission, preserve the final partial segment for collision, and do not use projectile lifetime as a disguised Range value.
 - Pulsed Cone weapons multiply only the authoritative axial length from the muzzle origin. The damage event and rendering-only flame-emitter summary must receive the same resolved length; angle, muzzle distance, damage, cadence, particle count, and Damage Spread band data remain unchanged.
 - Persistent orbit weapons keep the base orbit radius and separately authored contact-circle radius unchanged, and use the Rank multiplier only for the maximum radius of a deterministic outward radial sweep. Inner and outer contact boundaries are derived from orbit radius minus／plus contact radius; they are not separate fields. Tune symmetric contact forgiveness through the centralized contact radius, never by shifting the orbit radius. Angular spacing and radial phase offsets remain deterministic across multiple balls. Runtime must perform relative swept-circle collision using the previous and current authoritative ball and owner positions, place the DamageShape at the resolved contact point, and avoid treating a profile-revision position rebase as a long attack sweep.
-- Attack Speed may advance the orbit's shared angular／radial phase more quickly, but it and Range never shorten the `200ms` continuous-overlap throttle. Re-entry remains immediately eligible regardless of phase speed. Damage Spread continues to start at the actual resolved primary DamageShape exterior with unchanged band width and ratios.
+- Attack Speed may advance the orbit's shared angular／radial phase more quickly, but it and Range never shorten the prepared `rehitCooldownMs` continuous-overlap throttle. Re-entry remains immediately eligible regardless of phase speed. Damage Spread continues to start at the actual resolved primary DamageShape exterior with unchanged prepared band width and ratios.
 - Do not add Range to the eligible content pool until all confirmed first-three-weapon mappings, target-specific Runtime previews, and required collision behavior are implemented. React may display only immutable before／after summaries authored by Runtime; it must not calculate weapon-specific Range values.
 
 New combat features must first define their Glyph interaction instead of modifying creature HP. For example, fire applies durability damage over time, freezing changes Glyph displacement/material response, corrosion damages and fades Glyphs, lightning selects adjacent Glyphs, and black holes attract and deform Glyphs.
@@ -720,7 +745,7 @@ Track at minimum:
 - active entity/projectile/effect counts and Glyph counts split by `HEALTHY`, `DAMAGED`, and `HUSK`;
 - Range diagnostics when that Module is enabled: range-expired projectile count, active projectile path-distance budgets, orbit swept-collision candidates, and precise swept tests;
 - topology-transfer diagnostics: active pending transfers, total retained path Cells, arrival commits, invalid-target cancellations, path／state pool misses, and path-search time;
-- Run Modifier diagnostics: active definitions and authorization origins, Boss reward tokens, run-start-test authorization count, domain-separated offer-RNG use, Volatile active chains／current waves／next waves, resolved and deferred source events, maximum wave depth, scheduler pool misses, affected owners with deferred structural commits, DISCONNECTED topology-cache rebuild time, vulnerable component counts, active Crack／latch counts, Overload evaluations／successes, active／peak cracked-fragment particles, Modifier core／optional overlay counts, visual-budget suppressions, and status／effect pool misses;
+- Run Modifier diagnostics: active definitions and authorization origins, Boss reward tokens, run-start-test authorization count, domain-separated offer-RNG use, Volatile active chains／current waves／next waves／active interval countdowns, resolved and deferred source events, maximum wave depth, scheduler pool misses, affected owners with deferred structural commits, DISCONNECTED topology-cache rebuild time, vulnerable component counts, active Crack／latch counts, Overload evaluations／successes, active／peak cracked-fragment particles, Modifier core／optional overlay counts, visual-budget suppressions, and status／effect pool misses;
 - pool capacity and pool misses;
 - draw calls when practical;
 - capped/dropped simulation steps;
@@ -736,7 +761,7 @@ Quality degradation order should be deliberate, for example:
 
 Do not degrade gameplay projectile accuracy, local damage correctness, or Boss HP invariants to improve visuals.
 
-`maxExplosionResolutionsPerFixedStep` is a frozen authoritative timing budget, not a hard Volatile-chain cap and not an adaptive renderer quality setting. Lower values may improve simulation p95 and wave readability but change authoritative propagation timing, so they must come from validated config and remain fixed for the run. Unprocessed explosion events remain queued across fixed steps and complete gameplay pauses; no event may be dropped, merged into a fake AoE, or applied early because PixiJS, particles, or pools are under pressure.
+`maxExplosionResolutionsPerFixedStep` is a frozen authoritative processing budget, not a hard Volatile-chain cap and not an adaptive renderer quality setting. `waveIntervalMs` is the separate frozen Gameplay simulation-time delay that begins only after one chain's current wave fully drains and controls promotion of its next breadth-first wave. Both come from validated config and remain fixed for the run; the current interval authoring value lives only in [`prototypeRunModifiers.ts`](src/game/content/modifiers/prototypeRunModifiers.ts), while its semantics live in [`run-modifiers.md`](docs/content/run-modifiers.md). Unprocessed explosion events and active interval countdowns remain queued or frozen across fixed steps and complete gameplay pauses; no event may be dropped, merged into a fake AoE, or applied early because PixiJS, particles, or pools are under pressure.
 
 Directional topology paths are searched and frozen once when the hit schedules a pending transfer. Advancing active transfers must be `O(active transfers + path steps reached this fixed step)` and must not rerun owner-wide topology search every step. Reuse path/state storage where practical, but never drop, apply early, or duplicate reserved damage because a visual or pool budget is exhausted; quality degradation may remove only nonessential particles, not the ordered Cell pulse, target-arrival timing, or validation semantics.
 
@@ -841,7 +866,7 @@ keeps Damage Spread band width unchanged after Range extends the primary attack 
 sweeps an orbit ball between its base and maximum Range without enlarging its content-defined contact circle
 detects Glyph contacts across the complete previous-to-current orbit sweep
 hits immediately when an orbit ball enters or re-enters an owner contact episode
-throttles uninterrupted orbit overlap per ball／owner at `200ms`
+throttles uninterrupted orbit overlap per ball／owner at the prepared `rehitCooldownMs`
 does not commit an orbit re-hit gate when a preliminary sweep candidate yields no Impact Cells
 uses relative ball／owner swept motion so moving targets cannot cross the rendered contact without collision
 publishes weapon-specific Range previews without letting React derive combat values
@@ -856,15 +881,16 @@ keeps Modifier and queued XP decisions continuously paused and resumes only once
 emits one Volatile explosion only for the first Living-to-Husk transition
 advances Volatile in stable breadth-first waves without dropping deferred events
 never resolves a chain's newly created next wave in the same fixed step
+validates and freezes the Volatile wave interval, starts it only after the current wave fully drains, and waits the complete configured Gameplay time before promoting the next wave
 keeps the Volatile processing budget frozen for the run and independent of Pixi load
 defers only the affected living owner's Slime structural commit while its Volatile chain can still deal damage
 classifies Disconnected from Living canonical components regardless of deformation distance
-protects every component at or above eighty percent of the largest component
+protects every component at or above the prepared `protectedComponentRatio` of the largest component
 applies Disconnected only to actual direct targets, including transfer arrival targets
 carries the higher Disconnected multiplier through one Slime reassembly episode
 applies no damage when Overload adds Crack
 prevents one root attack event, including delayed transfers, from consuming its newly created Crack
-composes maximum Disconnected and Crack as two-times base direct damage rather than 2.24-times
+composes Disconnected and Crack additively from base direct damage rather than multiplying their prepared multipliers
 lets Spread and Volatile Husk transitions continue Volatile without inheriting other Modifier bonuses
 keeps Disconnected presentation mostly still, severity-driven, pause-frozen, and independent of authoritative Glyph positions
 presents Overload as one directional compression／radial event and Cracked as bounded pooled atlas fragments without per-Cell filters or runtime textures

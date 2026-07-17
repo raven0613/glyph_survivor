@@ -20,6 +20,7 @@ export interface VolatileModifierParameters {
   readonly maximumExplosionDamage: number
   readonly intraOwnerTopologyDepth: number
   readonly maxExplosionResolutionsPerFixedStep: number
+  readonly waveIntervalMs: number
 }
 
 export interface DisconnectedModifierParameters {
@@ -60,6 +61,14 @@ function validateParameters(definition: RunModifierDefinition): void {
         definition.volatile.sourceMaxDurabilityRatio,
         'Volatile sourceMaxDurabilityRatio',
       )
+      if (
+        !Number.isFinite(definition.volatile.waveIntervalMs) ||
+        definition.volatile.waveIntervalMs < 0
+      ) {
+        throw new RangeError(
+          'Volatile waveIntervalMs must be finite and non-negative.',
+        )
+      }
       if (
         !Number.isFinite(definition.volatile.maximumExplosionDamage) ||
         definition.volatile.maximumExplosionDamage <= 0 ||

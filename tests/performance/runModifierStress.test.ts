@@ -200,10 +200,15 @@ test('measures 5,000 visible Glyphs with all three Modifier presentation channel
   )
 })
 
-test('resolves exactly the configured 64 VOLATILE sources and defers the rest without loss', (context) => {
+test('resolves exactly the configured VOLATILE source budget and defers the rest without loss', (context) => {
   const world = createWorldWithAllModifiers('volatile-budget-stress')
-  spawnSlimes(world, 2)
-  const sources = world.glyphStore.cells.slice(0, 65)
+  const volatile = world.runModifierState.resolvedProfile.volatile
+  assert.ok(volatile)
+  const resolutionBudget = volatile.maxExplosionResolutionsPerFixedStep
+  while (world.glyphStore.cells.length <= resolutionBudget) {
+    spawnSlimes(world, 1)
+  }
+  const sources = world.glyphStore.cells.slice(0, resolutionBudget + 1)
   for (const source of sources) {
     world.glyphStore.applyDamage(source.id, source.currentDurability)
     enqueueVolatileSource(world.volatileState, {
@@ -219,17 +224,26 @@ test('resolves exactly the configured 64 VOLATILE sources and defers the rest wi
   }
   const startedAt = performance.now()
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   const firstStepMs = performance.now() - startedAt
-  assert.equal(world.diagnostics.volatileExplosionsResolvedThisStep, 64)
+  assert.equal(
+    world.diagnostics.volatileExplosionsResolvedThisStep,
+    resolutionBudget,
+  )
   assert.equal(world.diagnostics.deferredVolatileExplosionCount, 1)
-  assert.equal(world.volatileState.activePresentationEvents.length, 64)
-  runVolatileReactionSystem(world)
+  assert.equal(
+    world.volatileState.activePresentationEvents.length,
+    resolutionBudget,
+  )
+  runVolatileReactionSystem(world, 0)
   assert.equal(world.diagnostics.volatileExplosionsResolvedThisStep, 1)
   assert.equal(world.diagnostics.deferredVolatileExplosionCount, 0)
-  assert.equal(world.diagnostics.volatileExplosionResolutionCount, 65)
+  assert.equal(
+    world.diagnostics.volatileExplosionResolutionCount,
+    resolutionBudget + 1,
+  )
   context.diagnostic(
-    `64-source VOLATILE headless step=${firstStepMs.toFixed(2)}ms`,
+    `${resolutionBudget}-source VOLATILE headless step=${firstStepMs.toFixed(2)}ms`,
   )
 })

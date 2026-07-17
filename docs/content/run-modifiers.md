@@ -33,7 +33,11 @@ LOADING 準備不可變的 Modifier content：
 - presentation semantic roles；
 - 結構與數值驗證完成的 immutable prepared representation。
 
-所有可調數字只由集中、可驗證的 Modifier content／Runtime config authoring 提供。系統不得散落 `0.35`、`0.75`、`0.80`、`0.60`、`1.40`、`1.60`、`64` 等 magic numbers。本文保存公式、參數名稱、相對關係與目前已同意的 prototype authoring values；實作後的數值 source of truth 是 prepared config。
+所有可調 Gameplay 數字只由 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts) 的集中、可驗證 definition config 提供。本文保存公式、參數名稱、單位、相對關係、validation 與行為不變量，不複製 current production／prototype defaults。Runtime 系統、UI、presentation、其他文件與 production-content tests 都只能讀 prepared config，不得另存一份 magic number或數值 snapshot。
+
+Production behavior tests 必須從該 test world 的 prepared Modifier definition／resolved profile 推導期望結果。公式與 validation tests 可以建立自己的明確 numeric fixture 來驗證門檻、clamp 與錯誤路徑，但該 fixture 必須由測試自己注入，且不能宣稱是 current production default。修改 authoring default 後必須重新 prepare content／開始新 run 才生效；只改 tuning value不應要求同步修改本文或一般 behavior assertions。
+
+VOLATILE 的波次節奏使用具名欄位 `volatile.waveIntervalMs`。本文只定義該欄位的語意與不變量；current default 只存在 authoring config。
 
 Runtime 擁有：
 
@@ -44,7 +48,7 @@ Runtime 擁有：
 - active Modifier offer；
 - stable offer／choice／reaction-chain IDs；
 - Cell status 與 status-specific payload；
-- active Volatile chains、current／next waves 與 deferred events；
+- active Volatile chains、current／next waves、per-chain interval countdowns 與 deferred events；
 - topology classification cache 與 Slime reassembly latch；
 - diagnostics。
 
@@ -222,7 +226,8 @@ Modifier bonus 不互相遞迴放大。令：
 ```text
 D = base Direct Damage
 M = DISCONNECTED multiplier；不符合時為 1
-C = 本事件開始時已有 CRACKED 時為 0.40，否則為 0
+K = prepared crackDamageMultiplier
+C = 本事件開始時已有合法 CRACKED 時為 K - 1，否則為 0
 ```
 
 則：
@@ -238,11 +243,11 @@ Final Direct Damage
 
 因此：
 
-- 只有 Crack：`D × 1.40`。
-- 只有最大 DISCONNECTED：`D × 1.60`。
-- 兩者同時達到各自最大效果：`D × 2.00`。
+- 只有 Crack：`D × K`。
+- 只有 DISCONNECTED：`D × M`。
+- 兩者同時成立：`D × (M + K - 1)`。
 
-不得改成 `D × 1.60 × 1.40 = D × 2.24`。Final Direct Damage 可以協助達到 OVERLOAD threshold，形成受控互動；但新 Crack 延後到下一個 attack event，因此不會在同一事件內遞迴。
+不得改成 `D × M × K`。Final Direct Damage 可以協助達到 OVERLOAD threshold，形成受控互動；但新 Crack 延後到下一個 attack event，因此不會在同一事件內遞迴。
 
 ## 8. VOLATILE — 不穩定結構
 
@@ -288,15 +293,7 @@ Explosion Damage
   )
 ```
 
-已同意的首版 prototype authoring values 為：
-
-```text
-sourceMaxDurabilityRatio = 0.35
-maximumExplosionDamage = 0.75
-intraOwnerTopologyDepth = 1
-```
-
-這些數字必須由 config authoring／preparation 提供，不能複製進 damage system。
+`sourceMaxDurabilityRatio`、`maximumExplosionDamage` 與 `intraOwnerTopologyDepth` 的 current authoring values 只存在 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)，不能複製進 damage system、本文或 production behavior tests。
 
 Explosion Damage：
 
@@ -326,7 +323,9 @@ Explosion Damage：
 
 Volatile 沒有 hard per-chain explosion cap。有限 Glyph 數與每 Glyph 一次 Husk transition保證 chain 自然終止。
 
-`maxExplosionResolutionsPerFixedStep` 是全世界每個 fixed step 可解析的 explosion-event processing budget，不是「第 65 個事件被刪除」的 Gameplay 上限。已同意的 prototype authoring value 為 `64`；實機 profiling 若顯示 simulation p95 或可讀性需要更低值，可以在 config 中降低，但該值在一局開始時必須凍結，不能依即時 FPS 自動改變。
+`maxExplosionResolutionsPerFixedStep` 是全世界每個 fixed step 可解析的 explosion-event processing budget，不是整條 chain 的 Gameplay 上限。Current value 只存在 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)；實機 profiling 若顯示 simulation p95 或可讀性需要不同值，只能在 config 中調整，且該值在一局開始時必須凍結，不能依即時 FPS 自動改變。
+
+`waveIntervalMs` 是同一 reaction chain 相鄰 breadth-first waves 之間的等待時間。它是以 Gameplay simulation time 計算、有限且非負的 prepared VOLATILE content parameter；current value 只存在於 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)。Runtime 在 run 建立時凍結 prepared value，每條 active chain 各自保存倒數狀態，renderer FPS、visual quality 或 particle budget 都不得改寫它。
 
 每條 chain 保存：
 
@@ -343,11 +342,12 @@ nextWave
 4. 當步 explosions 新造成的 Husk 一律加入該 chain 的 `nextWave`。
 5. 即使當步仍有剩餘 budget，也不得在同一步解析該 chain 的 `nextWave`。
 6. 若 `currentWave` 自身超過當步可取得的 budget，未處理 events 保留到後續 fixed steps，不得遺失、合併成假 AoE 或提早套用 damage。
-7. `currentWave` 完全清空後，最早於下一個 fixed step 才將 `nextWave` 升為新的 current wave。
-8. 完整 Gameplay pause 凍結 wave queues、scheduler cursor 與 presentation time。
-9. Pool 容量不足時可以記錄 pool miss 並使用安全 fallback allocation；不得因 pool／particle／frame budget 丟棄 authoritative explosion。
+7. Chain 的初始 `currentWave` 不等待 wave interval；只有它完全清空且 `nextWave` 非空時，才啟動該 chain 的 `waveIntervalMs` 倒數。同一 wave 因 processing budget 跨越多個 fixed steps 時，不得提早或重複啟動倒數。
+8. 倒數未歸零前，不得把 `nextWave` 升為新的 `currentWave`，也不得提前套用該 wave 的 damage、Husk transition 或 core presentation。倒數在某個 fixed-step boundary 歸零時，該 chain 可於同一 boundary 依 scheduler 順序與剩餘 processing budget 升波並解析，不額外偷加一個 fixed-step delay。
+9. 完整 Gameplay pause 凍結 wave queues、每條 chain 的 interval 倒數、scheduler cursor 與 presentation time；恢復後從原剩餘 simulation time 繼續。
+10. Pool 容量不足時可以記錄 pool miss 並使用安全 fallback allocation；不得因 pool／particle／frame budget 丟棄 authoritative explosion。
 
-較低 processing budget 會延長波浪傳播時間，並可能因其他 attack events 在波與波之間介入而改變戰鬥結果。因此它是凍結於 run 的 Gameplay timing config，不是可在同一 run 內自動降級的純 presentation knob。
+較低 processing budget 可能讓同一 wave 分散到更多 fixed steps；`waveIntervalMs` 則只控制一個完整 wave 排空後，到下一 wave 可解析前的明確停頓。兩者都可能讓其他 attack events 在反應收斂前介入並改變戰鬥結果，因此都是凍結於 run 的 authoritative Gameplay config，不是可在同一 run 內自動降級的純 presentation knob。
 
 ### 8.5 Structural boundaries
 
@@ -372,7 +372,7 @@ VOLATILE 的核心視覺是短促、離散、沿 canonical topology 接棒的 sh
 - 同一 breadth-first wave 的 sources 同時呈現；不同 wave 依 authoritative resolution 順序出現。前一波可以留下極短、快速衰減的 afterimage，使 `A → B → C → D` 的 leading edge 可讀，但不能拖成持續 glow 或提前顯示下一波死亡。
 - 不畫圓形 shockwave、連線、beam 或 source-to-target path。這讓它和 OVERLOAD 的單次徑向衝擊，以及既有 topology-transfer 的低強度逐 Cell brightness pulse 保持不同語法。
 - 每個 core source pulse 使用 stable event ID 與 pooled atlas particles；可選的附加碎屑／glow可以依 visual budget 降級，core pulse、wave order與resolved source identity不能丟棄。
-- `maxExplosionResolutionsPerFixedStep` 不是動畫速度旋鈕。線性 chain 每波只有一個 source 時，降低該 budget不會自然產生更大的逐格間隔；首版先用短 attack／hold／settle cadence與pulse尾跡取得可讀性，不能用renderer負載改變authoritative wave timing。
+- `maxExplosionResolutionsPerFixedStep` 不是動畫速度旋鈕。線性 chain 每波只有一個 source 時，降低該 budget不會自然產生更大的逐格間隔；完整 waves 之間的骨牌節奏只由 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts) 的 `volatile.waveIntervalMs` 控制，單次 pulse 內部的短 attack／hold／settle 才由 visual theme 控制。Renderer 不得另加一套 wave delay 或用負載改變 authoritative timing。
 
 ## 9. DISCONNECTED — 結構失聯
 
@@ -413,12 +413,6 @@ componentSize / largestComponentSize >= protectedComponentRatio
 
 該 component 視為主要團塊，不取得傷害加成。恰好等於 threshold 仍受保護；比較不得以 UI rounding 決定。
 
-已同意的首版 prototype authoring value：
-
-```text
-protectedComponentRatio = 0.80
-```
-
 因此多個接近同樣大的 components 可以同時受保護。單一 component 的一字／兩字怪自然是 `×1.0`；兩個同樣大小、彼此不連接的 components 也都屬最大團塊而受保護。
 
 ### 9.3 Damage multiplier
@@ -435,12 +429,7 @@ Disconnected Multiplier
   )
 ```
 
-已同意的首版 prototype authoring values：
-
-```text
-isolationBonusScale = 0.60
-maximumDamageMultiplier = 1.60
-```
+`protectedComponentRatio`、`isolationBonusScale` 與 `maximumDamageMultiplier` 的 current values 只存在 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)。
 
 `ownerTotalLivingCellCount` 與所有 component sizes 使用該次authoritative damage batch第一次Durability mutation前的topology snapshot。Immediate direct targets共享原始attack event的pre-mutation snapshot，避免同一batch內的Cell迭代順序改變倍率。Topology-transfer arrival在真正抵達時建立新的arrival-time snapshot；它是延後提交的direct application，可以觀察抵達當下已commit的topology。
 
@@ -531,11 +520,7 @@ resolvedFinalDirectDamage / target.maxDurability
 >= overloadThresholdRatio
 ```
 
-則 target 成為一個 Overload source。已同意的首版 prototype authoring value：
-
-```text
-overloadThresholdRatio = 0.60
-```
+則 target 成為一個 Overload source。`overloadThresholdRatio` 的 current value 只存在 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)。
 
 使用 overkill clamp 前的 final damage，確保判定不被 target 剩餘 Current Durability 間接改寫。
 
@@ -562,13 +547,7 @@ crackDamageMultiplier = prepared OVERLOAD content parameter
 Cracked Direct Damage = base Direct Damage × crackDamageMultiplier
 ```
 
-已同意的首版 prototype authoring value：
-
-```text
-crackDamageMultiplier = 1.40
-```
-
-在共同 bonus composition中，Crack貢獻相對於 base Direct Damage的 `+0.40 × D`，不乘上 DISCONNECTED bonus。若target在commit前已失效、已是Husk、沒有實際direct damage application，或application仍屬於建立此Crack的同一root attack event，Crack不消耗。其他合法direct application提交時只消耗一個charge。
+`crackDamageMultiplier` 的 current value 只存在 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)。在共同 bonus composition中，Crack貢獻相對於 base Direct Damage的 `D × (crackDamageMultiplier - 1)`，不乘上 DISCONNECTED bonus。若target在commit前已失效、已是Husk、沒有實際direct damage application，或application仍屬於建立此Crack的同一root attack event，Crack不消耗。其他合法direct application提交時只消耗一個charge。
 
 Crack bonus可以協助該次 attack達到 OVERLOAD threshold，也可以使 Cell進入 Husk並觸發 VOLATILE；新 Overload Crack仍延後到下一個 event，因此不會同事件遞迴。
 
@@ -699,13 +678,15 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 - uses the dead source Cell's Max Durability in the configured capped explosion formula
 - lets different source explosions damage the same still-Living target in stable order
 - lets Volatile-caused Husk transitions enqueue the next breadth-first wave
+- validates `waveIntervalMs` as a finite non-negative prepared content value and freezes it for the run
 - never resolves a chain's next wave in the same fixed step
+- starts a chain's interval only after its complete current wave drains, then waits the full configured Gameplay simulation time before promoting the next wave
 - defers events beyond the per-step processing budget without dropping or applying them early
-- freezes Volatile queues during complete gameplay pause
+- freezes Volatile queues and active interval countdowns during complete gameplay pause
 - delays only affected living-owner Slime structural commits until related damage-capable Volatile chains settle, while depleted owners enter `INACTIVE`／`COLLAPSING` immediately and wait only for source-event completion before `DEFEATED`／reward／cleanup
 - removes targeting and combat collision immediately when a depleted owner waits only for pending reactions
 - classifies DISCONNECTED from canonical Living components regardless of deformation distance
-- protects every component at or above eighty percent of the largest component
+- protects every component at or above the prepared `protectedComponentRatio` of the largest component
 - applies the configured component-ratio multiplier only once to direct Damage Targets
 - naturally leaves one-component one-letter and two-letter bodies at `×1.0`
 - includes authored floating Cells in normal component classification
@@ -718,7 +699,7 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 - deduplicates multiple Crack applications to one active charge
 - consumes existing Crack exactly once on the next successful direct application
 - prevents a newly applied Crack from amplifying the same attack event
-- composes maximum DISCONNECTED and Crack as `×2.00`, not `×2.24`
+- composes DISCONNECTED and Crack additively from base damage rather than multiplying their prepared multipliers
 - excludes Spread and Volatile from DISCONNECTED, Crack consumption, and OVERLOAD
 - still lets Spread and Volatile Husk transitions start or continue VOLATILE
 - attributes actual Modifier-caused damage once to the causal Weapon Instance
@@ -736,8 +717,8 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 | --- | --- | --- |
 | 1. Offer／Runtime foundation | Modifier definitions、owned set、authorization source、`PAUSED_MODIFIER`、原子command、domain-separated RNG、reset／dispose，以及`enableRunStartModifierOfferForTesting` | Flag開啟後，選完初始武器便在第一個fixed step前看到三張Modifier；Flag關閉完全走舊流程；選擇後立即正常開局且沒有額外resume invulnerability |
 | 2. OVERLOAD vertical slice | 共用Damage Application boundary、status flags／payload、Overload threshold、Crack消耗、非等比壓縮、短徑向shock與prepared fragment atlas／pool | 重擊有「壓縮—頓點—回彈」；鄰居裂字清楚但仍看成原Cell；下一個不同direct event只加成／消耗一次 |
-| 3. DISCONNECTED vertical slice | Living component cache、80%保護、倍率公式、direct-target snapshot、severity、spacing loosen、ambient micro-burst與component hit shake | 切出小團塊後，不看數字也能辨識脆弱程度；受擊是整塊短震而非爆光；畫面鬆動不改hitbox或被擊退後的判定 |
-| 4. VOLATILE vertical slice | Husk transition outcome、reaction-chain IDs、breadth-first queues、每步budget、stable fairness、same-owner topology damage與domino core pulses | 能看清快速`A → B → C → D`接棒；同wave分支同時發生；沒有圓形波、沒有丟事件、暫停不偷跑 |
+| 3. DISCONNECTED vertical slice | Living component cache、prepared protection threshold、倍率公式、direct-target snapshot、severity、spacing loosen、ambient micro-burst與component hit shake | 切出小團塊後，不看數字也能辨識脆弱程度；受擊是整塊短震而非爆光；畫面鬆動不改hitbox或被擊退後的判定 |
+| 4. VOLATILE vertical slice | Husk transition outcome、reaction-chain IDs、breadth-first queues、`waveIntervalMs`、每步budget、stable fairness、same-owner topology damage與domino core pulses | 能看清`A → B → C → D`依config節奏逐波接棒；同wave分支同時發生；沒有圓形波、沒有丟事件、暫停不偷跑 |
 | 5. Slime／Boss production flow | Volatile structural defer、Disconnected reassembly latch、Encounter collapse／DEFEATED、XP coexistence、正式Boss N選一與decision priority | 開局測試選一張後，Slime仍正常給剩餘二選一；分裂／重組增傷窗口正確；Boss不重複發獎或提前cleanup |
 | 6. Combination／performance／feel | 三Modifier共存、additive damage composition、presentation-channel priority、pool／atlas stress、diagnostics與theme tuning | 組合有效但不遞迴暴增；所有動畫都有短attack、明確頓點與乾淨settle；大量Crack／Volatile下仍維持目標效能與可讀性 |
 

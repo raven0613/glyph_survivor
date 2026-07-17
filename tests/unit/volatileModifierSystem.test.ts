@@ -4,7 +4,10 @@ import { prepareGameContent } from '../../src/game/content/gameContent.ts'
 import {
   RUN_MODIFIER_DEFINITION_ID,
 } from '../../src/game/content/modifiers/prototypeRunModifiers.ts'
-import { RUN_MODIFIER_EFFECT_STRATEGY } from '../../src/game/content/modifiers/runModifierDefinition.ts'
+import {
+  RUN_MODIFIER_EFFECT_STRATEGY,
+  defineRunModifier,
+} from '../../src/game/content/modifiers/runModifierDefinition.ts'
 import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { PLAYER_ATTACK_VISUAL_ROLE } from '../../src/game/content/visuals/combatVisualTheme.ts'
 import { GLYPH_STATUS_FLAG, hasGlyphStatus } from '../../src/game/glyph/glyphStatus.ts'
@@ -110,6 +113,39 @@ function useResolutionBudget(world: WorldState, budget: number): void {
   })
 }
 
+function defineVolatileIntervalFixture(waveIntervalMs: number) {
+  return defineRunModifier({
+    id: 'modifier.test-volatile-interval',
+    title: 'TEST VOLATILE',
+    description: 'Test-only Volatile interval fixture.',
+    identityGlyph: '*',
+    effectStrategyId: RUN_MODIFIER_EFFECT_STRATEGY.VOLATILE,
+    volatile: {
+      sourceMaxDurabilityRatio: 0.5,
+      maximumExplosionDamage: 1,
+      intraOwnerTopologyDepth: 1,
+      maxExplosionResolutionsPerFixedStep: 2,
+      waveIntervalMs,
+    },
+  })
+}
+
+test('validates and freezes the configured VOLATILE wave interval', () => {
+  const zeroInterval = defineVolatileIntervalFixture(0)
+  assert.ok(
+    zeroInterval.effectStrategyId === RUN_MODIFIER_EFFECT_STRATEGY.VOLATILE,
+  )
+  assert.equal(zeroInterval.volatile.waveIntervalMs, 0)
+  assert.equal(Object.isFrozen(zeroInterval.volatile), true)
+
+  for (const invalidInterval of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () => defineVolatileIntervalFixture(invalidInterval),
+      RangeError,
+    )
+  }
+})
+
 test('damages only same-owner depth-one canonical neighbors', () => {
   const world = createVolatileWorld('volatile-canonical-neighbors')
   const sourceOwner = spawnActiveBat(world)
@@ -135,7 +171,7 @@ test('damages only same-owner depth-one canonical neighbors', () => {
   })
 
   applyDirectDamage(world, 1, [middle.id], new Map())
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.equal(left.currentDurability, 0.65)
   assert.equal(right.currentDurability, 0.65)
@@ -175,32 +211,54 @@ test('uses source maximum durability and applies the configured damage cap', () 
     [heavySource.id],
     new Map([[heavySource.id, 3]]),
   )
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.equal(right.currentDurability, 0.25)
 })
 
 test('advances chained explosions in breadth-first waves across fixed steps', () => {
   const world = createVolatileWorld('volatile-bfs-waves')
+  const profile = world.runModifierState.resolvedProfile.volatile
+  assert.ok(profile)
+  assert.equal(Number.isFinite(profile.waveIntervalMs), true)
+  assert.ok(profile.waveIntervalMs >= 0)
   const bat = spawnActiveBat(world)
   const [left, middle, right] = world.glyphStore.getOwnerGlyphs(bat.id)
   world.glyphStore.applyDamage(left.id, 0.7)
   world.glyphStore.applyDamage(right.id, 0.7)
   applyDirectDamage(world, 1, [middle.id], new Map())
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.equal(left.state, 'HUSK')
   assert.equal(right.state, 'HUSK')
   assert.equal(world.diagnostics.volatileExplosionResolutionCount, 1)
   assert.equal(world.volatileState.activePresentationEvents.length, 1)
   assert.equal(world.volatileState.activeChains.length, 1)
+  assert.equal(world.diagnostics.activeVolatileIntervalCountdownCount, 1)
+  assert.equal(
+    world.volatileState.activeChains[0].waveIntervalRemainingMs,
+    profile.waveIntervalMs,
+  )
 
-  runVolatileReactionSystem(world)
+  if (profile.waveIntervalMs > 0) {
+    runVolatileReactionSystem(world, profile.waveIntervalMs / 2)
+    assert.equal(world.diagnostics.volatileExplosionResolutionCount, 1)
+    assert.ok(
+      Math.abs(
+        world.volatileState.activeChains[0].waveIntervalRemainingMs! -
+          profile.waveIntervalMs / 2,
+      ) < 1e-9,
+    )
+    runVolatileReactionSystem(world, profile.waveIntervalMs / 2)
+  } else {
+    runVolatileReactionSystem(world, 0)
+  }
 
   assert.equal(world.diagnostics.volatileExplosionResolutionCount, 3)
   assert.equal(world.volatileState.activePresentationEvents.length, 3)
   assert.equal(world.volatileState.activeChains.length, 0)
+  assert.equal(world.diagnostics.activeVolatileIntervalCountdownCount, 0)
 })
 
 test('shares one chain for direct and Spread Husk transitions in one root commit', () => {
@@ -282,13 +340,13 @@ test('retains unresolved events when the fixed-step budget is exhausted', () => 
   const glyphs = world.glyphStore.getOwnerGlyphs(bat.id)
   applyDirectDamage(world, 1, glyphs.map(({ id }) => id), new Map())
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   assert.equal(world.diagnostics.volatileExplosionResolutionCount, 1)
   assert.equal(world.diagnostics.deferredVolatileExplosionCount, 2)
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   assert.equal(world.diagnostics.volatileExplosionResolutionCount, 2)
   assert.equal(world.diagnostics.deferredVolatileExplosionCount, 1)
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   assert.equal(world.diagnostics.volatileExplosionResolutionCount, 3)
   assert.equal(world.diagnostics.deferredVolatileExplosionCount, 0)
 })
@@ -308,8 +366,8 @@ test('round-robins active chains instead of letting one chain monopolize the bud
   applyDirectDamage(world, 1, [firstMiddle.id], new Map())
   applyDirectDamage(world, 2, [secondMiddle.id], new Map())
 
-  runVolatileReactionSystem(world)
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
+  runVolatileReactionSystem(world, 0)
 
   assert.deepEqual(
     world.volatileState.activePresentationEvents.map(({ sourceGlyphId }) =>
@@ -345,7 +403,7 @@ test('does not consume Crack or trigger other Modifier bonuses on reaction damag
   })
   assert.equal(world.glyphStore.applyCracked(left.id, 99), true)
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.equal(left.currentDurability, 0.65)
   assert.equal(hasGlyphStatus(left, GLYPH_STATUS_FLAG.CRACKED), true)
@@ -362,7 +420,7 @@ test('attributes actual reaction durability damage to the source weapon once', (
   assert.ok(statistics)
   applyDirectDamage(world, 1, [middle.id], new Map())
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.ok(Math.abs(statistics.totalDamage - 0.7) < 1e-9)
 })
@@ -372,7 +430,7 @@ test('a HUSK source can emit only once for the whole run', () => {
   const bat = spawnActiveBat(world)
   const [, middle] = world.glyphStore.getOwnerGlyphs(bat.id)
   applyDirectDamage(world, 1, [middle.id], new Map())
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   const resolved = world.diagnostics.volatileExplosionResolutionCount
 
   applyDamageApplication(world, {
@@ -385,7 +443,7 @@ test('a HUSK source can emit only once for the whole run', () => {
     impactDirectionX: 0,
     impactDirectionY: 0,
   })
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
 
   assert.equal(world.diagnostics.volatileExplosionResolutionCount, resolved)
   assert.equal(world.volatileState.emittedSourceGlyphIds.size, 1)

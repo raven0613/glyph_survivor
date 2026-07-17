@@ -99,7 +99,7 @@ test('waits for pending encounter sources, then authorizes one two-choice reward
   runDropSystem(world)
   assert.equal(world.drops.length, 0)
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   runDeathSystem(world)
   const modifierOffer = runBossModifierRewardSystem(world)
   assert.ok(modifierOffer)

@@ -127,7 +127,7 @@ test('defers only a living Slime owner whose VOLATILE source chain is pending', 
   assert.equal(world.topologyDirtyOwnerIds.has(independentSlime.id), false)
   assert.equal(world.diagnostics.volatileStructuralDeferredOwnerCount, 1)
 
-  runVolatileReactionSystem(world)
+  runVolatileReactionSystem(world, 0)
   runSlimeSplitSystem(world)
 
   assert.equal(deferredSlime.phase, 'REASSEMBLING')
