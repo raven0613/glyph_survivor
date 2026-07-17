@@ -38,6 +38,8 @@ const ORDINARY_PROFILE_IDS = Object.freeze([
   GLYPH_APPEARANCE_PROFILE.ZOMBIE,
   GLYPH_APPEARANCE_PROFILE.BONE,
   GLYPH_APPEARANCE_PROFILE.BAT,
+  GLYPH_APPEARANCE_PROFILE.ROCK,
+  GLYPH_APPEARANCE_PROFILE.SNAKE,
 ] as const)
 const MAXIMUM_XP_FLASH_DUTY_CYCLE = 0.2
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
@@ -296,7 +298,9 @@ function validateTierAssignments(theme: CombatVisualTheme): void {
         GLYPH_BRIGHTNESS_TIER.ORDINARY,
     )
   ) {
-    throw new RangeError('Z, BO, and BAT must share the ORDINARY emphasis tier.')
+    throw new RangeError(
+      'Z, BO, BAT, ROCK, and SNAKE must share the ORDINARY emphasis tier.',
+    )
   }
   const slimeAppearance =
     theme.glyphAppearances[GLYPH_APPEARANCE_PROFILE.SLIME_BOSS]

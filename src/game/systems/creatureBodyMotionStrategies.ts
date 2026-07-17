@@ -6,11 +6,13 @@ import {
 import type { GlyphCell } from '../glyph/glyphStore.ts'
 import type { EnemyState } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
+import { runSnakeSqueezeBodyMotion } from './snakeBodyMotion.ts'
 
 type CreatureBodyMotionStrategy = (
   world: WorldState,
   enemy: EnemyState,
   definition: CreatureDefinition,
+  deltaMs: number,
 ) => void
 
 const BAT_WING_TIMES = Object.freeze([0, 0.1, 0.22, 0.46, 0.58, 0.78, 1])
@@ -33,6 +35,9 @@ const ZOMBIE_STAGGER_TIMES = Object.freeze([
 const ZOMBIE_STAGGER_VALUES = Object.freeze([0, -1, 0.2, 0, 1, -0.2, 0, 0])
 const ZOMBIE_MAX_ROTATION_RADIANS = (4 * Math.PI) / 180
 const ZOMBIE_PIVOT_RADIUS_SCALE = 0.85
+const QUARTER_TURN_RADIANS = Math.PI / 2
+const QUARTER_TURNS_PER_CYCLE = 4
+const ROCK_POSE_EPSILON = 0.000_001
 
 function smoothStep(value: number): number {
   return value * value * (3 - 2 * value)
@@ -65,7 +70,11 @@ function getCyclePhase(
   enemy: EnemyState,
   definition: CreatureDefinition,
 ): number {
-  const duration = definition.bodyMotionCycleDurationMs
+  const profile = definition.bodyMotion
+  if (profile.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL) {
+    return 0
+  }
+  const duration = profile.cycleDurationMs
   if (duration <= 0) {
     return 0
   }
@@ -118,7 +127,7 @@ const batFlap: CreatureBodyMotionStrategy = (world, enemy, definition) => {
 
   for (let index = 0; index < glyphs.length; index += 1) {
     const glyph = glyphs[index]
-    const motionGroup = definition.bodyMotionGroupBySlotId[glyph.bodySlotId]
+    const motionGroup = definition.bodyMotion.groupBySlotId[glyph.bodySlotId]
     const offsetY =
       motionGroup === 1
         ? aWingOffsetY
@@ -150,7 +159,7 @@ const boneRattle: CreatureBodyMotionStrategy = (world, enemy, definition) => {
     ) * movementIntensity
   for (let index = 0; index < glyphs.length; index += 1) {
     const glyph = glyphs[index]
-    const motionGroup = definition.bodyMotionGroupBySlotId[glyph.bodySlotId]
+    const motionGroup = definition.bodyMotion.groupBySlotId[glyph.bodySlotId]
     const pulse = motionGroup === 0 ? firstCellPulse : secondCellPulse
     const direction = motionGroup === 0 ? -1 : 1
     setGlyphMotion(
@@ -198,12 +207,154 @@ const zombieStagger: CreatureBodyMotionStrategy = (
   }
 }
 
+function moveToward(value: number, target: number, maximumDelta: number): number {
+  if (Math.abs(target - value) <= maximumDelta) {
+    return target
+  }
+  return value + Math.sign(target - value) * maximumDelta
+}
+
+function getShortestCycleDelta(fromPhase: number, toPhase: number): number {
+  let delta = toPhase - fromPhase
+  if (delta > 0.5) {
+    delta -= 1
+  } else if (delta < -0.5) {
+    delta += 1
+  }
+  return delta
+}
+
+function advanceRockRollProgress(
+  enemy: EnemyState,
+  definition: CreatureDefinition,
+  deltaMs: number,
+): number {
+  const profile = definition.bodyMotion
+  if (profile.behaviorId !== CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL) {
+    throw new Error('ROCK roll strategy requires a ROCK_ROLL profile.')
+  }
+
+  let progress = wrapUnit(enemy.bodyMotionProgress)
+  const horizontalIntensity =
+    definition.maximumSpeed > 0
+      ? Math.min(1, Math.abs(enemy.velocityX) / definition.maximumSpeed)
+      : 0
+  if (horizontalIntensity > profile.horizontalDirectionDeadZoneRatio) {
+    const direction = Math.sign(enemy.velocityX)
+    let remainingDeltaMs = Math.max(0, deltaMs)
+    while (remainingDeltaMs > ROCK_POSE_EPSILON) {
+      if (enemy.bodyMotionHoldRemainingMs > 0) {
+        const consumedHoldMs = Math.min(
+          remainingDeltaMs,
+          enemy.bodyMotionHoldRemainingMs,
+        )
+        enemy.bodyMotionHoldRemainingMs -= consumedHoldMs
+        remainingDeltaMs -= consumedHoldMs
+        continue
+      }
+
+      const quarterProgress = progress * QUARTER_TURNS_PER_CYCLE
+      const nearestPose = Math.round(quarterProgress)
+      const isAtPose =
+        Math.abs(quarterProgress - nearestPose) <= ROCK_POSE_EPSILON
+      if (isAtPose) {
+        const fullCadenceDurationMs =
+          profile.fullRollDurationMs / horizontalIntensity +
+          QUARTER_TURNS_PER_CYCLE * profile.poseHoldDurationMs
+        const completeCycles = Math.floor(
+          remainingDeltaMs / fullCadenceDurationMs,
+        )
+        if (completeCycles > 0) {
+          remainingDeltaMs -= completeCycles * fullCadenceDurationMs
+          continue
+        }
+      }
+      const targetPose =
+        direction > 0
+          ? isAtPose
+            ? nearestPose + 1
+            : Math.ceil(quarterProgress)
+          : isAtPose
+            ? nearestPose - 1
+            : Math.floor(quarterProgress)
+      const progressToTarget =
+        Math.abs(targetPose - quarterProgress) / QUARTER_TURNS_PER_CYCLE
+      const progressPerMs = horizontalIntensity / profile.fullRollDurationMs
+      const timeToTargetMs = progressToTarget / progressPerMs
+
+      if (remainingDeltaMs + ROCK_POSE_EPSILON >= timeToTargetMs) {
+        progress = wrapUnit(targetPose / QUARTER_TURNS_PER_CYCLE)
+        remainingDeltaMs = Math.max(0, remainingDeltaMs - timeToTargetMs)
+        enemy.bodyMotionHoldRemainingMs = profile.poseHoldDurationMs
+      } else {
+        progress = wrapUnit(
+          progress + direction * remainingDeltaMs * progressPerMs,
+        )
+        remainingDeltaMs = 0
+      }
+    }
+  } else {
+    enemy.bodyMotionHoldRemainingMs = 0
+    const nearestPoseProgress =
+      Math.round(progress * QUARTER_TURNS_PER_CYCLE) /
+      QUARTER_TURNS_PER_CYCLE
+    const settleDelta = getShortestCycleDelta(progress, nearestPoseProgress)
+    const maximumSettleProgress =
+      (deltaMs / profile.fullRollDurationMs) * profile.settleSpeedMultiplier
+    progress = wrapUnit(
+      progress + moveToward(0, settleDelta, maximumSettleProgress),
+    )
+  }
+  enemy.bodyMotionProgress = progress
+  return progress
+}
+
+function sampleRockRollAngle(progress: number): number {
+  const quarterProgress = progress * QUARTER_TURNS_PER_CYCLE
+  const poseIndex = Math.floor(quarterProgress)
+  const segmentProgress = quarterProgress - poseIndex
+  return (poseIndex + smoothStep(segmentProgress)) * QUARTER_TURN_RADIANS
+}
+
+const rockRoll: CreatureBodyMotionStrategy = (
+  world,
+  enemy,
+  definition,
+  deltaMs,
+) => {
+  const profile = definition.bodyMotion
+  if (profile.behaviorId !== CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL) {
+    throw new Error('ROCK roll strategy requires a ROCK_ROLL profile.')
+  }
+  const angle = sampleRockRollAngle(
+    advanceRockRollProgress(enemy, definition, deltaMs),
+  )
+  const sinAngle = Math.sin(angle)
+  const cosAngle = Math.cos(angle)
+  const glyphs = world.glyphStore.getOwnerGlyphs(enemy.id)
+  for (let index = 0; index < glyphs.length; index += 1) {
+    const glyph = glyphs[index]
+    const rotatedX = glyph.localX * cosAngle - glyph.localY * sinAngle
+    const rotatedY = glyph.localX * sinAngle + glyph.localY * cosAngle
+    setGlyphMotion(
+      world,
+      glyph,
+      rotatedX - glyph.localX,
+      rotatedY - glyph.localY,
+      0,
+    )
+  }
+}
+
 const BODY_MOTION_STRATEGIES: Readonly<
   Record<CreatureBodyMotionBehaviorId, CreatureBodyMotionStrategy>
 > = Object.freeze({
   [CREATURE_BODY_MOTION_BEHAVIOR.NONE]: noBodyMotion,
   [CREATURE_BODY_MOTION_BEHAVIOR.BAT_FLAP]: batFlap,
   [CREATURE_BODY_MOTION_BEHAVIOR.BONE_RATTLE]: boneRattle,
+  [CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL]: rockRoll,
+  [CREATURE_BODY_MOTION_BEHAVIOR.SNAKE_SQUEEZE]:
+    runSnakeSqueezeBodyMotion,
   [CREATURE_BODY_MOTION_BEHAVIOR.ZOMBIE_STAGGER]: zombieStagger,
 })
 
@@ -211,10 +362,12 @@ export function runCreatureBodyMotionBehavior(
   world: WorldState,
   enemy: EnemyState,
   definition: CreatureDefinition,
+  deltaMs = 0,
 ): void {
-  BODY_MOTION_STRATEGIES[definition.bodyMotionBehaviorId](
+  BODY_MOTION_STRATEGIES[definition.bodyMotion.behaviorId](
     world,
     enemy,
     definition,
+    deltaMs,
   )
 }

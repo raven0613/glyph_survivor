@@ -1,5 +1,8 @@
 import { calculateCameraView } from '../runtime/cameraTransform.ts'
-import { selectOrdinaryEnemyDefinition } from '../content/enemies/ordinaryEnemyProgression.ts'
+import {
+  commitOrdinaryEnemySpawn,
+  selectOrdinaryEnemyDefinition,
+} from '../content/enemies/ordinaryEnemyProgression.ts'
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
 import { spawnEnemy, type WorldState } from '../runtime/worldState.ts'
 import {
@@ -36,11 +39,13 @@ export function runDirectorSystem(world: WorldState, deltaMs: number): void {
     world.viewportWidth,
     world.viewportHeight,
   )
-  const enemyDefinition = selectOrdinaryEnemyDefinition(
+  const selection = selectOrdinaryEnemyDefinition(
     world.content.ordinaryEnemyProgression,
-    world.ordinaryEnemySpawnCount,
+    world.ordinaryEnemyProgressionState,
+    world.runTimeMs,
     world.rng.next,
   )
+  const enemyDefinition = selection.definition
   const enemyRadius = enemyDefinition.broadPhaseRadius
   for (let attempt = 0; attempt < GAME_CONFIG.spawnAttemptCount; attempt += 1) {
     const side = chooseSpawnSide(
@@ -77,7 +82,7 @@ export function runDirectorSystem(world: WorldState, deltaMs: number): void {
       materializeDurationMs,
       enemyDefinition,
     )
-    world.ordinaryEnemySpawnCount += 1
+    commitOrdinaryEnemySpawn(world.ordinaryEnemyProgressionState, selection)
     world.enemySpatialHash.insert(enemy)
     if (!world.firstWaveStarted) {
       world.firstWaveStarted = true

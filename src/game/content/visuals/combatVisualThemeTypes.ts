@@ -5,6 +5,8 @@ export const GLYPH_APPEARANCE_PROFILE = Object.freeze({
   ZOMBIE: 'ZOMBIE',
   BONE: 'BONE',
   BAT: 'BAT',
+  ROCK: 'ROCK',
+  SNAKE: 'SNAKE',
   SLIME_BOSS: 'SLIME_BOSS',
 } as const)
 

@@ -7,6 +7,8 @@ import {
   type OrdinaryEnemyProgression,
 } from './enemies/ordinaryEnemyProgression.ts'
 import { prepareOrdinaryZombieDefinition } from './enemies/ordinaryZombie.ts'
+import { prepareOrdinaryRockDefinition } from './enemies/ordinaryRock.ts'
+import { prepareOrdinarySnakeDefinition } from './enemies/ordinarySnake.ts'
 import { prepareBasicProjectileWeaponDefinition } from './weapons/basicProjectileWeapon.ts'
 import { prepareFlamethrowerWeaponDefinition } from './weapons/flamethrowerWeapon.ts'
 import { prepareOrbitEnergyBallWeaponDefinition } from './weapons/orbitEnergyBallWeapon.ts'
@@ -23,6 +25,20 @@ import type { RunModifierDefinition } from './modifiers/runModifierDefinition.ts
 import { preparePrototypeRunModifiers } from './modifiers/prototypeRunModifiers.ts'
 
 const FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS = 3
+const ORDINARY_ENEMY_DEBUT_TIMES_MS = Object.freeze({
+  ZOMBIE: 0,
+  BONE: 6_000,
+  BAT: 12_000,
+  ROCK: 20_000,
+  SNAKE: 28_000,
+})
+const ORDINARY_ENEMY_POST_DEBUT_WEIGHTS = Object.freeze({
+  ZOMBIE: 5,
+  BONE: 4,
+  BAT: 3,
+  ROCK: 2,
+  SNAKE: 2,
+})
 
 export interface PreparedGameContent {
   readonly combatVisualTheme: CombatVisualTheme
@@ -83,21 +99,41 @@ export function prepareGameContent(): PreparedGameContent {
     prepareOrdinaryZombieDefinition(),
     prepareOrdinaryBoneDefinition(),
     prepareOrdinaryBatDefinition(),
+    prepareOrdinaryRockDefinition(),
+    prepareOrdinarySnakeDefinition(),
   ])
-  const [zombieDefinition, boneDefinition, batDefinition] =
-    ordinaryEnemyDefinitions
+  const [
+    zombieDefinition,
+    boneDefinition,
+    batDefinition,
+    rockDefinition,
+    snakeDefinition,
+  ] = ordinaryEnemyDefinitions
   const ordinaryEnemyProgression = defineOrdinaryEnemyProgression([
     {
-      startSpawnCount: 0,
-      entries: [{ definition: zombieDefinition, weight: 1 }],
+      definition: zombieDefinition,
+      earliestAppearanceTimeMs: ORDINARY_ENEMY_DEBUT_TIMES_MS.ZOMBIE,
+      postDebutWeight: ORDINARY_ENEMY_POST_DEBUT_WEIGHTS.ZOMBIE,
     },
     {
-      startSpawnCount: 8,
-      entries: [{ definition: boneDefinition, weight: 1 }],
+      definition: boneDefinition,
+      earliestAppearanceTimeMs: ORDINARY_ENEMY_DEBUT_TIMES_MS.BONE,
+      postDebutWeight: ORDINARY_ENEMY_POST_DEBUT_WEIGHTS.BONE,
     },
     {
-      startSpawnCount: 16,
-      entries: [{ definition: batDefinition, weight: 1 }],
+      definition: batDefinition,
+      earliestAppearanceTimeMs: ORDINARY_ENEMY_DEBUT_TIMES_MS.BAT,
+      postDebutWeight: ORDINARY_ENEMY_POST_DEBUT_WEIGHTS.BAT,
+    },
+    {
+      definition: rockDefinition,
+      earliestAppearanceTimeMs: ORDINARY_ENEMY_DEBUT_TIMES_MS.ROCK,
+      postDebutWeight: ORDINARY_ENEMY_POST_DEBUT_WEIGHTS.ROCK,
+    },
+    {
+      definition: snakeDefinition,
+      earliestAppearanceTimeMs: ORDINARY_ENEMY_DEBUT_TIMES_MS.SNAKE,
+      postDebutWeight: ORDINARY_ENEMY_POST_DEBUT_WEIGHTS.SNAKE,
     },
   ])
   const slimeBossDefinition = prepareSlimeBossDefinition()

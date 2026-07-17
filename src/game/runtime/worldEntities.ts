@@ -22,6 +22,7 @@ export type EnemyPhase =
 export type SpawnSide = 'top' | 'right' | 'bottom' | 'left'
 export type EnemyLayoutMode = 'AUTHORED' | 'COMPILED'
 export type BossEncounterPhase = 'ACTIVE' | 'COLLAPSING' | 'DEFEATED'
+export type HorizontalFacing = -1 | 1
 
 export interface BossEncounterState {
   readonly id: number
@@ -113,6 +114,11 @@ export interface EnemyState {
   velocityY: number
   behaviorElapsedMs: number
   bodyMotionPhaseOffset: number
+  bodyMotionProgress: number
+  bodyMotionHoldRemainingMs: number
+  bodyMotionFacing: HorizontalFacing
+  bodyMotionTargetFacing: HorizontalFacing
+  bodyMotionTurnProgress: number
   layoutMode: EnemyLayoutMode
   phase: EnemyPhase
   materializeRemainingMs: number

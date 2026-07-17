@@ -1,7 +1,7 @@
 import { getPrintableAsciiGlyphFrame } from './glyphFrame.ts'
 import type { GlyphMaterialId } from './glyphMaterial.ts'
 
-export type GlyphBodySlotRole = 'BODY' | 'EYE'
+export type GlyphBodySlotRole = 'BODY' | 'EYE' | 'HEAD'
 
 export interface GlyphBodySlotInput {
   readonly slotId: number

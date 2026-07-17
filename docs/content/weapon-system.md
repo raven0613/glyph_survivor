@@ -184,7 +184,7 @@ L > earlyLevelLimit:
 
 XP 結算遵守以下規則：
 
-- 首版 Z、BO、BAT 使用各自 prepared creature content 提供的合法死亡 XP reward；不同普通敵人、Elite 與 Boss 的差異化 reward 必須由content明確定義，不得讓Boss／Elite意外繼承普通敵人的fallback。
+- 每個 prepared ordinary Creature Definition（包含 `Z`、`BO`、`BAT`、`ROCK` 與 `SNAKE`）各自提供合法死亡 XP reward；不同普通敵人、Elite 與 Boss 的差異化 reward 必須由 content 明確定義，不得讓 Boss／Elite 意外繼承普通敵人的 fallback。
 - 同一 fixed step 撿到的 XP 先累加，再以 `while` 逐級扣除門檻；所有超額 XP 必須保留。
 - 每跨過一級就增加一次 `pendingUpgradeCount`。一次跨多級只建立第一個 active offer，其餘選擇排隊，並在前一個 commit 後依更新後的 loadout 重新產生。
 - 第一次武器卡保證依 `offerSequence === 0` 判斷，不依 `level === 2`；大額 XP 一次跨多級不得重複觸發首次保證。

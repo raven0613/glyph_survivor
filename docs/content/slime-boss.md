@@ -118,7 +118,7 @@ Marker 定義：
 
 ## 6. 移動與蠕動
 
-- 首版最大移動速度為 60 world units/s。普通怪物現在具有獨立內容定義與 `Z → BO → BAT` progression，不再假設所有普通怪共用 72 world units/s；各普通怪速度以 [`ordinary-enemies.md`](ordinary-enemies.md) 的後續調校為準。
+- SLIME 的 `maximumSpeed` 只由 prepared Boss definition 提供。普通怪物具有各自獨立內容定義與 `Z → BO → BAT → ROCK → SNAKE` progression，不得假設所有普通怪共用同一速度；普通怪速度與出場語意以 [`ordinary-enemies.md`](ordinary-enemies.md) 為準。
 - 一般 `RUNNING` 戰鬥中的移動採平滑、具阻尼的玩家追蹤，不允許瞬間改變 world position；玩家死亡進入 `DEATH_REVIEW` 後解除玩家 target，並依 [`player-survival.md`](player-survival.md) 改用平滑的無目標游走，不得繼續追向玩家死亡座標。
 - 蠕動是 layout anchor 在中性、寬扁、直立形狀間的連續變形；不是 renderer 私自移動 Glyph。
 - 同一個 Glyph ID 在所有 morph layouts 中都存在。形狀改變造成文字重新排成不同列，但不交換生命、不重新分配耐久。
@@ -147,7 +147,7 @@ Marker 定義：
 - 當外力停止，即使 Creature root 沒有移動，Living Cell 與 Husk 都以彈簧式恢復回當前 layout anchor。
 - Creature root 正在移動或蠕動時，Cell 追逐的是更新後的 anchor，不是舊 world position。
 - Husk 不因回彈、受擊特效或 layout recovery 而復活。只有 Encounter 進入 `COLLAPSING` 後，才可把不再參與 Gameplay 的 Cells 轉為短命、純渲染碎片。
-- SLIME 的位移幅度高、回復具彈性、重新聚合傾向強；未來 ROCK／GOLEM 等硬材質則使用較低位移與較剛性的回復。
+- SLIME 的位移幅度高、回復具彈性、重新聚合傾向強；普通怪 ROCK 與未來 GOLEM 等硬材質則使用較低位移與較剛性的回復。
 
 M3 首版 `SLIME` Material 數值為：
 
@@ -186,7 +186,7 @@ M3 首版 `SLIME` Material 數值為：
 
 - 根史萊姆與第一波怪一起出現。
 - 正式觸發語意是：依普通怪 progression 生成的第一隻 `Z` 成功 commit spawn 時，Runtime 發出一次性的 `FIRST_WAVE_STARTED`；Boss 專用 spawn request 在下一個允許消費 structural events 的明確 boundary 排入，不能在仍迭代 spawn collection 時直接改動它。這仍屬於同一波生成。
-- 初始 `Z` spawn 候選失敗時不算第一波開始，也不得因此生成史萊姆；不得跳過 `Z` 改用尚未解鎖的 `BO` 或 `BAT` 觸發 Boss。
+- 初始 `Z` spawn 候選失敗時不算第一波開始，也不得因此生成史萊姆；不得跳過 `Z` 改用任何尚未完成首次登場的後續 definition（`BO`、`BAT`、`ROCK` 或 `SNAKE`）觸發 Boss。
 - 史萊姆不走普通怪 director 的一般生成路徑。首版在第一波同側、鏡頭外的合法位置生成；找不到合法位置時延後 Boss request，不得強塞進視野或障礙物。
 - 史萊姆使用 seeded 0.3–0.5 秒文字聚合生成階段；Runtime 決定何時轉為 Active，renderer 只顯示狀態。
 

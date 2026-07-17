@@ -114,6 +114,6 @@ export function runDeathReviewMovementSystem(
     keepEnemyInsideWorld(enemy, GAME_CONFIG.worldWidth, GAME_CONFIG.worldHeight)
     enemy.behaviorElapsedMs += deltaMs
     runCreatureLayoutBehavior(world, enemy, definition)
-    runCreatureBodyMotionBehavior(world, enemy, definition)
+    runCreatureBodyMotionBehavior(world, enemy, definition, deltaMs)
   }
 }

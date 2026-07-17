@@ -119,6 +119,22 @@ export const PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING = {
       impactBaseTint: '#552277',
       huskBaseTint: '#552277',
     },
+    [GLYPH_APPEARANCE_PROFILE.ROCK]: {
+      id: GLYPH_APPEARANCE_PROFILE.ROCK,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.ORDINARY,
+      durabilityBaseTints: ['#53616d', '#46535e'],
+      eyeDurabilityBaseTints: null,
+      impactBaseTint: '#657481',
+      huskBaseTint: '#35414a',
+    },
+    [GLYPH_APPEARANCE_PROFILE.SNAKE]: {
+      id: GLYPH_APPEARANCE_PROFILE.SNAKE,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.ORDINARY,
+      durabilityBaseTints: ['#167d74'],
+      eyeDurabilityBaseTints: null,
+      impactBaseTint: '#23958a',
+      huskBaseTint: '#0f514c',
+    },
     [GLYPH_APPEARANCE_PROFILE.SLIME_BOSS]: {
       id: GLYPH_APPEARANCE_PROFILE.SLIME_BOSS,
       brightnessTierId: GLYPH_BRIGHTNESS_TIER.BOSS,

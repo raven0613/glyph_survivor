@@ -59,44 +59,20 @@ import {
   type OverloadPresentationState,
 } from './overloadPresentationState.ts'
 import {
-  createRunModifierDiagnostics,
-  type RunModifierDiagnostics,
-} from './runModifierDiagnostics.ts'
-import {
   createDisconnectedState,
   type DisconnectedState,
 } from './disconnectedState.ts'
 import { createVolatileState, type VolatileState } from './volatileState.ts'
+import {
+  createOrdinaryEnemyProgressionState,
+  type OrdinaryEnemyProgressionState,
+} from '../content/enemies/ordinaryEnemyProgression.ts'
+import {
+  createWorldDiagnostics,
+  type WorldDiagnostics,
+} from './worldDiagnostics.ts'
 
-export interface WorldDiagnostics extends RunModifierDiagnostics {
-  droppedSimulationTimeMs: number
-  simulationStepCount: number
-  enemyPoolMisses: number
-  projectilePoolMisses: number
-  dropPoolMisses: number
-  targetSearchCount: number
-  targetReacquireCount: number
-  glyphPoolMisses: number
-  flameEmitterPoolMisses: number
-  healthyGlyphCount: number
-  damagedGlyphCount: number
-  huskGlyphCount: number
-  spreadCandidateCount: number
-  spreadPreciseTestCount: number
-  damageClaimDedupCount: number
-  activePendingTransferCount: number
-  retainedPendingTransferPathCellCount: number
-  pendingTransferArrivalCommitCount: number
-  pendingTransferInvalidTargetCancellationCount: number
-  pendingTransferStatePoolMisses: number
-  pendingTransferPathPoolMisses: number
-  topologyTransferPulsePoolMisses: number
-  topologyPathSearchTimeMs: number
-  attackEmissionCount: number
-  rangeExpiredProjectileCount: number
-  orbitSweepCandidateCount: number
-  orbitSweepPreciseTestCount: number
-}
+export type { WorldDiagnostics } from './worldDiagnostics.ts'
 
 export interface WorldState {
   readonly seed: string | number
@@ -143,6 +119,7 @@ export interface WorldState {
   readonly spawnCandidates: EnemyState[]
   readonly targetCandidates: EnemyState[]
   readonly diagnostics: WorldDiagnostics
+  readonly ordinaryEnemyProgressionState: OrdinaryEnemyProgressionState
   viewportWidth: number
   viewportHeight: number
   runTimeMs: number
@@ -159,7 +136,6 @@ export interface WorldState {
   collectedXpThisStep: number
   targetSearchCursor: number
   activeEnemyCount: number
-  ordinaryEnemySpawnCount: number
   maximumEnemyQueryRadius: number
   maximumEnemyStepDistance: number
   firstWaveStarted: boolean
@@ -201,36 +177,7 @@ export function createWorldState(
     ({ id }) => id,
   ),
 ): WorldState {
-  const diagnostics: WorldDiagnostics = {
-    ...createRunModifierDiagnostics(),
-    droppedSimulationTimeMs: 0,
-    simulationStepCount: 0,
-    enemyPoolMisses: 0,
-    projectilePoolMisses: 0,
-    dropPoolMisses: 0,
-    targetSearchCount: 0,
-    targetReacquireCount: 0,
-    glyphPoolMisses: 0,
-    flameEmitterPoolMisses: 0,
-    healthyGlyphCount: 0,
-    damagedGlyphCount: 0,
-    huskGlyphCount: 0,
-    spreadCandidateCount: 0,
-    spreadPreciseTestCount: 0,
-    damageClaimDedupCount: 0,
-    activePendingTransferCount: 0,
-    retainedPendingTransferPathCellCount: 0,
-    pendingTransferArrivalCommitCount: 0,
-    pendingTransferInvalidTargetCancellationCount: 0,
-    pendingTransferStatePoolMisses: 0,
-    pendingTransferPathPoolMisses: 0,
-    topologyTransferPulsePoolMisses: 0,
-    topologyPathSearchTimeMs: 0,
-    attackEmissionCount: 0,
-    rangeExpiredProjectileCount: 0,
-    orbitSweepCandidateCount: 0,
-    orbitSweepPreciseTestCount: 0,
-  }
+  const diagnostics = createWorldDiagnostics()
   const weaponLoadout = createWeaponLoadout(content.maximumEquippedWeapons)
   equipWeapon(
     weaponLoadout,
@@ -296,6 +243,7 @@ export function createWorldState(
     spawnCandidates: [],
     targetCandidates: [],
     diagnostics,
+    ordinaryEnemyProgressionState: createOrdinaryEnemyProgressionState(),
     viewportWidth,
     viewportHeight,
     runTimeMs: 0,
@@ -312,7 +260,6 @@ export function createWorldState(
     collectedXpThisStep: 0,
     targetSearchCursor: 0,
     activeEnemyCount: 0,
-    ordinaryEnemySpawnCount: 0,
     maximumEnemyQueryRadius: content.maximumEnemyBroadPhaseRadius,
     maximumEnemyStepDistance: 0,
     firstWaveStarted: false,
@@ -393,6 +340,11 @@ export function spawnEnemy(
     velocityY: 0,
     behaviorElapsedMs: 0,
     bodyMotionPhaseOffset: getBodyMotionPhaseOffset(enemyId),
+    bodyMotionProgress: 0,
+    bodyMotionHoldRemainingMs: 0,
+    bodyMotionFacing: -1,
+    bodyMotionTargetFacing: -1,
+    bodyMotionTurnProgress: 0,
     layoutMode: 'AUTHORED' as const,
     phase: 'MATERIALIZING' as const,
     materializeRemainingMs: materializeDurationMs,
@@ -452,6 +404,11 @@ export function spawnSplitEnemy(
     velocityY: 0,
     behaviorElapsedMs: 0,
     bodyMotionPhaseOffset: getBodyMotionPhaseOffset(id),
+    bodyMotionProgress: 0,
+    bodyMotionHoldRemainingMs: 0,
+    bodyMotionFacing: -1,
+    bodyMotionTargetFacing: -1,
+    bodyMotionTurnProgress: 0,
     layoutMode: 'COMPILED' as const,
     phase: 'REASSEMBLING' as const,
     materializeRemainingMs: 0,

@@ -134,16 +134,18 @@ SLIMESLIMESLIME...
 - `Z` 代表 `ZOMBIE`：移動時以字形底部為軸心做小幅、不對稱的蹣跚；停止移動時回到中性姿態。
 - `BO` 代表 `BONE`：身體以直向兩格排列，`O` 在上作為頭部、`B` 在下作為軀幹；移動時 `B`、`O` 仍以錯開節拍分別顫動，形成短促的骨頭碰撞感，停止移動時回到中性姿態。排列方式不得改寫既有的 Body Motion 策略或每隻 instance 的 deterministic phase offset。
 - `BAT`：`A`、`T` 以近乎同拍的上下點動表現拍翼，`T` 稍晚，`B` 只做很小的反向補償，避免整個單字像柔軟布條一起晃動。
+- `ROCK`：固定由 `RO／CK` 的 2 × 2 Body Blueprint 組成。往右移動時四個穩定 Glyph 依 `RO／CK → CR／KO → KC／OR → OK／RC` 順時針滾動，往左則反向；轉向必須從當前 pose 連續倒播，不交換字元、Glyph ID、Durability 或 canonical topology。完整一圈的 active 旋轉時間與每個 90° 落點後的停頓時間是兩個獨立 content parameters，延長停頓不得連帶拖慢翻轉。
+- `SNAKE`：`S` 是永遠不變的頭部，neutral body 為微抬起的 `S` 加上水平直線的 `NAKE`。往左時 `S` 位於左端，往右時五個穩定 Glyph 的位置鏡像為畫面上的 `EKANS`，但 `E` 不會成為頭；轉身不得瞬移。移動節拍固定以穩定的 `K` Glyph 為擠壓中心：`S-N-A` 作為一組保持內部相對排列並沿 body axis 靠近 `E`，`E` 同時從另一側靠近該組，夾在中間的同一個 `K` 只沿畫面 y 軸向上抬起，形成被擠出來的卡通姿態。極短 hold 後，`K` 回到基線、兩側俐落拉直並乾淨收勢。擠壓中心不得沿 chain 移動，左右鏡像後仍必須由同一個 `K` 上抬，也不能退化成多重 sine wave。
 
-首批普通敵人同屬一個發亮／視覺優先階級，但各自使用可辨識的暗色基礎色系：`Z` 使用偏暗綠色系、`BO` 使用暗骨白／中性灰色系、`BAT` 使用偏暗且彩度稍高的深紫色系。正常、直接受擊的 primary feedback 與 `HUSK` 都必須沿用該物種自己的色系；Damage Spread 的專屬 secondary feedback 是明確例外，改為沿用來源玩家攻擊的色系。這裡的「同階級」是指各狀態使用相同的發亮強度與優先順序，不是要求不同色相具有相同的基礎明度或接近一致的最終有效亮度；不得為了數值對齊而把後期怪物調成淺色、粉彩或低彩度。`SLIME` 使用暗而飽和的綠色基底並採 Boss 發亮階級，其亮度強調應比普通敵人稍強，但仍低於玩家攻擊，也不需要把本體調成淺綠。精確 color、alpha、基礎色範圍與發亮強度只存在集中管理且可驗證的 Battlefield Visual Theme config，不在產品文件重複固定數值。
+首批普通敵人同屬一個發亮／視覺優先階級，但各自使用可辨識的暗色基礎色系：`Z` 使用偏暗綠色系、`BO` 使用暗骨白／偏暖中性灰色系、`BAT` 使用偏暗且彩度稍高的深紫色系、`ROCK` 使用與骨頭區隔的偏冷岩灰色系、`SNAKE` 使用偏暗且具有辨識彩度的青綠色系。正常、直接受擊的 primary feedback 與 `HUSK` 都必須沿用該物種自己的色系；Damage Spread 的專屬 secondary feedback 是明確例外，改為沿用來源玩家攻擊的色系。這裡的「同階級」是指各狀態使用相同的發亮強度與優先順序，不是要求不同色相具有相同的基礎明度或接近一致的最終有效亮度；不得為了數值對齊而把後期怪物調成淺色、粉彩或低彩度。`SLIME` 使用暗而飽和的綠色基底並採 Boss 發亮階級，其亮度強調應比普通敵人稍強，但仍低於玩家攻擊，也不需要把本體調成淺綠。精確 color、alpha、基礎色範圍與發亮強度只存在集中管理且可驗證的 Battlefield Visual Theme config，不在產品文件重複固定數值。
 
 一局開始後，普通敵人的首次出場順序固定為：
 
 ```text
-Z → BO → BAT
+Z → BO → BAT → ROCK → SNAKE
 ```
 
-Director 必須先依內容定義的 progression 判定目前可出現的種類，再使用 seeded、可重現的選擇規則產生敵人。`BO` 不得早於 `Z` 的初始階段出現，`BAT` 不得早於 `BO`。各階段的精確時間門檻、解鎖後的混合權重與移動速度屬內容調校值，在確認前不得寫死成產品不變量。普通敵人的詳細內容契約記錄在 [`docs/content/ordinary-enemies.md`](docs/content/ordinary-enemies.md)。
+Director 以 Gameplay simulation time 作為每種普通敵人的最早登場門檻，完整 Gameplay 暫停不推進該時間。時間門檻只代表可以嘗試首次登場；前一種怪物尚未成功 commit 至世界時，後一種仍不得首次出現。某種怪物的門檻已到但 spawn candidate 失敗時，Director 必須保留其首次登場資格並於後續合法機會重試，不得跳到下一種；成功完成首次登場後，它才可依 content-defined weighted pool 參與後續混合。玩家擊殺數不是首版首次登場門檻。各物種的精確最早登場時間、解鎖後混合權重與移動速度只屬 validated content，不得寫死在 Director 或複製到產品文件。普通敵人的詳細內容契約記錄在 [`docs/content/ordinary-enemies.md`](docs/content/ordinary-enemies.md)。
 
 ---
 
@@ -302,7 +304,7 @@ Glyph Damage 必須從命中的局部區域開始，並沿著壞死邊界逐步�
 
 # Material System
 
-每個 Glyph Cell 都具有 Material 與獨立的 Appearance Profile。生命體可以提供預設 Material 與色系，但實際受擊反應仍屬於 Glyph Cell。Material 決定 Durability、擊退、飛散、回彈、聚合、壞死與恢復行為；Appearance Profile 與集中 Battlefield Visual Theme 則決定該物種在正常、直接受擊、受損與 `HUSK` 狀態下的色系與亮度階級。Damage Spread 的 secondary feedback 另外由來源 attack role 決定暫時色系，但不改變 Glyph 的 Appearance Profile。不得為了讓 `Z`、`BO`、`BAT` 顯示不同顏色而複製只改 tint、物理行為完全相同的假 Material。
+每個 Glyph Cell 都具有 Material 與獨立的 Appearance Profile。生命體可以提供預設 Material 與色系，但實際受擊反應仍屬於 Glyph Cell。Material 決定 Durability、擊退、飛散、回彈、聚合、壞死與恢復行為；Appearance Profile 與集中 Battlefield Visual Theme 則決定該物種在正常、直接受擊、受損與 `HUSK` 狀態下的色系與亮度階級。Damage Spread 的 secondary feedback 另外由來源 attack role 決定暫時色系，但不改變 Glyph 的 Appearance Profile。不得為了讓不同普通敵人物種顯示不同顏色而複製只改 tint、物理行為完全相同的假 Material。
 
 `HUSK` 不再承受 Durability 傷害，但仍可依其 Material 對局部命中產生位移、回彈與視覺反應；它的低亮度外觀由 Appearance Profile 與視覺階級共同解析，且不得完全隱藏。
 
@@ -369,7 +371,7 @@ GHOST
 - 容易散開
 - 可重新組合
 
-SNAKE
+ANACONDA
 
 特色：
 
@@ -740,10 +742,10 @@ GOLEM
 - **最高視覺優先權：玩家與玩家攻擊。** 玩家必須隨時可辨識；玩家攻擊是其他戰場元素不可超越的亮度上限。
 - **經驗值掉落：短暫醒目、長期克制。** 經驗值剛生成時呈黃色，短時間後過渡為暗金色；進入穩定狀態後只以低 duty-cycle、彼此錯開的短促閃爍提醒玩家。新生狀態與閃爍峰值都不得達到或超過玩家攻擊的亮度階級，且大量掉落物不得同步閃爍造成畫面噪音。
 - **Boss：高於普通敵人、低於玩家攻擊。** Boss 的正常與受擊發亮強度都比普通敵人稍高，以保留重量感與威脅辨識，但不能蓋過玩家及其攻擊；較高階級不得靠把基礎色洗成淺色來達成。
-- **普通敵人：同一發亮階級、不同暗色基底。** `Z` 為偏暗綠色系、`BO` 為暗骨白／中性灰色系、`BAT` 為偏暗且彩度稍高的深紫色系。三者共享普通敵人的狀態強調順序與發亮幅度，而不共享絕對明度；直接受擊發亮與 primary 粒子必須留在各自色系內，不得全部閃成同一種白色或紅色，也不得為了對齊亮度而變成粉彩色。Damage Spread 的 secondary feedback 依來源玩家攻擊 role 的 accent 色系呈現，不受這條怪物 primary palette 規則限制。
+- **普通敵人：同一發亮階級、不同暗色基底。** `Z` 為偏暗綠色系、`BO` 為暗骨白／偏暖中性灰色系、`BAT` 為偏暗且彩度稍高的深紫色系、`ROCK` 為偏冷岩灰色系、`SNAKE` 為偏暗且具辨識彩度的青綠色系。五者共享普通敵人的狀態強調順序與發亮幅度，而不共享絕對明度；直接受擊發亮與 primary 粒子必須留在各自色系內，不得全部閃成同一種白色或紅色，也不得為了對齊亮度而變成粉彩色。Damage Spread 的 secondary feedback 依來源玩家攻擊 role 的 accent 色系呈現，不受這條怪物 primary palette 規則限制。
 - **低優先權元素：** 穩定狀態的暗金經驗值、`HUSK`、背景文字與靜態障礙物依序使用更克制的階級；`HUSK` 仍需保留可讀輪廓，背景則維持全場最低的視覺優先權。
 
-視覺調校仍應分開觀察三件事：基礎色是否符合暗色／彩度語意、同一 profile 內的狀態發亮順序是否清楚，以及最終畫面是否超過全域上限。不得以「同階級」為由要求 `Z`／`BO`／`BAT` 疊加背景後的有效亮度落在狹窄誤差內；同階級只共享發亮強度與角色順序。玩家攻擊上限、XP 新生／閃爍峰值與怪物受擊峰值等跨類別安全界線應在瀏覽器中依實際背景、色彩與 alpha 做視覺確認，但不作為 content preparation 的拒絕條件。精確色值、alpha、發亮強度、過渡時間、閃爍週期與 duty cycle 都屬可調 config，不得複製到本文或其他內容文件。
+視覺調校仍應分開觀察三件事：基礎色是否符合暗色／彩度語意、同一 profile 內的狀態發亮順序是否清楚，以及最終畫面是否超過全域上限。不得以「同階級」為由要求不同普通敵人疊加背景後的有效亮度落在狹窄誤差內；同階級只共享發亮強度與角色順序。玩家攻擊上限、XP 新生／閃爍峰值與怪物受擊峰值等跨類別安全界線應在瀏覽器中依實際背景、色彩與 alpha 做視覺確認，但不作為 content preparation 的拒絕條件。精確色值、alpha、發亮強度、過渡時間、閃爍週期與 duty cycle 都屬可調 config，不得複製到本文或其他內容文件。
 
 ### 2. 邊框與字體陰影（Stroke & Drop Shadow）機制
 
