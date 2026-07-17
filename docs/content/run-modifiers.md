@@ -363,16 +363,29 @@ nextWave
 
 Boss Encounter在所有Cells成為Husk時仍立即進入`COLLAPSING`。Encounter只有在既有collapse presentation完成，且屬於該Encounter的pending Volatile source events全部解析後，才可進入`DEFEATED`、發放Modifier／XP reward與cleanup。這是collapse完成條件的Runtime擴充，不是新增另一套死亡狀態。
 
-### 8.6 Presentation — topology domino
+### 8.6 Presentation — topology domino and clustered point burst
 
-VOLATILE 的核心視覺是短促、離散、沿 canonical topology 接棒的 shock，不是 world-space 爆炸圈：
+VOLATILE 的核心視覺是短促、離散、沿 canonical topology 接棒的局部團簇爆發，不是 world-space 爆炸圈。每個實際解析的 source explosion 都產生一個不可省略的 core event，並在同一個節奏中組合三個可讀層次：source clamp、四方向 topology release，以及以 source Cell 為中心的 clustered point burst。
 
-- 每個實際解析的 source explosion 都產生一個不可省略的核心 pulse。Source Husk 先快速內縮／夾緊，在一個清楚的頓點後，以括號、短橫或直線等 ASCII overlay 向其四方向 immediate topology neighbors 做一次短促釋放。
-- 本波實際受影響的 neighbors 在 damage commit 時各自做一次輕量 topology-axis jolt；新進入 Husk 的 Cell 只在它成為下一波 source、該 source event 真正解析時才播放自己的釋放。
-- 同一 breadth-first wave 的 sources 同時呈現；不同 wave 依 authoritative resolution 順序出現。前一波可以留下極短、快速衰減的 afterimage，使 `A → B → C → D` 的 leading edge 可讀，但不能拖成持續 glow 或提前顯示下一波死亡。
-- 不畫圓形 shockwave、連線、beam 或 source-to-target path。這讓它和 OVERLOAD 的單次徑向衝擊，以及既有 topology-transfer 的低強度逐 Cell brightness pulse 保持不同語法。
-- 每個 core source pulse 使用 stable event ID 與 pooled atlas particles；可選的附加碎屑／glow可以依 visual budget 降級，core pulse、wave order與resolved source identity不能丟棄。
-- `maxExplosionResolutionsPerFixedStep` 不是動畫速度旋鈕。線性 chain 每波只有一個 source 時，降低該 budget不會自然產生更大的逐格間隔；完整 waves 之間的骨牌節奏只由 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts) 的 `volatile.waveIntervalMs` 控制，單次 pulse 內部的短 attack／hold／settle 才由 visual theme 控制。Renderer 不得另加一套 wave delay 或用負載改變 authoritative timing。
+- Source Husk 先快速內縮／夾緊，在一個清楚的頓點後，以括號、短橫或直線等 ASCII overlay 向其四方向 immediate topology neighbors 做一次短促釋放。本波實際受影響的 neighbors 在 damage commit 時各自做一次輕量 topology-axis jolt；新進入 Husk 的 Cell 只在它成為下一波 source、該 source event 真正解析時才播放自己的釋放。
+- 同一 source 的 clustered point burst 由數個彼此可辨識的小團簇構成。每個團簇先以 source Cell 周圍的一個不規則局部中心聚集多個 `.`、`*` 或其他 prepared punctuation atlas light points，再做很短的向外展開。分布不得是等角、等距、等密度的圓環，也不能只把既有四方向 release 複製成四束直線。
+- 各團簇與團內光點使用 stable event identity 派生的可重現 variation，錯開生成並以不同的短生命週期獨立消散，不得逐幀取亂數。最密集的短暫 hold 應讓多個小團簇互相搭接，形成類似花椰菜的塊狀 silhouette；隨後各區塊先後收乾淨，而不是整顆特效以同一 alpha 同時淡掉。
+- Source 中心保留一個短促、受全域視覺階級限制的局部亮點，讓玩家在大量 Cells 同時崩塌時仍能辨識 causal origin。它不能變成長時間 aura、全螢幕 flash或超過玩家攻擊核心的常駐亮度。
+- 同一 breadth-first wave 的 source events 同時呈現；不同 wave 依 authoritative resolution 順序出現。前一波可以留下極短、快速衰減的 point-cluster afterimage，使 `A → B → C → D` 的 leading edge 可讀，但不能拖成持續 glow 或提前顯示下一波死亡。
+- 不畫圓形 shockwave、連線、beam 或 source-to-target path。VOLATILE 的辨識語法是「局部不規則光點團簇沿 topology 逐格接棒」；OVERLOAD 仍是一次乾淨、連續向外的徑向衝擊，既有 topology transfer 則仍是低強度逐 Cell brightness pulse。
+- Clustered burst、source clamp、axis release與neighbor jolt都使用 stable event ID、共享 Glyph／punctuation atlas與object pools。每個 resolved source 至少必須保留 core source identity、中心亮點與可讀的最低團簇層；超出最低可讀密度的附加光點才可以依 visual budget降級。Pool miss不得讓整個source event消失或改變Gameplay wave結果。
+- Cluster particles只是`Event Overlay`，不造成damage、collision、Material impulse或另一個reaction event，也不改變Husk silhouette、authoritative Cell position或topology。
+
+所有 clustered-burst presentation tuning 都集中在 [`prototypeCombatVisualTheme.ts`](../../src/game/content/visuals/prototypeCombatVisualTheme.ts) 的 `effects.runModifiers.volatile` prepared profile。實作時以具名、validated 的 `clusterBurst` config 集中表達下列參數類別，不在 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts)、Runtime、renderer或測試中複製 current defaults：
+
+- layout：團簇數量範圍、每團光點數量範圍、團簇中心分布半徑、團內散布半徑、不規則位置 variation與短向外位移；
+- timing：cluster／point生成錯時、attack／hold／settle，以及可造成不同消散時刻的生命週期 variation；
+- appearance：punctuation character set、Glyph尺寸範圍、tint、alpha、brightness gain與中心亮點profile；
+- budget：每個source的最低可讀團簇、可選附加密度、同時active上限與pool容量／降級界線。
+
+所有 count 必須是有界正整數；距離、尺寸與 timing 必須是有限且符合各自非負／正值語意的數字；range minimum不得大於maximum；character set不得為空且只能引用prepared atlas可提供的單一Glyph。Visual preparation在進入`READY`前驗證並凍結這些值。
+
+`maxExplosionResolutionsPerFixedStep` 不是動畫速度旋鈕。線性 chain 每波只有一個 source 時，降低該 budget不會自然產生更大的逐格間隔；完整 waves 之間的骨牌節奏只由 [`prototypeRunModifiers.ts`](../../src/game/content/modifiers/prototypeRunModifiers.ts) 的 `volatile.waveIntervalMs` 控制，單次 source 的 clamp／cluster bloom／hold／settle 才由 visual theme 控制。Renderer 不得另加一套 wave delay 或用負載改變 authoritative timing。
 
 ## 9. DISCONNECTED — 結構失聯
 
@@ -620,7 +633,7 @@ Modifier 必須可讀，但 presentation 不是權威狀態：
 
 - `CRACKED` Cell需要可辨識、低於玩家攻擊核心的結構弱點幾何；碎片間的微小亮度差只是輔助，不能成為唯一提示，也不能暗中建立Gameplay duration。
 - DISCONNECTED latch可以顯示結構失聯／易傷提示，但不得以畫面距離決定 multiplier。
-- Volatile每個實際解析的 source explosion必須提供核心可讀的ASCII／Glyph feedback；非必要附加粒子可以依品質設定降級，但不能省略 authoritative wave順序或讓尚未套用 damage的下一 wave提前顯示死亡結果。
+- Volatile每個實際解析的 source explosion必須提供核心可讀的source clamp、topology release、中心亮點與最低團簇光點層；只有超出最低可讀密度的附加粒子可以依品質設定降級。任何降級都不能省略resolved source identity、authoritative wave順序，或讓尚未套用damage的下一wave提前顯示死亡結果。
 - Renderer只消費 resolved status／event summaries，不得搜尋topology、推進queues、選target、計算公式或提交damage。
 
 ## 13. Performance 與 diagnostics
@@ -641,6 +654,7 @@ Modifier 必須可讀，但 presentation 不是權威狀態：
 - Crack applications、dedup、consumptions；
 - Overload threshold evaluations與success count；
 - active／peak cracked fragment particle count、fragment-atlas source count與status-overlay pool misses；
+- active／peak Volatile cluster／point counts、minimum-readable fallback count、cluster-particle pool misses與optional-density suppressions；
 - active／peak Modifier core event overlays、optional particle count、optional visual-budget suppressions與effect-pool misses；
 - Modifier damage actual delta，並保留 causal Weapon Instance attribution；
 - Modifier offer RNG／eligible count／two-card fallback count。
@@ -706,7 +720,8 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 - preserves deterministic outcomes under stable event order and a fixed processing budget
 - keeps DISCONNECTED ambient mostly still, freezes its deterministic cadence on complete pause, and scales resolved motion severity from the actual multiplier without changing authoritative positions
 - presents OVERLOAD as one directional compression／radial event and CRACKED as bounded pooled fragments without per-Cell Text, filters, masks, or runtime texture creation
-- presents every resolved Volatile source as one core pulse, preserves same-wave simultaneity／cross-wave order, and never substitutes a radial ring or source-to-target line
+- presents every resolved Volatile source with a causal center highlight and several irregular, staggered punctuation-point clusters whose peak reads as a compact cauliflower-like silhouette, while preserving same-wave simultaneity／cross-wave order and never substituting a radial ring or source-to-target line
+- derives Volatile cluster layout and lifetime variation reproducibly from stable event identity, freezes it on complete pause, validates every visual range from the prepared combat theme, and fully resets pooled cluster particles on reuse
 - resolves simultaneous status visuals through bounded presentation channels and fully resets every pooled role／phase／fragment on reuse
 
 ## 15. Implementation acceptance slices
@@ -718,7 +733,7 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 | 1. Offer／Runtime foundation | Modifier definitions、owned set、authorization source、`PAUSED_MODIFIER`、原子command、domain-separated RNG、reset／dispose，以及`enableRunStartModifierOfferForTesting` | Flag開啟後，選完初始武器便在第一個fixed step前看到三張Modifier；Flag關閉完全走舊流程；選擇後立即正常開局且沒有額外resume invulnerability |
 | 2. OVERLOAD vertical slice | 共用Damage Application boundary、status flags／payload、Overload threshold、Crack消耗、非等比壓縮、短徑向shock與prepared fragment atlas／pool | 重擊有「壓縮—頓點—回彈」；鄰居裂字清楚但仍看成原Cell；下一個不同direct event只加成／消耗一次 |
 | 3. DISCONNECTED vertical slice | Living component cache、prepared protection threshold、倍率公式、direct-target snapshot、severity、spacing loosen、ambient micro-burst與component hit shake | 切出小團塊後，不看數字也能辨識脆弱程度；受擊是整塊短震而非爆光；畫面鬆動不改hitbox或被擊退後的判定 |
-| 4. VOLATILE vertical slice | Husk transition outcome、reaction-chain IDs、breadth-first queues、`waveIntervalMs`、每步budget、stable fairness、same-owner topology damage與domino core pulses | 能看清`A → B → C → D`依config節奏逐波接棒；同wave分支同時發生；沒有圓形波、沒有丟事件、暫停不偷跑 |
+| 4. VOLATILE vertical slice | Husk transition outcome、reaction-chain IDs、breadth-first queues、`waveIntervalMs`、每步budget、stable fairness、same-owner topology damage，以及具中心亮點的clustered point burst／domino core events | 每顆source死亡都能讀到不規則團簇光點的短爆發，峰值形成緊密花椰菜狀輪廓並分批消散；同時仍能看清`A → B → C → D`依config節奏逐波接棒，同wave分支同時發生，沒有圓形波、沒有丟事件、暫停不偷跑 |
 | 5. Slime／Boss production flow | Volatile structural defer、Disconnected reassembly latch、Encounter collapse／DEFEATED、XP coexistence、正式Boss N選一與decision priority | 開局測試選一張後，Slime仍正常給剩餘二選一；分裂／重組增傷窗口正確；Boss不重複發獎或提前cleanup |
 | 6. Combination／performance／feel | 三Modifier共存、additive damage composition、presentation-channel priority、pool／atlas stress、diagnostics與theme tuning | 組合有效但不遞迴暴增；所有動畫都有短attack、明確頓點與乾淨settle；大量Crack／Volatile下仍維持目標效能與可讀性 |
 

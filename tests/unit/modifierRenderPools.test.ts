@@ -134,6 +134,10 @@ test('aggregates status and indispensable core overlay pressure separately', () 
     },
     fragmentAtlasSourceCount: 1,
     previousPeakCoreOverlayCount: 70,
+    activeVolatileClusterPointCount: 48,
+    minimumReadableVolatileClusterPointCount: 32,
+    volatileOptionalVisualBudgetSuppressionCount: 7,
+    previousPeakVolatileClusterPointCount: 40,
   })
 
   assert.equal(diagnostics.activeCrackedFragmentParticleCount, 300)
@@ -142,7 +146,10 @@ test('aggregates status and indispensable core overlay pressure separately', () 
   assert.equal(diagnostics.statusOverlayPoolMissCount, 320)
   assert.equal(diagnostics.activeModifierCoreOverlayCount, 80)
   assert.equal(diagnostics.peakModifierCoreOverlayCount, 80)
+  assert.equal(diagnostics.activeVolatileClusterPointCount, 48)
+  assert.equal(diagnostics.peakVolatileClusterPointCount, 48)
+  assert.equal(diagnostics.minimumReadableVolatileClusterPointCount, 32)
   assert.equal(diagnostics.effectPoolMissCount, 111)
-  assert.equal(diagnostics.activeOptionalParticleCount, 0)
-  assert.equal(diagnostics.optionalVisualBudgetSuppressionCount, 0)
+  assert.equal(diagnostics.activeOptionalParticleCount, 16)
+  assert.equal(diagnostics.optionalVisualBudgetSuppressionCount, 7)
 })

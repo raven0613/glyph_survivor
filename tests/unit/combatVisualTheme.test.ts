@@ -102,13 +102,30 @@ test('prepares and validates bounded OVERLOAD presentation roles', () => {
   )
 })
 
-test('prepares and validates axis-only VOLATILE domino roles', () => {
+test('prepares and validates bounded VOLATILE domino cluster roles', () => {
   const prepared =
     PROTOTYPE_COMBAT_VISUAL_THEME.effects.runModifiers.volatile
+  const authoring =
+    PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING.effects.runModifiers.volatile
   assert.ok(prepared.sourceClamp.minimumScale < 1)
   assert.equal(prepared.release.characters.length, 4)
   assert.ok(prepared.release.delayMs >= 0)
   assert.ok(prepared.neighborJolt.maximumOffset > 0)
+  assert.ok(
+    prepared.clusterBurst.minimumClusterCount <=
+      prepared.clusterBurst.maximumClusterCount,
+  )
+  assert.ok(
+    prepared.clusterBurst.minimumPointsPerCluster <=
+      prepared.clusterBurst.maximumPointsPerCluster,
+  )
+  assert.equal(
+    prepared.clusterBurst.tint,
+    parseExpectedTint(authoring.clusterBurst.tint),
+  )
+  assert.equal(Object.isFrozen(prepared.clusterBurst), true)
+  assert.equal(Object.isFrozen(prepared.clusterBurst.characters), true)
+  assert.equal(Object.isFrozen(prepared.clusterBurst.centerHighlight), true)
 
   const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
   assert.throws(() =>
@@ -123,6 +140,44 @@ test('prepares and validates axis-only VOLATILE domino roles', () => {
             release: {
               ...theme.effects.runModifiers.volatile.release,
               characters: ['-', '|'],
+            },
+          },
+        },
+      },
+    }),
+  )
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        runModifiers: {
+          ...theme.effects.runModifiers,
+          volatile: {
+            ...theme.effects.runModifiers.volatile,
+            clusterBurst: {
+              ...theme.effects.runModifiers.volatile.clusterBurst,
+              minimumClusterCount:
+                theme.effects.runModifiers.volatile.clusterBurst
+                  .maximumClusterCount + 1,
+            },
+          },
+        },
+      },
+    }),
+  )
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        runModifiers: {
+          ...theme.effects.runModifiers,
+          volatile: {
+            ...theme.effects.runModifiers.volatile,
+            clusterBurst: {
+              ...theme.effects.runModifiers.volatile.clusterBurst,
+              characters: [],
             },
           },
         },

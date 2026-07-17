@@ -10,6 +10,7 @@ import { prepareGameContent } from '../../src/game/content/gameContent.ts'
 import { RUN_MODIFIER_EFFECT_STRATEGY } from '../../src/game/content/modifiers/runModifierDefinition.ts'
 import { BASIC_PROJECTILE_WEAPON_ID } from '../../src/game/content/weapons/basicProjectileWeapon.ts'
 import { PROTOTYPE_COMBAT_VISUAL_THEME } from '../../src/game/content/visuals/prototypeCombatVisualTheme.ts'
+import { PRINTABLE_ASCII_GLYPH_COUNT } from '../../src/game/glyph/glyphFrame.ts'
 import { getGlyphWorldX, getGlyphWorldY } from '../../src/game/glyph/glyphPosition.ts'
 import { startOverloadPresentation } from '../../src/game/runtime/overloadPresentationState.ts'
 import { enqueueVolatileSource, startVolatilePresentation } from '../../src/game/runtime/volatileState.ts'
@@ -23,6 +24,7 @@ import {
   createCrackedSurfacePool,
 } from '../../src/game/rendering/crackedSurfacePool.ts'
 import type { CrackedGlyphFragmentFrame } from '../../src/game/rendering/crackedGlyphFragmentFrame.ts'
+import { createParticleLayerPool } from '../../src/game/rendering/particleLayerPool.ts'
 import { runDisconnectedTopologySystem } from '../../src/game/systems/disconnectedTopologySystem.ts'
 import { runModifierPresentationSystem } from '../../src/game/systems/modifierPresentationSystem.ts'
 import { runVolatileReactionSystem } from '../../src/game/systems/volatileReactionSystem.ts'
@@ -181,7 +183,18 @@ test('measures 5,000 visible Glyphs with all three Modifier presentation channel
   assert.equal(snapshot.crackedSurfaces.length, 4_936)
   assert.equal(snapshot.overloadDeformations.length, 64)
   assert.equal(snapshot.overloadShockwaves.length, 512)
-  assert.equal(snapshot.volatileCoreOverlays.length, 64)
+  assert.equal(
+    snapshot.volatileCoreOverlays.length,
+    128 + snapshot.volatileOverlayDiagnostics.activeClusterPointCount,
+  )
+  assert.ok(
+    snapshot.volatileOverlayDiagnostics.activeClusterPointCount >=
+      64 *
+        world.content.combatVisualTheme.effects.runModifiers.volatile
+          .clusterBurst.minimumClusterCount *
+        world.content.combatVisualTheme.effects.runModifiers.volatile
+          .clusterBurst.minimumPointsPerCluster,
+  )
   assert.equal(snapshot.overloadDeformations[0].scale, glyphs[0].scale)
   const firstRendered = snapshot.enemies.find(({ id }) => id === glyphs[0].id)
   assert.ok(firstRendered)
@@ -195,9 +208,40 @@ test('measures 5,000 visible Glyphs with all three Modifier presentation channel
       world.content.combatVisualTheme.effects.runModifiers.composition
         .maximumOffset,
   )
-  context.diagnostic(
-    `5,000-Glyph combined Modifier snapshot sync=${elapsedMs.toFixed(2)}ms`,
+  const volatileContainer = new ParticleContainer<Particle>({
+    texture: Texture.EMPTY,
+    boundsArea: new Rectangle(0, 0, 800, 600),
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
+  const volatilePool = createParticleLayerPool(
+    volatileContainer,
+    Array.from(
+      { length: PRINTABLE_ASCII_GLYPH_COUNT },
+      () => Texture.EMPTY,
+    ),
   )
+  const poolStartedAt = performance.now()
+  volatilePool.sync(snapshot.volatileCoreOverlays)
+  const poolSyncMs = performance.now() - poolStartedAt
+  const missesAtPeak = volatilePool.getDiagnostics().poolMissCount
+  assert.equal(
+    volatilePool.getDiagnostics().activeParticleCount,
+    snapshot.volatileCoreOverlays.length,
+  )
+  volatilePool.sync([])
+  volatilePool.sync(snapshot.volatileCoreOverlays)
+  assert.equal(volatilePool.getDiagnostics().poolMissCount, missesAtPeak)
+  context.diagnostic(
+    `5,000-Glyph combined Modifier snapshot sync=${elapsedMs.toFixed(2)}ms; ` +
+      `VOLATILE overlay pool sync=${poolSyncMs.toFixed(2)}ms`,
+  )
+  volatilePool.clear()
 })
 
 test('resolves exactly the configured VOLATILE source budget and defers the rest without loss', (context) => {

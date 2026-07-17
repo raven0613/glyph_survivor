@@ -82,10 +82,38 @@ export interface VolatileNeighborJoltAppearance extends EffectBeatTiming {
   readonly maximumRotation: number
 }
 
+export interface VolatileCenterHighlightAppearance<ColorValue = number>
+  extends VisualColor<ColorValue>, EffectBeatTiming {
+  readonly delayMs: number
+  readonly glyphScale: number
+  readonly character: string
+}
+
+export interface VolatileClusterBurstAppearance<ColorValue = number>
+  extends VisualColor<ColorValue>, EffectBeatTiming {
+  readonly maximumSpawnStaggerMs: number
+  readonly maximumLifetimeVariationMs: number
+  readonly minimumClusterCount: number
+  readonly maximumClusterCount: number
+  readonly minimumPointsPerCluster: number
+  readonly maximumPointsPerCluster: number
+  readonly minimumClusterCenterDistance: number
+  readonly maximumClusterCenterDistance: number
+  readonly maximumClusterAngleJitterRadians: number
+  readonly pointScatterRadius: number
+  readonly outwardDistance: number
+  readonly minimumGlyphScale: number
+  readonly maximumGlyphScale: number
+  readonly maximumActivePointCount: number
+  readonly characters: readonly string[]
+  readonly centerHighlight: VolatileCenterHighlightAppearance<ColorValue>
+}
+
 export interface VolatileEffectAppearance<ColorValue = number> {
   readonly sourceClamp: VolatileSourceClampAppearance
   readonly release: VolatileReleaseAppearance<ColorValue>
   readonly neighborJolt: VolatileNeighborJoltAppearance
+  readonly clusterBurst: VolatileClusterBurstAppearance<ColorValue>
 }
 
 export interface OverloadCompressionAppearance extends EffectBeatTiming {

@@ -9,6 +9,9 @@ export interface ModifierRenderDiagnostics {
   readonly statusOverlayPoolMissCount: number
   readonly activeModifierCoreOverlayCount: number
   readonly peakModifierCoreOverlayCount: number
+  readonly activeVolatileClusterPointCount: number
+  readonly peakVolatileClusterPointCount: number
+  readonly minimumReadableVolatileClusterPointCount: number
   readonly activeOptionalParticleCount: number
   readonly optionalVisualBudgetSuppressionCount: number
   readonly effectPoolMissCount: number
@@ -21,6 +24,10 @@ export interface ResolveModifierRenderDiagnosticsInput {
   readonly volatileCoreOverlay: Readonly<ParticleLayerPoolDiagnostics>
   readonly fragmentAtlasSourceCount: number
   readonly previousPeakCoreOverlayCount: number
+  readonly activeVolatileClusterPointCount: number
+  readonly minimumReadableVolatileClusterPointCount: number
+  readonly volatileOptionalVisualBudgetSuppressionCount: number
+  readonly previousPeakVolatileClusterPointCount: number
 }
 
 export function resolveModifierRenderDiagnostics(
@@ -41,8 +48,21 @@ export function resolveModifierRenderDiagnostics(
       input.previousPeakCoreOverlayCount,
       activeCoreOverlayCount,
     ),
-    activeOptionalParticleCount: 0,
-    optionalVisualBudgetSuppressionCount: 0,
+    activeVolatileClusterPointCount:
+      input.activeVolatileClusterPointCount,
+    peakVolatileClusterPointCount: Math.max(
+      input.previousPeakVolatileClusterPointCount,
+      input.activeVolatileClusterPointCount,
+    ),
+    minimumReadableVolatileClusterPointCount:
+      input.minimumReadableVolatileClusterPointCount,
+    activeOptionalParticleCount: Math.max(
+      0,
+      input.activeVolatileClusterPointCount -
+        input.minimumReadableVolatileClusterPointCount,
+    ),
+    optionalVisualBudgetSuppressionCount:
+      input.volatileOptionalVisualBudgetSuppressionCount,
     effectPoolMissCount:
       input.overloadDeformation.poolMissCount +
       input.overloadCoreOverlay.poolMissCount +

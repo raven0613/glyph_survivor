@@ -15,4 +15,7 @@ export function clearRenderSnapshot(snapshot: RenderSnapshot): void {
   snapshot.overloadDeformations.length = 0
   snapshot.overloadShockwaves.length = 0
   snapshot.volatileCoreOverlays.length = 0
+  snapshot.volatileOverlayDiagnostics.activeClusterPointCount = 0
+  snapshot.volatileOverlayDiagnostics.minimumReadableClusterPointCount = 0
+  snapshot.volatileOverlayDiagnostics.optionalVisualBudgetSuppressionCount = 0
 }

@@ -60,6 +60,7 @@ export function createParticleLayerPool(
     sync(glyphs: readonly RenderGlyph[]) {
       frameNumber += 1
       let hasChangedGlyphFrame = false
+      let hasChangedMembership = false
 
       for (const glyph of glyphs) {
         let view = activeViews.get(glyph.id)
@@ -72,7 +73,7 @@ export function createParticleLayerPool(
             seenFrame: frameNumber,
           }
           activeViews.set(glyph.id, view)
-          container.addParticle(particle)
+          hasChangedMembership = true
         } else if (view.glyphFrame !== glyph.glyphFrame) {
           view.particle.texture = getTexture(glyph.glyphFrame)
           view.glyphFrame = glyph.glyphFrame
@@ -94,12 +95,18 @@ export function createParticleLayerPool(
           return
         }
 
-        container.removeParticle(view.particle)
         activeViews.delete(id)
         recycledParticles.push(view.particle)
+        hasChangedMembership = true
       })
 
-      if (hasChangedGlyphFrame) {
+      if (hasChangedMembership) {
+        container.particleChildren.length = 0
+        activeViews.forEach(({ particle }) => {
+          container.particleChildren.push(particle)
+        })
+      }
+      if (hasChangedMembership || hasChangedGlyphFrame) {
         container.update()
       }
       peakActiveParticleCount = Math.max(
@@ -109,8 +116,9 @@ export function createParticleLayerPool(
     },
 
     clear() {
-      activeViews.forEach((view) => container.removeParticle(view.particle))
       activeViews.clear()
+      container.particleChildren.length = 0
+      container.update()
       recycledParticles.length = 0
     },
 

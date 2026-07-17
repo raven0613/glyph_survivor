@@ -5,10 +5,8 @@ import {
   writeRenderSnapshot,
 } from '../../src/game/bridge/renderSnapshot.ts'
 import { normalizeNonNegativeGameplayNumber } from '../../src/game/core/gameplayNumber.ts'
-import {
-  getWeaponDefinition,
-  prepareGameContent,
-} from '../../src/game/content/gameContent.ts'
+import { prepareGameContent } from '../../src/game/content/gameContent.ts'
+import { getWeaponDefinition } from '../../src/game/content/gameContent.ts'
 import { ORBIT_ENERGY_BALL_WEAPON_ID } from '../../src/game/content/weapons/orbitEnergyBallWeapon.ts'
 import { ATTACK_PATTERN } from '../../src/game/content/weapons/weaponDefinition.ts'
 import { PLAYER_ATTACK_VISUAL_ROLE } from '../../src/game/content/visuals/combatVisualTheme.ts'
@@ -21,9 +19,6 @@ import {
   resolveWeaponProfile,
   type ResolvedOrbitWeaponProfile,
 } from '../../src/game/systems/resolveWeaponProfile.ts'
-
-const FULL_CIRCLE_RADIANS = Math.PI * 2
-const MILLISECONDS_PER_SECOND = 1_000
 
 function createOrbitWorld(seed = 'orbit-system') {
   const content = prepareGameContent()
@@ -42,7 +37,11 @@ function getResolvedOrbitProfile(
   world: OrbitWorld,
 ): ResolvedOrbitWeaponProfile {
   const profile = world.weaponLoadout.equipped[0]?.resolvedProfile
-  if (profile?.attackPattern.kind !== ATTACK_PATTERN.PERSISTENT_ORBIT) {
+  if (
+    !profile ||
+    !('orbitPresentation' in profile) ||
+    profile.attackPattern.kind !== ATTACK_PATTERN.PERSISTENT_ORBIT
+  ) {
     throw new Error('Orbit test world must equip a persistent orbit weapon.')
   }
   return profile
@@ -66,43 +65,6 @@ function assertApproximatelyEqual(
     Math.abs(actual - expected) < tolerance,
     `Expected ${actual} to be within ${tolerance} of ${expected}.`,
   )
-}
-
-function getFirstConfiguredModuleRank(
-  world: OrbitWorld,
-  moduleDefinitionId: string,
-): number {
-  const definition = world.content.weaponModuleDefinitionsById[
-    moduleDefinitionId
-  ]
-  const rank = definition?.ranks[0]
-  if (!rank) {
-    throw new Error(
-      `Orbit test requires at least one configured rank for ${moduleDefinitionId}.`,
-    )
-  }
-  return rank.rank
-}
-
-function getLastConfiguredModuleRank(
-  world: OrbitWorld,
-  moduleDefinitionId: string,
-): number {
-  const definition = world.content.weaponModuleDefinitionsById[
-    moduleDefinitionId
-  ]
-  if (!definition) {
-    throw new Error(
-      `Orbit test requires a configured definition for ${moduleDefinitionId}.`,
-    )
-  }
-  const rank = definition.ranks[definition.ranks.length - 1]
-  if (!rank) {
-    throw new Error(
-      `Orbit test requires at least one configured rank for ${moduleDefinitionId}.`,
-    )
-  }
-  return rank.rank
 }
 
 function installRange(
@@ -136,10 +98,10 @@ test('advances a deterministic owner-relative orbit without projectiles', () => 
   assert.deepEqual(first.orbitAttacks, second.orbitAttacks)
   const [orbit] = first.orbitAttacks
   const expectedPhase =
-    (profile.attackPattern.angularSpeedRevolutionsPerSecond *
-      FULL_CIRCLE_RADIANS *
-      (elapsedMs / MILLISECONDS_PER_SECOND)) %
-    FULL_CIRCLE_RADIANS
+    profile.attackPattern.angularSpeedRevolutionsPerSecond *
+    Math.PI *
+    2 *
+    (elapsedMs / 1_000)
   assert.equal(orbit.visualRoleId, PLAYER_ATTACK_VISUAL_ROLE.ORBIT_ENERGY)
   assertApproximatelyEqual(orbit.phaseRadians, expectedPhase)
   assertApproximatelyEqual(
@@ -165,11 +127,8 @@ test('keeps Projectile Count balls evenly spaced around the current base phase',
   runOrbitWeaponSystem(world, 250)
   const weapon = world.weaponLoadout.equipped[0]
   weapon.moduleSlots[0] = {
-    moduleDefinitionId: PROTOTYPE_WEAPON_MODULE_ID.PROJECTILE_COUNT,
-    rank: getLastConfiguredModuleRank(
-      world,
-      PROTOTYPE_WEAPON_MODULE_ID.PROJECTILE_COUNT,
-    ),
+    moduleDefinitionId: 'module.projectile-count',
+    rank: 2,
   }
   weapon.resolvedProfile = resolveWeaponProfile(
     getWeaponDefinition(world.content, weapon.definitionId),
@@ -184,13 +143,12 @@ test('keeps Projectile Count balls evenly spaced around the current base phase',
   assert.equal(world.orbitAttacks.length, ballCount)
   const basePhase = world.orbitAttacks[0].phaseRadians
   const normalizedOffsets = world.orbitAttacks.map(({ phaseRadians }) =>
-    (phaseRadians - basePhase + FULL_CIRCLE_RADIANS) %
-      FULL_CIRCLE_RADIANS,
+    (phaseRadians - basePhase + Math.PI * 2) % (Math.PI * 2),
   )
   for (const [index, offset] of normalizedOffsets.entries()) {
     assertApproximatelyEqual(
       offset,
-      (FULL_CIRCLE_RADIANS * index) / ballCount,
+      (Math.PI * 2 * index) / ballCount,
       1e-12,
     )
   }
@@ -200,19 +158,13 @@ test('keeps Projectile Count balls evenly spaced around the current base phase',
         contactStateByOwner,
       ),
     ).size,
-    ballCount,
+    3,
   )
 })
 
 test('sweeps Range deterministically between base and maximum orbit radii', () => {
   const world = createOrbitWorld('range-radial-sweep')
-  installRange(
-    world,
-    getLastConfiguredModuleRank(
-      world,
-      PROTOTYPE_WEAPON_MODULE_ID.RANGE,
-    ),
-  )
+  installRange(world, 3)
   const profile = getResolvedOrbitProfile(world)
 
   runOrbitWeaponSystem(world, 0)
@@ -222,7 +174,7 @@ test('sweeps Range deterministically between base and maximum orbit radii', () =
 
   runOrbitWeaponSystem(
     world,
-    MILLISECONDS_PER_SECOND /
+    1_000 /
       (profile.attackPattern.angularSpeedRevolutionsPerSecond * 2),
   )
 
@@ -243,18 +195,12 @@ test('offsets multi-ball radial phases from the shared deterministic phase', () 
   const world = createOrbitWorld('range-multi-ball-radial-phase')
   const weapon = world.weaponLoadout.equipped[0]
   weapon.moduleSlots[0] = {
-    moduleDefinitionId: PROTOTYPE_WEAPON_MODULE_ID.PROJECTILE_COUNT,
-    rank: getLastConfiguredModuleRank(
-      world,
-      PROTOTYPE_WEAPON_MODULE_ID.PROJECTILE_COUNT,
-    ),
+    moduleDefinitionId: 'module.projectile-count',
+    rank: 2,
   }
   weapon.moduleSlots[1] = {
     moduleDefinitionId: PROTOTYPE_WEAPON_MODULE_ID.RANGE,
-    rank: getFirstConfiguredModuleRank(
-      world,
-      PROTOTYPE_WEAPON_MODULE_ID.RANGE,
-    ),
+    rank: 2,
   }
   weapon.resolvedProfile = resolveWeaponProfile(
     getWeaponDefinition(world.content, weapon.definitionId),
@@ -269,7 +215,7 @@ test('offsets multi-ball radial phases from the shared deterministic phase', () 
   const ballCount = profile.attackPattern.ballCount
   assert.equal(world.orbitAttacks.length, ballCount)
   for (const [index, orbit] of world.orbitAttacks.entries()) {
-    const radialPhase = (FULL_CIRCLE_RADIANS * index) / ballCount
+    const radialPhase = (Math.PI * 2 * index) / ballCount
     const expectedRadius =
       profile.attackPattern.orbitRadius +
       (profile.attackPattern.maximumOrbitRadius -
@@ -282,21 +228,16 @@ test('offsets multi-ball radial phases from the shared deterministic phase', () 
 
 test('detects the earliest Glyph contact across the complete orbit sweep', () => {
   const world = createOrbitWorld('range-swept-contact')
-  installRange(
-    world,
-    getFirstConfiguredModuleRank(
-      world,
-      PROTOTYPE_WEAPON_MODULE_ID.RANGE,
-    ),
-  )
+  installRange(world, 1)
   const profile = getResolvedOrbitProfile(world)
   runOrbitWeaponSystem(world, 0)
   const [orbit] = world.orbitAttacks
   const elapsedMs = 250
   const nextPhase =
     profile.attackPattern.angularSpeedRevolutionsPerSecond *
-    FULL_CIRCLE_RADIANS *
-    (elapsedMs / MILLISECONDS_PER_SECOND)
+    Math.PI *
+    2 *
+    (elapsedMs / 1_000)
   const nextRadius =
     profile.attackPattern.orbitRadius +
     (profile.attackPattern.maximumOrbitRadius -
@@ -336,7 +277,7 @@ test('rebases a Range profile revision without creating a false attack sweep', (
   const baseProfile = getResolvedOrbitProfile(world)
   runOrbitWeaponSystem(
     world,
-    MILLISECONDS_PER_SECOND /
+    1_000 /
       (baseProfile.attackPattern.angularSpeedRevolutionsPerSecond * 2),
   )
   const [orbit] = world.orbitAttacks
@@ -346,13 +287,7 @@ test('rebases a Range profile revision without creating a false attack sweep', (
   target.phase = 'ACTIVE'
   runEnemySpatialIndexSystem(world)
 
-  installRange(
-    world,
-    getLastConfiguredModuleRank(
-      world,
-      PROTOTYPE_WEAPON_MODULE_ID.RANGE,
-    ),
-  )
+  installRange(world, 3)
   const rangeProfile = getResolvedOrbitProfile(world)
   runOrbitWeaponSystem(world, 0)
 

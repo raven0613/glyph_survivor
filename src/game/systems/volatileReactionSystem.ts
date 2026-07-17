@@ -1,4 +1,5 @@
 import { isGlyphLivingState } from '../glyph/glyphStore.ts'
+import { getVolatileEffectDurationMs } from '../content/visuals/volatileVisualTheme.ts'
 import {
   startVolatilePresentation,
   type VolatileExplosionEvent,
@@ -11,26 +12,6 @@ import {
   applyDamageApplication,
 } from './damageApplication.ts'
 import { createGlyphTopologyIndex } from './glyphTopologyPath.ts'
-
-function getPresentationDurationMs(world: WorldState): number {
-  const profile =
-    world.content.combatVisualTheme.effects.runModifiers.volatile
-  const sourceDuration =
-    profile.sourceClamp.attackDurationMs +
-    profile.sourceClamp.holdDurationMs +
-    profile.sourceClamp.settleDurationMs
-  const releaseDuration =
-    profile.release.delayMs +
-    profile.release.attackDurationMs +
-    profile.release.holdDurationMs +
-    profile.release.settleDurationMs
-  const joltDuration =
-    profile.neighborJolt.delayMs +
-    profile.neighborJolt.attackDurationMs +
-    profile.neighborJolt.holdDurationMs +
-    profile.neighborJolt.settleDurationMs
-  return Math.max(sourceDuration, releaseDuration, joltDuration)
-}
 
 function recycleWave(
   world: WorldState,
@@ -164,7 +145,9 @@ function resolveExplosion(
     event.sourceGlyphId,
     event.ownerId,
     event.waveDepth,
-    getPresentationDurationMs(world),
+    getVolatileEffectDurationMs(
+      world.content.combatVisualTheme.effects.runModifiers.volatile,
+    ),
     presentationNeighbors,
     joltedGlyphIds,
   )

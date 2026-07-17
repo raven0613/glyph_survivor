@@ -34,8 +34,10 @@ import {
 } from './overloadRenderSnapshot.ts'
 import { resolveDisconnectedGlyphMotion } from './disconnectedRenderSnapshot.ts'
 import {
+  createVolatileOverlayDiagnostics,
   resolveVolatileGlyphPresentation,
   writeVolatileCoreOverlays,
+  type VolatileOverlayDiagnostics,
 } from './volatileRenderSnapshot.ts'
 import {
   composeModifierPresentationMotion,
@@ -86,6 +88,7 @@ export interface RenderSnapshot extends RenderPlayerState {
   readonly overloadDeformations: RenderOverloadDeformation[]
   readonly overloadShockwaves: RenderGlyph[]
   readonly volatileCoreOverlays: RenderGlyph[]
+  readonly volatileOverlayDiagnostics: VolatileOverlayDiagnostics
 }
 
 export function createRenderSnapshot(): RenderSnapshot {
@@ -102,6 +105,7 @@ export function createRenderSnapshot(): RenderSnapshot {
     overloadDeformations: [],
     overloadShockwaves: [],
     volatileCoreOverlays: [],
+    volatileOverlayDiagnostics: createVolatileOverlayDiagnostics(),
   }
 }
 
@@ -374,6 +378,7 @@ export function writeRenderSnapshot(
   writeVolatileCoreOverlays(
     world,
     snapshot.volatileCoreOverlays,
+    snapshot.volatileOverlayDiagnostics,
     camera,
     interpolationAlpha,
   )

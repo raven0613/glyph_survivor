@@ -59,6 +59,9 @@ test('clears all run-owned render data before returning to ready', () => {
     alpha: 1,
     tint: 0xffffff,
   })
+  snapshot.volatileOverlayDiagnostics.activeClusterPointCount = 24
+  snapshot.volatileOverlayDiagnostics.minimumReadableClusterPointCount = 16
+  snapshot.volatileOverlayDiagnostics.optionalVisualBudgetSuppressionCount = 8
 
   clearRenderSnapshot(snapshot)
 
@@ -83,4 +86,9 @@ test('clears all run-owned render data before returning to ready', () => {
   assert.equal(snapshot.drops.length, 0)
   assert.equal(snapshot.flameEmitters.length, 0)
   assert.equal(snapshot.topologyTransferPulses.length, 0)
+  assert.deepEqual(snapshot.volatileOverlayDiagnostics, {
+    activeClusterPointCount: 0,
+    minimumReadableClusterPointCount: 0,
+    optionalVisualBudgetSuppressionCount: 0,
+  })
 })

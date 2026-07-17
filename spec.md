@@ -532,7 +532,9 @@ Volatile 首版不跨 owner、不讀畫面距離，也不繼承原攻擊的 Dama
 
 `waveIntervalMs` 的 prototype default 不在產品文件複製，唯一 authoring source 是 [`prototypeRunModifiers.ts`](src/game/content/modifiers/prototypeRunModifiers.ts) 的 VOLATILE definition config；完整 scheduler 語意與驗證契約見 [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md)。
 
-視覺上，每個真正解析的 Husk source 做一次短促內縮與四方向 topology shock；同 wave 同時、下一 wave 接棒，前一格只留下極短 afterimage，形成快速骨牌。VOLATILE 不畫圓形shockwave或連線，與OVERLOAD的一次徑向衝擊保持明確差異。
+視覺上，每個真正解析的 Husk source 先做一次短促內縮與四方向 topology shock，並以該 Cell 為中心同步綻放數個彼此分離、分布不規則的高密度 ASCII 光點團簇。各團簇與團內光點錯開出現、使用不同的短生命週期獨立消散；密度最高的短暫頓點應形成類似花椰菜的塊狀輪廓，並以局部中心亮點清楚指出是哪一顆 Cell 引發爆裂。這不是均勻圓環，也不使用 source-to-target 連線；同 wave 同時、下一 wave 接棒，前一格只留下極短 afterimage，讓局部團簇爆發沿 topology 形成快速骨牌，並與 OVERLOAD 的單次乾淨徑向衝擊保持明確差異。
+
+團簇數量、每團光點密度、分布半徑、不規則偏移、向外位移、生成錯時、各自生命週期、字元集合、尺寸、中心亮點、tint、alpha、brightness 與 presentation budget 都是純視覺調校值，只能集中存在 [`prototypeCombatVisualTheme.ts`](src/game/content/visuals/prototypeCombatVisualTheme.ts) 的 prepared VOLATILE semantic profile；不得寫入 VOLATILE Gameplay definition、Runtime system、renderer magic number或本文的 current default。光點必須使用共用 atlas 與 pool，不造成傷害或碰撞，也不能提前顯示尚未解析的下一 wave。
 
 ### DISCONNECTED — 結構失聯
 

@@ -82,7 +82,7 @@ test('prepares the persistent orbiting O as owner-relative weapon content', () =
   assert.equal(Object.isFrozen(profile.orbitPresentation), true)
 })
 
-test('prepares the short-range aimed pulsed-cone flamethrower', () => {
+test('prepares a short-range 90 degree pulsed cone flamethrower', () => {
   const content = prepareGameContent()
   const weapon = getWeaponDefinition(content, FLAMETHROWER_WEAPON_ID)
 

@@ -95,8 +95,15 @@ export async function createRenderAdapter(
     volatileCoreOverlay: volatileCoreOverlayViews.getDiagnostics(),
     fragmentAtlasSourceCount,
     previousPeakCoreOverlayCount: 0,
+    activeVolatileClusterPointCount: 0,
+    minimumReadableVolatileClusterPointCount: 0,
+    volatileOptionalVisualBudgetSuppressionCount: 0,
+    previousPeakVolatileClusterPointCount: 0,
   })
   let isDisposed = false
+  let activeVolatileClusterPointCount = 0
+  let minimumReadableVolatileClusterPointCount = 0
+  let volatileOptionalVisualBudgetSuppressionCount = 0
 
   function updateModifierDiagnostics(): void {
     modifierDiagnostics = resolveModifierRenderDiagnostics({
@@ -107,6 +114,11 @@ export async function createRenderAdapter(
       fragmentAtlasSourceCount,
       previousPeakCoreOverlayCount:
         modifierDiagnostics.peakModifierCoreOverlayCount,
+      activeVolatileClusterPointCount,
+      minimumReadableVolatileClusterPointCount,
+      volatileOptionalVisualBudgetSuppressionCount,
+      previousPeakVolatileClusterPointCount:
+        modifierDiagnostics.peakVolatileClusterPointCount,
     })
   }
 
@@ -139,6 +151,13 @@ export async function createRenderAdapter(
       overloadDeformationViews.sync(snapshot.overloadDeformations)
       overloadShockwaveViews.sync(snapshot.overloadShockwaves)
       volatileCoreOverlayViews.sync(snapshot.volatileCoreOverlays)
+      activeVolatileClusterPointCount =
+        snapshot.volatileOverlayDiagnostics.activeClusterPointCount
+      minimumReadableVolatileClusterPointCount =
+        snapshot.volatileOverlayDiagnostics.minimumReadableClusterPointCount
+      volatileOptionalVisualBudgetSuppressionCount =
+        snapshot.volatileOverlayDiagnostics
+          .optionalVisualBudgetSuppressionCount
       effectViews.sync(snapshot.effects)
       topologyTransferPulseViews.sync(snapshot.topologyTransferPulses)
       projectileViews.sync(snapshot.projectiles)
@@ -161,6 +180,9 @@ export async function createRenderAdapter(
       overloadDeformationViews.sync([])
       overloadShockwaveViews.sync([])
       volatileCoreOverlayViews.sync([])
+      activeVolatileClusterPointCount = 0
+      minimumReadableVolatileClusterPointCount = 0
+      volatileOptionalVisualBudgetSuppressionCount = 0
       effectViews.sync([])
       topologyTransferPulseViews.sync([])
       projectileViews.sync([])

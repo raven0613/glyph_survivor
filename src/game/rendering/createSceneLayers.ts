@@ -147,6 +147,7 @@ export function createSceneLayers(
       color: true,
     },
   })
+  volatileCoreOverlayLayer.blendMode = 'add'
   const projectileLayer = new ParticleContainer<Particle>({
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
