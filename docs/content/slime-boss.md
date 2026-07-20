@@ -188,6 +188,7 @@ M3 首版 `SLIME` Material 數值為：
 - 正式觸發語意是：依普通怪 progression 生成的第一隻 `Z` 成功 commit spawn 時，Runtime 發出一次性的 `FIRST_WAVE_STARTED`；Boss 專用 spawn request 在下一個允許消費 structural events 的明確 boundary 排入，不能在仍迭代 spawn collection 時直接改動它。這仍屬於同一波生成。
 - 初始 `Z` spawn 候選失敗時不算第一波開始，也不得因此生成史萊姆；不得跳過 `Z` 改用任何尚未完成首次登場的後續 definition（`BO`、`BAT`、`ROCK` 或 `SNAKE`）觸發 Boss。
 - 史萊姆不走普通怪 director 的一般生成路徑。首版在第一波同側、鏡頭外的合法位置生成；找不到合法位置時延後 Boss request，不得強塞進視野或障礙物。
+- 當第二隻正式 Boss [`RHOMBUS`](rhombus-boss.md) 在 prototype 同樣由 `FIRST_WAVE_STARTED` 授權時，兩個 Boss 各自使用完整 prepared footprint 加 content-defined separation padding 驗證候選。不得讓 RHOMBUS 與 SLIME 重疊或互相遮住出場；其中一個暫時找不到合法點時只延後自己的 request，不移動已 commit 的另一個 Boss。
 - 史萊姆使用 seeded 0.3–0.5 秒文字聚合生成階段；Runtime 決定何時轉為 Active，renderer 只顯示狀態。
 
 Prepared Slime definition 的 `contactDamage` 是此 Boss 接觸傷害的唯一可調來源，本文不複製其 default。一次 owner contact 只產生一個候選 incoming-damage event，不按接觸 Glyph 數量或每個 fixed step 直接重複扣血；事件是否被接受、護盾 routing、global invulnerability 與回復計時均由 [`player-survival.md`](player-survival.md) 定義。
@@ -257,7 +258,7 @@ Encounter phase 為 `ACTIVE → COLLAPSING → DEFEATED`。所有 child 共享�
 
 `COLLAPSING` 開始後，所有 bodies 停止移動、targeting、damage 與 Gameplay collision，並由 Runtime 統一驅動完整 Husk 輪廓崩解；renderer 不得自行決定 encounter 何時死亡。崩解演出與該Encounter已授權的Runtime-owned Volatile source-event sequence都完成後才轉為`DEFEATED`，由Encounter／root只結算一次XP reward並授權一次Run Modifier reward，再進入cleanup；不能由每個child重複發放或提前清除Husk。
 
-Modifier reward token必須在root／child cleanup前建立，並遵守 [`run-modifiers.md`](run-modifiers.md) 的owned-definition exclusion、三選一／二選一、dedicated RNG、`PAUSED_MODIFIER`與原子commit契約。Modifier reward不取代史萊姆原有XP reward。
+Modifier reward token必須在root／child cleanup前建立，並遵守 [`run-modifiers.md`](run-modifiers.md) 的owned-definition exclusion、依eligible count建立三張／兩張／一張choice、dedicated RNG、`PAUSED_MODIFIER`與原子commit契約。單卡仍需玩家明確Confirm，不會自動取得；Modifier reward不取代史萊姆原有XP reward。
 
 所有新舊 bodies 都繼承相同的 `encounterId`、`rootBossId` 與 `splitReferenceCellCount = 50`。Boss UI 的 Current／Max HP 以 encounter 內所有 Glyph 聚合；Husk 對 Current HP 貢獻為零，但其 Max Durability 仍計入 Max HP。
 

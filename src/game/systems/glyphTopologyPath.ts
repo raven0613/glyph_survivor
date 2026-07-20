@@ -1,5 +1,8 @@
+import { DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID } from '../glyph/glyphLayout.ts'
+
 export interface GlyphTopologyCell {
   readonly id: number
+  readonly topologyComponentId?: string
   readonly topologyX: number
   readonly topologyY: number
   readonly worldX: number
@@ -23,8 +26,12 @@ const NEIGHBOR_OFFSETS = Object.freeze([
   Object.freeze([-1, 0] as const),
 ])
 
-function coordinateKey(x: number, y: number): string {
-  return `${x},${y}`
+function coordinateKey(
+  componentId: string | undefined,
+  x: number,
+  y: number,
+): string {
+  return `${componentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID}:${x},${y}`
 }
 
 export function createGlyphTopologyIndex<T extends GlyphTopologyCell>(
@@ -34,7 +41,11 @@ export function createGlyphTopologyIndex<T extends GlyphTopologyCell>(
   const cellsByCoordinate = new Map<string, T[]>()
   for (const cell of cells) {
     cellById.set(cell.id, cell)
-    const key = coordinateKey(cell.topologyX, cell.topologyY)
+    const key = coordinateKey(
+      cell.topologyComponentId,
+      cell.topologyX,
+      cell.topologyY,
+    )
     const occupants = cellsByCoordinate.get(key)
     if (occupants) {
       occupants.push(cell)
@@ -51,7 +62,11 @@ export function createGlyphTopologyIndex<T extends GlyphTopologyCell>(
     const neighbors: T[] = []
     for (const [offsetX, offsetY] of NEIGHBOR_OFFSETS) {
       const occupants = cellsByCoordinate.get(
-        coordinateKey(cell.topologyX + offsetX, cell.topologyY + offsetY),
+        coordinateKey(
+          cell.topologyComponentId,
+          cell.topologyX + offsetX,
+          cell.topologyY + offsetY,
+        ),
       )
       if (occupants) {
         neighbors.push(...occupants)

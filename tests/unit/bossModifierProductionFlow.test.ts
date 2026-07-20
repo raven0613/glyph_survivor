@@ -17,7 +17,10 @@ import { runBossModifierRewardSystem } from '../../src/game/systems/bossModifier
 import { runCleanupSystem } from '../../src/game/systems/cleanupSystem.ts'
 import { runDeathSystem } from '../../src/game/systems/deathSystem.ts'
 import { runDropSystem } from '../../src/game/systems/dropSystem.ts'
-import { createRunStartTestModifierOfferIfEnabled } from '../../src/game/systems/runModifierOffer.ts'
+import {
+  createBossRewardModifierOffer,
+  createRunStartTestModifierOfferIfEnabled,
+} from '../../src/game/systems/runModifierOffer.ts'
 import { selectRunModifierFromOffer } from '../../src/game/systems/runModifierTransaction.ts'
 import { runUpgradeSystem } from '../../src/game/systems/upgradeSystem.ts'
 import { runVolatileReactionSystem } from '../../src/game/systems/volatileReactionSystem.ts'
@@ -169,6 +172,45 @@ test('offers three formal Boss choices when the run owns no Modifier', () => {
   assert.equal(
     new Set(offer.choices.map(({ definitionId }) => definitionId)).size,
     3,
+  )
+})
+
+test('authorizes one remaining Modifier after the run-start and prior Boss choices', () => {
+  const world = createWorldWithOwnedModifier(
+    'boss-single-choice-production-flow',
+    RUN_MODIFIER_DEFINITION_ID.VOLATILE,
+  )
+  const priorBossOffer = createBossRewardModifierOffer(
+    world.content.runModifierDefinitions,
+    world.runModifierState,
+    99,
+  )
+  assert.equal(
+    selectRunModifierFromOffer(
+      world.content.runModifierDefinitions,
+      world.runModifierState,
+      {
+        offerId: priorBossOffer.id,
+        choiceId: priorBossOffer.choices[0].id,
+      },
+    ).ok,
+    true,
+  )
+  const finalBoss = spawnDepletedSlime(world)
+  runDeathSystem(world)
+  const encounter = world.bossEncounters.get(finalBoss.encounterId!)
+  assert.ok(encounter)
+  runDeathSystem(world, encounter.collapseDurationMs)
+
+  const finalOffer = runBossModifierRewardSystem(world)
+
+  assert.ok(finalOffer)
+  assert.equal(finalOffer.choices.length, 1)
+  assert.equal(
+    world.runModifierState.ownedDefinitionIds.has(
+      finalOffer.choices[0].definitionId,
+    ),
+    false,
   )
 })
 

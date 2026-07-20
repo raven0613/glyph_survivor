@@ -1,11 +1,11 @@
 import type { RenderSnapshot } from '../bridge/renderSnapshot.ts'
-import { createGlyphAtlas } from './createGlyphAtlas.ts'
+import { createGlyphAtlas, type GlyphAtlas } from './createGlyphAtlas.ts'
 import { createParticleLayerPool } from './particleLayerPool.ts'
 import { createPixiApp } from './createPixiApp.ts'
 import { createSceneLayers } from './createSceneLayers.ts'
 import { createFlameEmitterPool } from './flameEmitterPool.ts'
 import { getPrintableAsciiGlyphFrame } from '../glyph/glyphFrame.ts'
-import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
+import type { PreparedGameContent } from '../content/gameContent.ts'
 import { createPlayerSurvivalView } from './createPlayerSurvivalView.ts'
 import {
   countCrackedFragmentAtlasSources,
@@ -16,6 +16,8 @@ import {
   resolveModifierRenderDiagnostics,
   type ModifierRenderDiagnostics,
 } from './renderModifierDiagnostics.ts'
+import { GLYPH_FONT_ASSET_URLS } from './glyphFontAssetUrls.ts'
+import { loadRequiredGlyphFonts } from './loadRequiredGlyphFonts.ts'
 
 export interface RenderAdapter {
   getViewportSize(): { readonly width: number; readonly height: number }
@@ -27,11 +29,23 @@ export interface RenderAdapter {
 
 export async function createRenderAdapter(
   canvas: HTMLCanvasElement,
-  visualTheme: CombatVisualTheme,
+  content: PreparedGameContent,
   signal?: AbortSignal,
 ): Promise<RenderAdapter> {
+  const visualTheme = content.combatVisualTheme
+  await loadRequiredGlyphFonts({
+    fontBanks: content.glyphFontBanks,
+    assetUrlById: GLYPH_FONT_ASSET_URLS,
+    signal,
+  })
   const application = await createPixiApp(canvas, visualTheme, signal)
-  const atlas = createGlyphAtlas(visualTheme)
+  let atlas: GlyphAtlas
+  try {
+    atlas = createGlyphAtlas(visualTheme, content.glyphFontBanks)
+  } catch (error) {
+    application.destroy({ removeView: false, releaseGlobalResources: true })
+    throw error
+  }
   const scene = createSceneLayers(application.stage, atlas, visualTheme)
   const playerSurvivalView = createPlayerSurvivalView(
     scene.playerRoot,
@@ -39,8 +53,16 @@ export async function createRenderAdapter(
     atlas,
     visualTheme,
   )
+  const enemyBehindViews = createParticleLayerPool(
+    scene.enemyBehindLayer,
+    atlas.printableFrames,
+  )
   const enemyViews = createParticleLayerPool(
     scene.enemyLayer,
+    atlas.printableFrames,
+  )
+  const enemyFrontViews = createParticleLayerPool(
+    scene.enemyFrontLayer,
     atlas.printableFrames,
   )
   const crackedSurfaceViews = createCrackedSurfacePool(
@@ -146,7 +168,9 @@ export async function createRenderAdapter(
       )
       scene.playerRoot.position.set(snapshot.playerX, snapshot.playerY)
       playerSurvivalView.sync(snapshot.playerSurvivalPresentation)
+      enemyBehindViews.sync(snapshot.enemiesBehind)
       enemyViews.sync(snapshot.enemies)
+      enemyFrontViews.sync(snapshot.enemiesFront)
       crackedSurfaceViews.sync(snapshot.crackedSurfaces)
       overloadDeformationViews.sync(snapshot.overloadDeformations)
       overloadShockwaveViews.sync(snapshot.overloadShockwaves)
@@ -175,7 +199,9 @@ export async function createRenderAdapter(
 
       // Empty syncs release active views back to reusable pools without
       // destroying Pixi resources retained by the GameHost.
+      enemyBehindViews.sync([])
       enemyViews.sync([])
+      enemyFrontViews.sync([])
       crackedSurfaceViews.sync([])
       overloadDeformationViews.sync([])
       overloadShockwaveViews.sync([])
@@ -201,7 +227,9 @@ export async function createRenderAdapter(
       }
 
       isDisposed = true
+      enemyBehindViews.clear()
       enemyViews.clear()
+      enemyFrontViews.clear()
       crackedSurfaceViews.clear()
       overloadDeformationViews.dispose()
       overloadShockwaveViews.clear()

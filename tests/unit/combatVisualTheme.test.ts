@@ -72,6 +72,33 @@ test('rejects invalid topology-transfer timing', () => {
   )
 })
 
+test('prepares bounded RHOMBUS hostile-spike and collapse roles', () => {
+  const prepared = PROTOTYPE_COMBAT_VISUAL_THEME.effects.rhombus
+  assert.ok(prepared.hostileSpike.dissipationDurationMs > 0)
+  assert.ok(prepared.hostileSpike.fadeOutStartRatio < 1)
+  assert.ok(prepared.hostileSpike.particleCharacters.length > 0)
+  assert.ok(prepared.collapse.brightnessLiftDurationMs > 0)
+  assert.equal(Object.isFrozen(prepared.hostileSpike), true)
+  assert.equal(Object.isFrozen(prepared.hostileSpike.particleCharacters), true)
+
+  const theme = PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING
+  assert.throws(() =>
+    defineCombatVisualTheme({
+      ...theme,
+      effects: {
+        ...theme.effects,
+        rhombus: {
+          ...theme.effects.rhombus,
+          hostileSpike: {
+            ...theme.effects.rhombus.hostileSpike,
+            fadeOutStartRatio: 1,
+          },
+        },
+      },
+    }),
+  )
+})
+
 test('prepares and validates bounded OVERLOAD presentation roles', () => {
   const prepared = PROTOTYPE_COMBAT_VISUAL_THEME.effects.runModifiers.overload
   assert.ok(prepared.compression.attackDurationMs > 0)

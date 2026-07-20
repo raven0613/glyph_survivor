@@ -163,7 +163,7 @@ Module Rank 不是 Player Level 或 Weapon Level；它只描述某個 Slot 內�
 - 抽選使用由 run seed 派生的獨立 upgrade RNG stream。敵人生成、AI 或視覺亂數的消耗不得改變同一升級序列。
 - 抽選順序與 tie-break 使用 stable content order／stable IDs，確保結果可重現。
 
-本節「恰好三張」只適用於 XP 的 `WEAPON | MODULE` offer。Boss Modifier reward 使用自己的 offer ID、choice kind、RNG、owned-definition exclusion與`PAUSED_MODIFIER` transaction；當只剩兩個eligible Modifier definitions時可以二選一，不能為了補滿三張而塞入已持有Modifier。
+本節「恰好三張」只適用於 XP 的 `WEAPON | MODULE` offer。Boss Modifier reward 使用自己的 offer ID、choice kind、RNG、owned-definition exclusion與`PAUSED_MODIFIER` transaction；依eligible count建立三張、兩張或一張choice，不能為了補滿三張而塞入已持有Modifier。單卡仍等待玩家明確Confirm，不會自動取得。
 
 若一次取得多個 level-up，Runtime 以 pending count 排隊。完成一個有效投資或武器取得後，若仍有 pending level-up，直接產生下一個 offer 並保持 `PAUSED_UPGRADE`；不得在兩次選擇之間短暫恢復 simulation。
 
@@ -275,6 +275,10 @@ DestructionProfile   knockback, pierce, explosion, split, erosion
 #### Assisted `o`
 
 - 遠距單體基準武器；保留有限的 assisted correction，錯過或失去原目標後永久轉為 ballistic。
+- Assisted target identity 是 stable `ownerId` 加 stable `targetAnchorId`。一般單體可以只提供一個 anchor；像 RHOMBUS 這類多部位同 owner 目標可提供多個權威 anchors，但它們不是新的 Creature、HP、hitbox、Damage Target 或 reward identity。
+- 初次 query 先沿該次尚未套用 assisted correction 的權威發射彈道幾何，評估每個合法 owner 的 anchors；Projectile Count volley 使用套用 centered spacing 前的 authoritative base aim axis。Owner 以其中 miss distance 最小的 anchor 作為該次分數與候選瞄準點；平手依彈道前向距離、stable owner ID、stable anchor ID 決定。不得改用離玩家、游標、Creature root 或 screen-space sprite 最近者。
+- 鎖定時保存 owner ID 與 anchor ID；後續 guidance 讀取該 anchor 當下的權威 world position，讓 authored orbit anchor 可以被正常追蹤，但不能在每個 fixed step 偷換成同 owner 的另一個 anchor。Anchor 失效或超出既有 lock contract 時，沿用原有 target-loss 行為並永久轉為 ballistic，不新增 RHOMBUS-only reacquisition。
+- Projectile Count 的同一 assisted volley 仍只做一次初始 target query，所有 projectile 共用同一 owner／anchor 選擇；不同散射方向不各自重新選另一個部位。
 - Current base profile與tracking values只存在[`basicProjectileWeapon.ts`](../../src/game/content/weapons/basicProjectileWeapon.ts)及[`projectileTracking.ts`](../../src/game/content/weapons/projectileTracking.ts)。Maximum travel distance是明確distance budget；Runtime依每步實際travelled path扣除，不讓lifetime暗中兼任Range contract。
 - Gameplay projectile 使用小寫 `o`；projectile position、collision、target 與 damage 都由 Runtime 權威持有。
 - 若安裝 Range，初次 target acquisition range、對原目標的 lock-maintenance range，以及沿 projectile 實際彎曲路徑消耗的 maximum travel distance 都套用該 Rank 的 prepared完整總倍率；projectile speed、DamageShape radius、assisted correction angle與steering responsiveness不變。每顆在途projectile使用emission-time distance snapshot，最後一段部分距離仍必須有一次collision機會。
@@ -436,6 +440,7 @@ React 只接收 UI-sized immutable summaries，例如：
 
 - 武器數量雖然首版最多三把，weapon loop 仍不得在 fixed step 配置暫時 effect-composition structures。
 - 多發 Module 應由一次 AttackPattern 決定 target sharing／distribution，不要讓每顆 projectile 無限制重做昂貴 target query。
+- 多 anchor owner 的初次 query 只能掃描該 owner 已準備且數量受限的 stable anchors；鎖定後以 ID 直接解析位置，不得每步掃描整個 Glyph body 或因 render depth／遮擋重算 anchor。
 - Homing reacquisition 繼續使用 budgeted spatial query；初次 target selection 與大量 emissions 也需要診斷計數。
 - Projectile pool 新增 source weapon、pierce、element 或 hit-history 欄位時，reuse 必須完整 reset，不能繼承上一顆 projectile 的狀態。
 - 高量噴火 presentation 應以小型 emitter summary／event 驅動 rendering-owned dense pool，不把每顆 `.`／`*` 火星放入 WorldState 或逐顆跨 bridge 傳輸。粒子必須有 per-emitter 與 global budgets；降級品質只減少 presentation density，不降低 Cone DamageShape 精確度。
@@ -483,6 +488,9 @@ React 只接收 UI-sized immutable summaries，例如：
 - cancels an invalid arrival target without retargeting or duplicate damage
 - compiles every configured Projectile Count Rank from its prepared `totalCount`
 - emits one assisted projectile volley from one target query with centered prepared `projectileAngleSpacingRadians`
+- chooses the legal stable anchor closest to the unassisted authoritative firing trajectory, follows its authoritative motion, and ignores renderer depth／occlusion when scoring
+- keeps every projectile in one assisted volley on the same selected owner／anchor and never performs per-projectile anchor queries
+- preserves one creature／HP／reward identity when a multi-component owner exposes multiple targeting anchors
 - emits independent centered Cone events with prepared `coneAngleSpacingRadians` and allows overlap damage
 - keeps orbit balls evenly phase-spaced when Projectile Count changes
 - compiles every configured Range Rank from its complete prepared `totalMultiplier` without compounding prior Ranks

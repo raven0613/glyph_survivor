@@ -8,6 +8,21 @@ export interface WorldDiagnostics extends RunModifierDiagnostics {
   simulationStepCount: number
   enemyPoolMisses: number
   projectilePoolMisses: number
+  hostileProjectilePoolMisses: number
+  hostileProjectileWavesFormed: number
+  hostileProjectilesStaged: number
+  hostileProjectilesReleased: number
+  hostileProjectilesExpired: number
+  hostileProjectilesConsumedWhileInvulnerable: number
+  hostileProjectilesFrozenForDissipation: number
+  hostileProjectilesDissipated: number
+  hostileProjectilesReturnedToPool: number
+  hostileProjectileSweptBroadPhaseCandidates: number
+  hostileProjectileSweptPreciseTests: number
+  hostileProjectilePreciseHits: number
+  activeStagedHostileProjectileCount: number
+  activeReleasedHostileProjectileCount: number
+  activeDissipatingHostileProjectileCount: number
   dropPoolMisses: number
   targetSearchCount: number
   targetReacquireCount: number
@@ -16,6 +31,8 @@ export interface WorldDiagnostics extends RunModifierDiagnostics {
   healthyGlyphCount: number
   damagedGlyphCount: number
   huskGlyphCount: number
+  orphanedGlyphCount: number
+  multiplyOwnedGlyphCount: number
   spreadCandidateCount: number
   spreadPreciseTestCount: number
   damageClaimDedupCount: number
@@ -37,6 +54,22 @@ export interface WorldDiagnostics extends RunModifierDiagnostics {
   bodyMotionGlyphUpdateCount: number
   bodyMotionActiveCreatureCount: number
   bodyMotionActiveGlyphCount: number
+  componentOrbitSimulationTimeMs: number
+  componentOrbitStepTimeMs: number
+  componentOrbitTransformEvaluationCount: number
+  componentOrbitGlyphUpdateCount: number
+  componentOrbitDepthBandMigrationCount: number
+  componentOrbitActiveGroupCount: number
+  componentOrbitPausedGroupCount: number
+  activeRhombusEncounterCount: number
+  activeRhombusGlyphCount: number
+  rhombusCollapsePlansCreated: number
+  rhombusCollapseGlyphPlansCreated: number
+  activeRhombusCollapseCount: number
+  rhombusCollapseBrightnessLiftStarted: number
+  rhombusCollapseFallStarted: number
+  rhombusCollapseSettleStarted: number
+  rhombusCollapseCompleted: number
 }
 
 export function createWorldDiagnostics(): WorldDiagnostics {
@@ -46,6 +79,21 @@ export function createWorldDiagnostics(): WorldDiagnostics {
     simulationStepCount: 0,
     enemyPoolMisses: 0,
     projectilePoolMisses: 0,
+    hostileProjectilePoolMisses: 0,
+    hostileProjectileWavesFormed: 0,
+    hostileProjectilesStaged: 0,
+    hostileProjectilesReleased: 0,
+    hostileProjectilesExpired: 0,
+    hostileProjectilesConsumedWhileInvulnerable: 0,
+    hostileProjectilesFrozenForDissipation: 0,
+    hostileProjectilesDissipated: 0,
+    hostileProjectilesReturnedToPool: 0,
+    hostileProjectileSweptBroadPhaseCandidates: 0,
+    hostileProjectileSweptPreciseTests: 0,
+    hostileProjectilePreciseHits: 0,
+    activeStagedHostileProjectileCount: 0,
+    activeReleasedHostileProjectileCount: 0,
+    activeDissipatingHostileProjectileCount: 0,
     dropPoolMisses: 0,
     targetSearchCount: 0,
     targetReacquireCount: 0,
@@ -54,6 +102,8 @@ export function createWorldDiagnostics(): WorldDiagnostics {
     healthyGlyphCount: 0,
     damagedGlyphCount: 0,
     huskGlyphCount: 0,
+    orphanedGlyphCount: 0,
+    multiplyOwnedGlyphCount: 0,
     spreadCandidateCount: 0,
     spreadPreciseTestCount: 0,
     damageClaimDedupCount: 0,
@@ -75,5 +125,21 @@ export function createWorldDiagnostics(): WorldDiagnostics {
     bodyMotionGlyphUpdateCount: 0,
     bodyMotionActiveCreatureCount: 0,
     bodyMotionActiveGlyphCount: 0,
+    componentOrbitSimulationTimeMs: 0,
+    componentOrbitStepTimeMs: 0,
+    componentOrbitTransformEvaluationCount: 0,
+    componentOrbitGlyphUpdateCount: 0,
+    componentOrbitDepthBandMigrationCount: 0,
+    componentOrbitActiveGroupCount: 0,
+    componentOrbitPausedGroupCount: 0,
+    activeRhombusEncounterCount: 0,
+    activeRhombusGlyphCount: 0,
+    rhombusCollapsePlansCreated: 0,
+    rhombusCollapseGlyphPlansCreated: 0,
+    activeRhombusCollapseCount: 0,
+    rhombusCollapseBrightnessLiftStarted: 0,
+    rhombusCollapseFallStarted: 0,
+    rhombusCollapseSettleStarted: 0,
+    rhombusCollapseCompleted: 0,
   }
 }

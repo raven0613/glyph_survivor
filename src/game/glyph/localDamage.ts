@@ -42,6 +42,13 @@ export type DamageFrontierTraversal =
       kind: typeof DAMAGE_FRONTIER_TRAVERSAL.FROM_SHAPE_ORIGIN
     }>
 
+export const DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE = Object.freeze({
+  CANONICAL_COMPONENT: 'CANONICAL_COMPONENT',
+} as const)
+
+export type DamageTopologyTraversalScope =
+  (typeof DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE)[keyof typeof DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE]
+
 export interface DamageSpreadProfile {
   readonly bandWidth: number
   readonly bandDamageRatios: readonly number[]

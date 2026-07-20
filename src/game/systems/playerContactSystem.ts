@@ -54,7 +54,7 @@ function writeContactCandidate(
 
 /** Collects at most one candidate per authoritative creature owner. */
 export function runPlayerContactSystem(world: WorldState): number {
-  world.playerDamageCandidateCount = 0
+  const startCount = world.playerDamageCandidateCount
   const candidates = world.enemySpatialHash.queryCircle(
     world.player.x,
     world.player.y,
@@ -74,5 +74,5 @@ export function runPlayerContactSystem(world: WorldState): number {
       writeContactCandidate(world, enemy.id, contactDamage)
     }
   }
-  return world.playerDamageCandidateCount
+  return world.playerDamageCandidateCount - startCount
 }

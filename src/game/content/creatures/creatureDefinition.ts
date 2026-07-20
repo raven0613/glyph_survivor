@@ -4,6 +4,22 @@ import {
   isGlyphAppearanceProfileId,
   type GlyphAppearanceProfileId,
 } from '../visuals/combatVisualTheme.ts'
+import {
+  calculateComponentOrbitBroadPhaseRadius,
+  prepareComponentOrbitGroups,
+  type ComponentOrbitBodyMotionDefinition,
+} from './componentOrbitDefinition.ts'
+import {
+  DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE,
+  type DamageTopologyTraversalScope,
+} from '../../glyph/localDamage.ts'
+
+export {
+  COMPONENT_ORBIT_DIRECTION,
+  type ComponentOrbitBodyMotionDefinition,
+  type ComponentOrbitDirection,
+  type ComponentOrbitGroupDefinition,
+} from './componentOrbitDefinition.ts'
 
 export const CREATURE_MOVEMENT_BEHAVIOR = Object.freeze({
   DIRECT_PURSUIT: 'DIRECT_PURSUIT',
@@ -25,6 +41,7 @@ export const CREATURE_BODY_MOTION_BEHAVIOR = Object.freeze({
   NONE: 'NONE',
   BAT_FLAP: 'BAT_FLAP',
   BONE_RATTLE: 'BONE_RATTLE',
+  COMPONENT_ORBIT: 'COMPONENT_ORBIT',
   ROCK_ROLL: 'ROCK_ROLL',
   SNAKE_SQUEEZE: 'SNAKE_SQUEEZE',
   ZOMBIE_STAGGER: 'ZOMBIE_STAGGER',
@@ -81,8 +98,16 @@ export interface SnakeSqueezeBodyMotionDefinition
 export type CreatureBodyMotionDefinition =
   | NoCreatureBodyMotionDefinition
   | TimedCreatureBodyMotionDefinition
+  | ComponentOrbitBodyMotionDefinition
   | RockRollBodyMotionDefinition
   | SnakeSqueezeBodyMotionDefinition
+
+export interface CreatureTargetAnchorDefinition {
+  readonly id: string
+  readonly motionGroupId: number
+  readonly localX: number
+  readonly localY: number
+}
 
 export const CREATURE_SPLIT_BEHAVIOR = Object.freeze({
   NONE: 'NONE',
@@ -91,6 +116,14 @@ export const CREATURE_SPLIT_BEHAVIOR = Object.freeze({
 
 export type CreatureSplitBehaviorId =
   (typeof CREATURE_SPLIT_BEHAVIOR)[keyof typeof CREATURE_SPLIT_BEHAVIOR]
+
+export const CREATURE_COLLAPSE_BEHAVIOR = Object.freeze({
+  SCATTER: 'SCATTER',
+  RHOMBUS_MASONRY: 'RHOMBUS_MASONRY',
+} as const)
+
+export type CreatureCollapseBehaviorId =
+  (typeof CREATURE_COLLAPSE_BEHAVIOR)[keyof typeof CREATURE_COLLAPSE_BEHAVIOR]
 
 export type CreatureCategory = 'ORDINARY' | 'BOSS'
 
@@ -107,14 +140,23 @@ export interface CreatureDefinitionInput {
   readonly authoredMorphStrength: number
   readonly compiledMorphStrength: number
   readonly bodyMotion: CreatureBodyMotionDefinition
+  readonly targetAnchors?: readonly Readonly<CreatureTargetAnchorDefinition>[]
+  readonly damageTopologyTraversalScope?: DamageTopologyTraversalScope
   readonly splitBehaviorId: CreatureSplitBehaviorId
+  readonly collapseBehaviorId?: CreatureCollapseBehaviorId
   readonly minimumIndependentCellRatio: number
   readonly contactDamage: number
   readonly collapseDurationMs: number
   readonly experienceReward: number
 }
 
-export type CreatureDefinition = Readonly<CreatureDefinitionInput> & {
+export type CreatureDefinition = Omit<
+  Readonly<CreatureDefinitionInput>,
+  'targetAnchors' | 'damageTopologyTraversalScope' | 'collapseBehaviorId'
+> & {
+  readonly targetAnchors: readonly Readonly<CreatureTargetAnchorDefinition>[]
+  readonly damageTopologyTraversalScope: DamageTopologyTraversalScope
+  readonly collapseBehaviorId: CreatureCollapseBehaviorId
   readonly broadPhaseRadius: number
 }
 
@@ -134,6 +176,7 @@ function requireFiniteRange(
 function prepareBodyMotionDefinition(
   input: CreatureBodyMotionDefinition,
   bodySlotIds: ReadonlySet<number>,
+  topologyComponentBySlotId: Readonly<Record<number, string>>,
 ): CreatureBodyMotionDefinition {
   if (!Number.isFinite(input.maximumOffset) || input.maximumOffset < 0) {
     throw new RangeError(
@@ -167,6 +210,18 @@ function prepareBodyMotionDefinition(
     if (Object.keys(groupBySlotId).length !== bodySlotIds.size) {
       throw new Error('Animated creatures must map every body slot to a motion group.')
     }
+  }
+
+  if (input.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.COMPONENT_ORBIT) {
+    return Object.freeze({
+      ...input,
+      groupBySlotId: Object.freeze(groupBySlotId),
+      orbitGroups: prepareComponentOrbitGroups(
+        input,
+        groupBySlotId,
+        topologyComponentBySlotId,
+      ),
+    })
   }
 
   if (input.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL) {
@@ -281,6 +336,32 @@ function prepareBodyMotionDefinition(
   })
 }
 
+function prepareTargetAnchors(
+  anchors: readonly Readonly<CreatureTargetAnchorDefinition>[],
+  bodyMotion: CreatureBodyMotionDefinition,
+): readonly Readonly<CreatureTargetAnchorDefinition>[] {
+  const validGroupIds = new Set(Object.values(bodyMotion.groupBySlotId))
+  if (bodyMotion.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.NONE) {
+    validGroupIds.add(0)
+  }
+  const ids = new Set<string>()
+  return Object.freeze(
+    anchors.map((anchor) => {
+      if (anchor.id.trim().length === 0 || ids.has(anchor.id)) {
+        throw new Error('Creature target anchor IDs must be unique and non-empty.')
+      }
+      ids.add(anchor.id)
+      if (!validGroupIds.has(anchor.motionGroupId)) {
+        throw new Error(`Target anchor ${anchor.id} references an unknown motion group.`)
+      }
+      if (!Number.isFinite(anchor.localX) || !Number.isFinite(anchor.localY)) {
+        throw new RangeError(`Target anchor ${anchor.id} position must be finite.`)
+      }
+      return Object.freeze({ ...anchor })
+    }),
+  )
+}
+
 export function defineCreature(
   input: CreatureDefinitionInput,
 ): CreatureDefinition {
@@ -346,14 +427,47 @@ export function defineCreature(
     0,
   )
   const bodySlotIds = new Set(input.body.slots.map((slot) => slot.slotId))
-  const bodyMotion = prepareBodyMotionDefinition(input.bodyMotion, bodySlotIds)
+  const topologyComponentBySlotId = Object.freeze(
+    Object.fromEntries(
+      input.body.slots.map((slot) => [slot.slotId, slot.topologyComponentId]),
+    ) as Record<number, string>,
+  )
+  const bodyMotion = prepareBodyMotionDefinition(
+    input.bodyMotion,
+    bodySlotIds,
+    topologyComponentBySlotId,
+  )
+  const targetAnchors = prepareTargetAnchors(input.targetAnchors ?? [], bodyMotion)
+  const damageTopologyTraversalScope =
+    input.damageTopologyTraversalScope ??
+    DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE.CANONICAL_COMPONENT
+  if (
+    damageTopologyTraversalScope !==
+    DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE.CANONICAL_COMPONENT
+  ) {
+    throw new TypeError('Creature damage topology traversal scope is invalid.')
+  }
+  const collapseBehaviorId =
+    input.collapseBehaviorId ?? CREATURE_COLLAPSE_BEHAVIOR.SCATTER
+  if (!Object.values(CREATURE_COLLAPSE_BEHAVIOR).includes(collapseBehaviorId)) {
+    throw new TypeError('Creature collapseBehaviorId is invalid.')
+  }
 
   return Object.freeze({
     ...input,
     bodyMotion,
+    targetAnchors,
+    damageTopologyTraversalScope,
+    collapseBehaviorId,
     broadPhaseRadius:
-      input.body.broadPhaseRadius +
-      maximumMaterialOffset +
-      bodyMotion.maximumOffset,
+      bodyMotion.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.COMPONENT_ORBIT
+        ? calculateComponentOrbitBroadPhaseRadius(
+            input.body.slots,
+            bodyMotion,
+            maximumMaterialOffset,
+          )
+        : input.body.broadPhaseRadius +
+          maximumMaterialOffset +
+          bodyMotion.maximumOffset,
   })
 }

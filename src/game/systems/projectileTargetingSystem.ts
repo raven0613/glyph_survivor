@@ -1,12 +1,43 @@
 import { GAME_CONFIG } from '../runtime/gameConfig.ts'
-import type { ProjectileState } from '../runtime/worldEntities.ts'
+import type { EnemyState, ProjectileState } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { steerProjectileTowardTarget } from './homingSteering.ts'
 import {
   canMaintainTargetLock,
   getStateAfterTargetLoss,
 } from './projectileTrackingRules.ts'
-import { selectBestProjectileTarget } from './targetSelection.ts'
+import { selectBestProjectileTargetLock } from './targetSelection.ts'
+import { getCreatureDefinition } from '../content/gameContent.ts'
+import {
+  resolveCreatureTargetAnchors,
+  writeCreatureTargetAnchor,
+} from './creatureTargetAnchors.ts'
+
+function resolveLockedTarget(
+  world: WorldState,
+  projectile: ProjectileState,
+  target: EnemyState,
+) {
+  if (projectile.targetAnchorId === null) {
+    return target
+  }
+  const anchor = world.lockedTargetAnchorScratch
+  const hasAnchor = writeCreatureTargetAnchor(
+    target,
+    getCreatureDefinition(world.content, target.definitionId),
+    projectile.targetAnchorId,
+    anchor,
+  )
+  if (!hasAnchor) {
+    return null
+  }
+  const trackingTarget = world.lockedTrackingTargetScratch
+  trackingTarget.x = anchor.x
+  trackingTarget.y = anchor.y
+  trackingTarget.radius = 0
+  trackingTarget.phase = target.phase
+  return trackingTarget
+}
 
 export function prepareProjectileTargetingSystem(world: WorldState): void {
   for (const projectile of world.projectiles) {
@@ -19,8 +50,18 @@ export function prepareProjectileTargetingSystem(world: WorldState): void {
         ? undefined
         : world.enemyById.get(projectile.targetEnemyId)
 
-    if (!target || !canMaintainTargetLock(projectile, target)) {
+    if (!target) {
       projectile.targetEnemyId = null
+      projectile.targetAnchorId = null
+      projectile.trackingState = getStateAfterTargetLoss(
+        projectile.trackingMode,
+      )
+      continue
+    }
+    const lockedTarget = resolveLockedTarget(world, projectile, target)
+    if (!lockedTarget || !canMaintainTargetLock(projectile, lockedTarget)) {
+      projectile.targetEnemyId = null
+      projectile.targetAnchorId = null
       projectile.trackingState = getStateAfterTargetLoss(
         projectile.trackingMode,
       )
@@ -41,10 +82,10 @@ function tryAcquireHomingTarget(
   const candidates = world.enemySpatialHash.queryCircle(
     projectile.x,
     projectile.y,
-    projectile.trackingRange,
+    projectile.trackingRange + world.maximumEnemyQueryRadius,
     world.targetCandidates,
   )
-  const target = selectBestProjectileTarget(
+  const targetLock = selectBestProjectileTargetLock(
     candidates,
     projectile.x,
     projectile.y,
@@ -52,19 +93,26 @@ function tryAcquireHomingTarget(
     forwardY,
     projectile.trackingRange,
     -1,
+    (candidate) =>
+      resolveCreatureTargetAnchors(
+        candidate,
+        getCreatureDefinition(world.content, candidate.definitionId),
+        world.targetAnchorCandidates,
+      ),
   )
 
   world.diagnostics.targetSearchCount += 1
   projectile.nextTargetSearchTimeMs =
     world.runTimeMs + projectile.retargetIntervalMs
 
-  if (!target) {
+  if (!targetLock) {
     return
   }
 
-  projectile.targetEnemyId = target.id
+  projectile.targetEnemyId = targetLock.target.id
+  projectile.targetAnchorId = targetLock.anchorId
   projectile.trackingState = 'LOCKED'
-  target.trackingLoad += 1
+  targetLock.target.trackingLoad += 1
   world.diagnostics.targetReacquireCount += 1
 }
 
@@ -118,8 +166,11 @@ export function runProjectileTargetingSystem(
         ? undefined
         : world.enemyById.get(projectile.targetEnemyId)
 
-    if (target) {
-      steerProjectileTowardTarget(projectile, target, deltaMs)
+    const lockedTarget = target
+      ? resolveLockedTarget(world, projectile, target)
+      : null
+    if (lockedTarget) {
+      steerProjectileTowardTarget(projectile, lockedTarget, deltaMs)
     }
   }
 }

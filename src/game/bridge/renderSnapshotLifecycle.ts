@@ -5,6 +5,8 @@ import { clearRenderPlayerState } from './playerRenderSnapshot.ts'
 export function clearRenderSnapshot(snapshot: RenderSnapshot): void {
   clearRenderPlayerState(snapshot)
   snapshot.enemies.length = 0
+  snapshot.enemiesBehind.length = 0
+  snapshot.enemiesFront.length = 0
   snapshot.effects.length = 0
   snapshot.topologyTransferPulses.length = 0
   snapshot.projectiles.length = 0

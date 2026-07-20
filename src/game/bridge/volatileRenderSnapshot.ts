@@ -8,6 +8,10 @@ import { interpolate, isWorldPositionVisible } from './glyphRenderGeometry.ts'
 import type { RenderGlyph } from './renderSnapshot.ts'
 import { writeRenderGlyph } from './renderGlyphBuffer.ts'
 import {
+  writeRhombusCollapsePose,
+  type RhombusCollapsePose,
+} from './rhombusCollapsePresentation.ts'
+import {
   calculateVolatileNeighborJolt,
   calculateVolatileRelease,
   calculateVolatileSourceScale,
@@ -132,6 +136,13 @@ export function writeVolatileCoreOverlays(
     scale: 0,
     alpha: 0,
   }
+  const collapsePose: RhombusCollapsePose = {
+    x: 0,
+    y: 0,
+    rotation: 0,
+    alpha: 0,
+    tint: 0,
+  }
   let outputCount = 0
   diagnostics.activeClusterPointCount = 0
   diagnostics.minimumReadableClusterPointCount = 0
@@ -144,25 +155,42 @@ export function writeVolatileCoreOverlays(
     if (!sourceGlyph || !owner || owner.phase === 'DEAD') {
       continue
     }
-    const sourceX = getGlyphWorldX(
-      interpolate(owner.previousX, owner.x, interpolationAlpha),
-      sourceGlyph,
-    )
-    const sourceY = getGlyphWorldY(
-      interpolate(owner.previousY, owner.y, interpolationAlpha),
-      sourceGlyph,
-    )
-    const disconnected = resolveDisconnectedGlyphMotion(world, sourceGlyph)
-    const volatile = resolveVolatileGlyphPresentation(world, sourceGlyph)
-    const modifierMotion = composeModifierPresentationMotion(
-      disconnected,
-      volatile,
-      world.content.combatVisualTheme.effects.runModifiers.composition,
-    )
-    const presentationX =
-      sourceX + modifierMotion.offsetX
-    const presentationY =
-      sourceY + modifierMotion.offsetY
+    const collapseState = world.rhombusCollapseStates.get(owner.id)
+    const collapsePlan = collapseState?.glyphPlanById.get(sourceGlyph.id)
+    let presentationX: number
+    let presentationY: number
+    if (collapsePlan) {
+      writeRhombusCollapsePose(
+        collapsePose,
+        collapsePlan,
+        owner.collapseDurationMs - owner.collapseRemainingMs,
+        world.content.rhombusBossDefinition.collapseProfile,
+        world.content.combatVisualTheme.effects.rhombus.collapse,
+      )
+      presentationX = collapsePose.x
+      presentationY = collapsePose.y
+    } else {
+      const sourceX = getGlyphWorldX(
+        interpolate(owner.previousX, owner.x, interpolationAlpha),
+        sourceGlyph,
+      )
+      const sourceY = getGlyphWorldY(
+        interpolate(owner.previousY, owner.y, interpolationAlpha),
+        sourceGlyph,
+      )
+      const disconnected = resolveDisconnectedGlyphMotion(world, sourceGlyph)
+      const volatilePresentation = resolveVolatileGlyphPresentation(
+        world,
+        sourceGlyph,
+      )
+      const modifierMotion = composeModifierPresentationMotion(
+        disconnected,
+        volatilePresentation,
+        world.content.combatVisualTheme.effects.runModifiers.composition,
+      )
+      presentationX = sourceX + modifierMotion.offsetX
+      presentationY = sourceY + modifierMotion.offsetY
+    }
     if (!isWorldPositionVisible(presentationX, presentationY, camera)) {
       continue
     }

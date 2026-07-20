@@ -171,6 +171,26 @@ test('accepts Modifier offer origins only in their authorized lifecycle path', (
   assert.equal(runningActor.getSnapshot().value, GAME_PHASE.RUNNING)
 })
 
+test('keeps a one-choice Boss Modifier offer paused until explicit commit', () => {
+  const actor = startRunningActor()
+  const onlyChoice = modifierChoices[2]
+
+  actor.send({
+    type: 'MODIFIER_OFFERED',
+    offerId: 'boss-single-modifier-offer',
+    origin: 'BOSS_REWARD',
+    choices: [onlyChoice],
+  })
+
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_MODIFIER)
+  assert.deepEqual(actor.getSnapshot().context.modifierChoices, [onlyChoice])
+  actor.send({ type: 'RESUME_REQUESTED' })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.PAUSED_MODIFIER)
+
+  actor.send({ type: 'MODIFIER_COMMITTED', choiceId: onlyChoice.id })
+  assert.equal(actor.getSnapshot().value, GAME_PHASE.RUNNING)
+})
+
 test('moves directly from a Boss Modifier decision into a pending XP decision', () => {
   const actor = startRunningActor()
   const observedPhases: unknown[] = []

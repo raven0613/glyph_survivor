@@ -158,3 +158,27 @@ test('a later Boss offer falls back to two choices after one of three definition
     false,
   )
 })
+
+test('a later Boss offer contains the only remaining unowned definition', () => {
+  const definitions = prepareGameContent().runModifierDefinitions
+  const state = createRunModifierState('one-choice')
+  state.ownedDefinitionIds.add(definitions[0].id)
+  state.ownedDefinitionIds.add(definitions[1].id)
+
+  const offer = createBossRewardModifierOffer(definitions, state, 8)
+
+  assert.equal(offer.choices.length, 1)
+  assert.equal(offer.choices[0].definitionId, definitions[2].id)
+  assert.equal(offer.origin, RUN_MODIFIER_OFFER_ORIGIN.BOSS_REWARD)
+})
+
+test('rejects a Boss reward when no unowned Modifier definition remains', () => {
+  const definitions = prepareGameContent().runModifierDefinitions
+  const state = createRunModifierState('zero-choice')
+  definitions.forEach(({ id }) => state.ownedDefinitionIds.add(id))
+
+  assert.throws(
+    () => createBossRewardModifierOffer(definitions, state, 9),
+    /at least one unowned Run Modifier/i,
+  )
+})

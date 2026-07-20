@@ -1,13 +1,21 @@
-import { getPrintableAsciiGlyphFrame } from './glyphFrame.ts'
+import {
+  GLYPH_FONT_BANK,
+  getGlyphAtlasFrame,
+  type GlyphFontBankId,
+} from './glyphFontBank.ts'
 import type { GlyphMaterialId } from './glyphMaterial.ts'
 
 export type GlyphBodySlotRole = 'BODY' | 'EYE' | 'HEAD'
+
+export const DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID = 'BODY'
 
 export interface GlyphBodySlotInput {
   readonly slotId: number
   readonly role: GlyphBodySlotRole
   readonly character: string
   readonly baseCharacter?: string
+  readonly topologyComponentId?: string
+  readonly fontBankId?: GlyphFontBankId
   readonly topologyX: number
   readonly topologyY: number
   readonly localX: number
@@ -36,7 +44,13 @@ export interface GlyphBodyInput {
   readonly poses?: readonly GlyphBodyPoseInput[]
 }
 
-export interface GlyphBodySlotDefinition extends GlyphBodySlotInput {
+export interface GlyphBodySlotDefinition
+  extends Omit<
+    GlyphBodySlotInput,
+    'topologyComponentId' | 'fontBankId'
+  > {
+  readonly topologyComponentId: string
+  readonly fontBankId: GlyphFontBankId
   readonly glyphFrame: number
   readonly baseCharacter: string
   readonly baseGlyphFrame: number
@@ -139,18 +153,26 @@ export function defineGlyphBody(input: GlyphBodyInput): GlyphBodyDefinition {
     }
     slotIds.add(slot.slotId)
 
+    const topologyComponentId =
+      slot.topologyComponentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID
+    if (topologyComponentId.trim().length === 0) {
+      throw new TypeError('topologyComponentId must not be empty.')
+    }
+    const fontBankId = slot.fontBankId ?? GLYPH_FONT_BANK.BASE
+
     requireFiniteNumber(slot.localX, 'localX')
     requireFiniteNumber(slot.localY, 'localY')
     requireFiniteNumber(slot.topologyX, 'topologyX')
     requireFiniteNumber(slot.topologyY, 'topologyY')
-    const topologyCoordinateKey = `${slot.topologyX},${slot.topologyY}`
+    const topologyCoordinateKey =
+      `${topologyComponentId}:${slot.topologyX},${slot.topologyY}`
     if (occupiedTopologyCoordinates.has(topologyCoordinateKey)) {
       throw new Error(
         `Glyph body ${input.id} has duplicate topology coordinate ${topologyCoordinateKey}.`,
       )
     }
     occupiedTopologyCoordinates.add(topologyCoordinateKey)
-    const coordinateKey = `${slot.localX},${slot.localY}`
+    const coordinateKey = `${topologyComponentId}:${slot.localX},${slot.localY}`
     if (occupiedCoordinates.has(coordinateKey)) {
       throw new Error(
         `Glyph body ${input.id} has duplicate occupied coordinate ${coordinateKey}.`,
@@ -171,9 +193,11 @@ export function defineGlyphBody(input: GlyphBodyInput): GlyphBodyDefinition {
     const baseCharacter = slot.baseCharacter ?? slot.character
     return Object.freeze({
       ...slot,
-      glyphFrame: getPrintableAsciiGlyphFrame(slot.character),
+      topologyComponentId,
+      fontBankId,
+      glyphFrame: getGlyphAtlasFrame(fontBankId, slot.character),
       baseCharacter,
-      baseGlyphFrame: getPrintableAsciiGlyphFrame(baseCharacter),
+      baseGlyphFrame: getGlyphAtlasFrame(fontBankId, baseCharacter),
     })
   })
 

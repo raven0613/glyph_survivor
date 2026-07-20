@@ -12,6 +12,7 @@ export interface SpawnProjectileInput {
   readonly directionY: number
   readonly profile: ResolvedWeaponProfile
   readonly targetEnemyId: number | null
+  readonly targetAnchorId?: string | null
 }
 
 /** Copies all weapon-owned values needed by one independent projectile. */
@@ -63,6 +64,7 @@ export function spawnProjectile(
           ? ('BALLISTIC' as const)
           : ('SEEKING' as const),
     targetEnemyId: input.targetEnemyId,
+    targetAnchorId: input.targetAnchorId ?? null,
     launchDirectionX: input.directionX,
     launchDirectionY: input.directionY,
     trackingRange: trackingProfile.range,

@@ -24,14 +24,17 @@ import type {
   EnemyState,
   ExperienceDropState,
   FlameEmitterState,
+  FirstWaveBossSpawnState,
+  CreatureTargetAnchorPosition,
+  CreatureTrackingTargetPosition,
   InputState,
   OrbitAttackState,
   PendingDamageTransferState,
   PlayerState,
   ProjectileState,
-  SpawnSide,
   TopologyTransferPulseState,
 } from './worldEntities.ts'
+import { initializeComponentOrbitState } from './componentOrbitState.ts'
 import { createUpgradeState, type UpgradeState } from './upgradeState.ts'
 import {
   createPlayerDamageStepOutcome,
@@ -71,6 +74,12 @@ import {
   createWorldDiagnostics,
   type WorldDiagnostics,
 } from './worldDiagnostics.ts'
+import type {
+  HostileProjectileState,
+  HostileProjectileSweepSample,
+  RhombusSpiralAttackState,
+} from './hostileProjectileState.ts'
+import type { RhombusCollapseState } from './rhombusCollapseState.ts'
 
 export type { WorldDiagnostics } from './worldDiagnostics.ts'
 
@@ -90,6 +99,7 @@ export interface WorldState {
   readonly deathReview: PlayerDeathReviewState
   readonly input: InputState
   readonly glyphStore: GlyphStore
+  readonly glyphDiagnosticSeenIds: Set<number>
   readonly glyphDamageQueue: GlyphDamageQueue
   readonly damageResolutionScratch: DamageResolutionScratch
   readonly damageCandidates: EnemyState[]
@@ -105,6 +115,11 @@ export interface WorldState {
   readonly topologyDirtyOwnerIds: Set<number>
   readonly projectiles: ProjectileState[]
   readonly projectilePool: ProjectileState[]
+  readonly hostileProjectiles: HostileProjectileState[]
+  readonly hostileProjectilePool: HostileProjectileState[]
+  readonly hostileProjectileSweepSample: HostileProjectileSweepSample
+  readonly rhombusAttackStates: Map<number, RhombusSpiralAttackState>
+  readonly rhombusCollapseStates: Map<number, RhombusCollapseState>
   readonly drops: ExperienceDropState[]
   readonly dropPool: ExperienceDropState[]
   readonly flameEmitters: FlameEmitterState[]
@@ -118,6 +133,9 @@ export interface WorldState {
   readonly playerDamageStepOutcome: PlayerDamageStepOutcome
   readonly spawnCandidates: EnemyState[]
   readonly targetCandidates: EnemyState[]
+  readonly targetAnchorCandidates: CreatureTargetAnchorPosition[]
+  readonly lockedTargetAnchorScratch: CreatureTargetAnchorPosition
+  readonly lockedTrackingTargetScratch: CreatureTrackingTargetPosition
   readonly diagnostics: WorldDiagnostics
   readonly ordinaryEnemyProgressionState: OrdinaryEnemyProgressionState
   viewportWidth: number
@@ -139,8 +157,7 @@ export interface WorldState {
   maximumEnemyQueryRadius: number
   maximumEnemyStepDistance: number
   firstWaveStarted: boolean
-  pendingBossSpawnSide: SpawnSide | null
-  slimeBossSpawned: boolean
+  readonly firstWaveBossSpawns: FirstWaveBossSpawnState
   runResult: Readonly<RunResult> | null
 }
 
@@ -214,6 +231,7 @@ export function createWorldState(
         diagnostics.glyphPoolMisses += 1
       },
     }),
+    glyphDiagnosticSeenIds: new Set(),
     glyphDamageQueue: createGlyphDamageQueue(),
     damageResolutionScratch: createDamageResolutionScratch(),
     damageCandidates: [],
@@ -229,6 +247,17 @@ export function createWorldState(
     topologyDirtyOwnerIds: new Set(),
     projectiles: [],
     projectilePool: [],
+    hostileProjectiles: [],
+    hostileProjectilePool: [],
+    hostileProjectileSweepSample: {
+      x: 0,
+      y: 0,
+      tangentX: 0,
+      tangentY: 0,
+      tangentRotation: 0,
+    },
+    rhombusAttackStates: new Map(),
+    rhombusCollapseStates: new Map(),
     drops: [],
     dropPool: [],
     flameEmitters: [],
@@ -242,6 +271,14 @@ export function createWorldState(
     playerDamageStepOutcome: createPlayerDamageStepOutcome(),
     spawnCandidates: [],
     targetCandidates: [],
+    targetAnchorCandidates: [],
+    lockedTargetAnchorScratch: { id: null, x: 0, y: 0 },
+    lockedTrackingTargetScratch: {
+      x: 0,
+      y: 0,
+      radius: 0,
+      phase: 'ACTIVE',
+    },
     diagnostics,
     ordinaryEnemyProgressionState: createOrdinaryEnemyProgressionState(),
     viewportWidth,
@@ -263,8 +300,10 @@ export function createWorldState(
     maximumEnemyQueryRadius: content.maximumEnemyBroadPhaseRadius,
     maximumEnemyStepDistance: 0,
     firstWaveStarted: false,
-    pendingBossSpawnSide: null,
-    slimeBossSpawned: false,
+    firstWaveBossSpawns: {
+      slime: { pendingSide: null, committedEnemyId: null },
+      rhombus: { pendingSide: null, committedEnemyId: null },
+    },
     runResult: null,
   }
 }
@@ -305,6 +344,8 @@ export function spawnEnemy(
   }
 
   const activeEnemy = enemy ?? ({} as EnemyState)
+  const componentOrbitStates = activeEnemy.componentOrbitStates ?? []
+  componentOrbitStates.length = 0
   const enemyId = getNextEntityId(world)
   const body = definition.body
   for (const slot of body.slots) {
@@ -316,6 +357,7 @@ export function spawnEnemy(
       baseCharacter: slot.baseCharacter,
       baseGlyphFrame: slot.baseGlyphFrame,
       role: slot.role,
+      topologyComponentId: slot.topologyComponentId,
       topologyX: slot.topologyX,
       topologyY: slot.topologyY,
       localX: slot.localX,
@@ -345,6 +387,7 @@ export function spawnEnemy(
     bodyMotionFacing: -1,
     bodyMotionTargetFacing: -1,
     bodyMotionTurnProgress: 0,
+    componentOrbitStates,
     layoutMode: 'AUTHORED' as const,
     phase: 'MATERIALIZING' as const,
     materializeRemainingMs: materializeDurationMs,
@@ -362,6 +405,11 @@ export function spawnEnemy(
   })
   world.enemies.push(activeEnemy)
   world.enemyById.set(activeEnemy.id, activeEnemy)
+  initializeComponentOrbitState(
+    activeEnemy,
+    definition,
+    world.glyphStore,
+  )
   if (definition.category === 'BOSS') {
     world.bossEncounters.set(enemyId, {
       id: enemyId,
@@ -390,6 +438,8 @@ export function spawnSplitEnemy(
     world.diagnostics.enemyPoolMisses += 1
   }
   const enemy = pooledEnemy ?? ({} as EnemyState)
+  const componentOrbitStates = enemy.componentOrbitStates ?? []
+  componentOrbitStates.length = 0
   const id = getNextEntityId(world)
   Object.assign(enemy, {
     id,
@@ -409,6 +459,7 @@ export function spawnSplitEnemy(
     bodyMotionFacing: -1,
     bodyMotionTargetFacing: -1,
     bodyMotionTurnProgress: 0,
+    componentOrbitStates,
     layoutMode: 'COMPILED' as const,
     phase: 'REASSEMBLING' as const,
     materializeRemainingMs: 0,

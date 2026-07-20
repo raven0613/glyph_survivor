@@ -26,6 +26,7 @@ function createCell(
   topologyX: number,
   state: DamageSelectionCell['state'],
   options: {
+    readonly topologyComponentId?: string
     readonly topologyY?: number
     readonly worldX?: number
     readonly worldY?: number
@@ -36,6 +37,7 @@ function createCell(
   return {
     id,
     state,
+    topologyComponentId: options.topologyComponentId ?? 'BODY',
     topologyX,
     topologyY,
     worldX: options.worldX ?? topologyX * 20,
@@ -43,6 +45,26 @@ function createCell(
     collisionRadius: options.collisionRadius ?? 8,
   }
 }
+
+test('does not transfer damage between authored canonical components', () => {
+  const detachedHusk = createCell(1, 0, GLYPH_CELL_STATE.HUSK, {
+    topologyComponentId: 'SATELLITE',
+  })
+  const mainLivingCell = createCell(2, 1, GLYPH_CELL_STATE.HEALTHY, {
+    topologyComponentId: 'MAIN',
+  })
+
+  const selection = selectGlyphDamage(
+    [detachedHusk, mainLivingCell],
+    circleAtOrigin(),
+    DAMAGE_TARGET_MODE.SINGLE,
+    FIXED_RIGHT,
+  )
+
+  assert.deepEqual(selection.impactCells.map((cell) => cell.id), [1])
+  assert.deepEqual(selection.immediateDamageTargets, [])
+  assert.deepEqual(selection.frontierTransfers, [])
+})
 
 function circleAtOrigin(radius = 2) {
   return { kind: 'CIRCLE', x: 0, y: 0, radius } as const

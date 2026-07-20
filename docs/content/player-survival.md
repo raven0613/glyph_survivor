@@ -12,6 +12,7 @@
 - Health、Shield Layers、shield recharge 與 global damage invulnerability；
 - 從任何完整 Gameplay 暫停恢復至戰場時的共用 player resume invulnerability；
 - 玩家和普通怪／Boss 權威 Glyph 輪廓的接觸受傷；
+- 共用 hostile projectile source adapter，以及 RHOMBUS `<>` 的曲線 swept collision／incoming damage；
 - 生命受擊、護盾常駐／受擊／回復的 rendering-only 玩家 presentation；
 - 玩家死亡、`DEATH_REVIEW` 戰場回看、手動進入 `GAME_OVER`、不可變 run result 與停止 simulation；
 - 每局時間、正式擊殺數、Weapon Instance 傷害／裝備時間／平均 DPS 統計；
@@ -19,7 +20,6 @@
 
 本次不實作：
 
-- 怪物投射物與其 presentation；
 - 藥水、生命自動回復、最大生命、護盾流派等卡片或掉落物；
 - 直接攻擊生命值的實際怪物內容；
 - 廣告 SDK、廣告請求或假廣告內容。
@@ -55,7 +55,7 @@ React 只讀取 UI-sized immutable summaries 並送出明確 command。Renderer 
 | `deathReviewEnemyWanderSpeedMultiplier` | `DEATH_REVIEW` 無目標游走速度相對於各 Creature Definition maximum speed 的倍率；必須是有限正值 |
 | `deathReviewEnemyWanderTurnResponsiveness` | `DEATH_REVIEW` 中目前速度轉向下一個游走方向的平滑響應；必須是有限正值 |
 
-Creature contact damage 保留在各 validated Creature Definition 的 `contactDamage`，不搬入 Player config，也不在本文、Boss sheet 或 enemy sheet 複製。未來 hostile projectile 的 damage／routing 由 projectile content authoring。戰鬥色彩、alpha、光暈、粒子、震動與 hit feedback timing 仍由集中 combat visual theme 管理；本文只保存淺藍護盾等語意身份，不保存色碼、時間、數量、距離、速度或強度 default。
+Creature contact damage 保留在各 validated Creature Definition 的 `contactDamage`，不搬入 Player config，也不在本文、Boss sheet 或 enemy sheet 複製。Hostile projectile 的 damage／routing 由各 projectile content authoring；第一個已定義的 RHOMBUS `<>` profile 詳見 [`rhombus-boss.md`](rhombus-boss.md)。戰鬥色彩、alpha、光暈、粒子、震動與 hit feedback timing 仍由集中 combat visual theme 管理；本文只保存淺藍護盾等語意身份，不保存色碼、時間、數量、距離、速度或強度 default。
 
 任何後續新增的可調生存數值，都必須先成為有名稱、可驗證的 config／content field；不得寫在 system magic number、React component、renderer 或文件範例中。
 
@@ -96,9 +96,22 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 5. 被接受事件依 route 原子修改 Shield／Health，記錄最近受擊 simulation timestamp，並把 invulnerability deadline 設為 config 定義的時間。
 6. 修改後立即檢查 Health；死亡條件不能等到 render frame 或 React effect 才成立。
 
-敵方投射物之後加入時只能新增 source adapter，不能建立另一套玩家扣血、無敵或護盾邏輯。
+敵方投射物加入時只能新增 source adapter，不能建立另一套玩家扣血、無敵或護盾邏輯。
 
 本里程碑所有 creature contact candidates 使用 `SHIELD_FIRST`。未來若某個接觸、投射物或主動能力要直接攻擊 Health，必須由該攻擊 content 明確 author `HEALTH_ONLY`，不能由物種名稱、Glyph 字元或 renderer presentation 推測。
+
+### Hostile projectile source adapter
+
+RHOMBUS `<>` 是首個共用 hostile projectile，遵守：
+
+- Incoming-damage candidate buffer 每個 fixed step 只在共同 collection boundary reset 一次。Creature-contact collector 與 hostile-projectile collector 都只能 append；所有來源完成後才由同一 resolver stable sort 並解析。
+- 一枚 `<>` 是一個 Runtime-owned projectile 與 stable event ID；只有它成為 `ACTIVE` 並取得合法 precise overlap 時，才最多 append 一筆 candidate。`<`、`>` 只是同一 projectile 的兩個 Glyph views，不能各 append 一次 damage。
+- 每波先形成的完整等角尖刺圓環屬於 Runtime-owned `STAGED_IN_RING` state。等待中的 `<>` 只提供可讀的發射預告，不進 hostile-projectile broad phase、不做 precise overlap，也不能 append incoming-damage candidate；只有依序切換為 `ACTIVE` 後才取得碰撞／傷害身分。
+- Curved-path previous／current position、tangent、alive state 與 swept collision 都由 Runtime 權威持有；Renderer 不得從動畫曲線、Sprite overlap 或 glyph rotation 決定命中。
+- Damage amount 與 route 只讀 prepared hostile-attack content。RHOMBUS 首版明確使用 `SHIELD_FIRST`；若未來改為 `HEALTH_ONLY`，必須修改其 authoring definition 與產品契約。
+- Survival resolver 只決定 incoming-damage candidate 是否被接受及其 Shield／Health route，不擁有 projectile lifetime。RHOMBUS 尖刺第一次通過 precise swept physical overlap 時便由 hostile-projectile lifecycle 標記為 spent；broad-phase candidate 本身不消耗。
+- 即使 global invulnerability 讓該 precise-overlap candidate 被忽略，尖刺仍已消耗，不能停留到無敵結束後再次命中。被忽略的 candidate 仍不消耗 Shield、不扣 Health、不重設 recharge，也不產生 accepted-hit presentation。
+- RHOMBUS 進入 `COLLAPSING` 的同一步，圓環中尚未釋放與全部在途尖刺都凍結在當下權威位置、失去 collision／damage identity，再由短促粒子消散與快速 fade-out 完成 presentation；它們不得阻擋 Boss collapse、reward 或 cleanup。
 
 ### 暫停後恢復無敵
 
@@ -117,6 +130,7 @@ Creature contact damage 保留在各 validated Creature Definition 的 `contactD
 - Glyph world position 必須包含 creature root、layout anchor、Body Motion 與 Material deformation。Renderer position 不得回寫或代替判定。
 - `HEALTHY`、`DAMAGED` 與 `HUSK` 在 owner 仍具 Gameplay collision 時都參與完整輪廓；局部變成 Husk 不會縮小玩家面對的接觸範圍。
 - 同一 creature owner 即使同時有多個 Glyph 接觸玩家，每個 fixed step 也只產生一個 contact candidate，damage amount 來自該 prepared Creature Definition 的 `contactDamage`。
+- RHOMBUS 的主菱形、次菱形與單格方塊雖是三個 canonical components，仍屬同一 owner；三個部位同一步同時接觸也只能產生一筆 candidate。Orbit positional offset 參與權威 hitbox，front／behind depth band 與主體遮擋則完全不影響 collision。
 - 不同 owners 產生不同 candidates，再交由全域 stable ordering 與 invulnerability gate 決定是否接受。
 - 目前只有明確具戰鬥碰撞的 active creature phases 會造成接觸候選。文字聚合生成、`COLLAPSING`、`INACTIVE`、`DEAD`／`DEFEATED` 不造成玩家傷害；Slime `REASSEMBLING` 沿用其已確認的 Gameplay collision 契約。
 - 接觸查詢在 fixed step 內必須位於權威 root movement、Body Motion 與 deformation position 更新之後。
@@ -166,6 +180,7 @@ RUNNING → DEATH_REVIEW（轉身 → 躺地等待 → 顯示按鈕；戰場持�
 - 已在死亡當步正式 commit 的傷害、擊殺、裝備時間與死亡結果保留並立即凍結。`DEATH_REVIEW` 經過的時間不屬於本場 Gameplay time，也不得改寫 death-time run result。
 - 若死亡、Boss Modifier reward 與 level-up／upgrade trigger 落在同一 fixed step，優先序固定為 `PLAYER_DIED > MODIFIER_REWARD > XP_UPGRADE`。死亡成立時不得先開啟或保留 `PAUSED_MODIFIER`／`PAUSED_UPGRADE` overlay，也不得消耗 pending Modifier／upgrade transaction。
 - `DEATH_REVIEW` 不是全域暫停。玩家移動、輸入、武器 emission、player-owned authoritative attacks、incoming player damage、XP／upgrade、掉落獎勵與所有 run statistics 停止；玩家不再具有可受擊或可造成傷害的 Gameplay 身分。
+- 進入 `DEATH_REVIEW` 時，所有 hostile-attack schedulers 停止，現存 hostile projectiles 立即失去 damage 與 player-collision identity。若死亡回看仍保留其短暫移動／淡出，只能作為不會產生 candidate、reward 或 statistics mutation 的 rendering-only presentation。
 - 為保留可截圖的活戰場，死亡當下已存在的怪物仍由 Runtime 繼續其移動、Body Motion、materialization、reassembly 與已開始的 collapse presentation，rendering-only 戰場效果也可繼續。Director 不再生成新怪，且這段回看不得產生新的 combat damage、reward、XP、kill count 或 run-result mutation。
 - 進入 `DEATH_REVIEW` 時，所有怪物必須立即解除玩家 target；不得繼續讀取玩家的死亡座標、把倒地玩家當作 steering target，或因此逐漸聚集在屍體周圍。`ACTIVE` 怪物改用 phase-specific 的無目標游走，`MATERIALIZING`／`REASSEMBLING` 怪物完成既有階段後也進入同一游走；已進入 `COLLAPSING` 的怪物只完成崩解 presentation，不重新取得移動行為。
 - 無目標游走由 Runtime 依 run seed、stable Creature ID 與 death-review time 產生彼此錯開的方向，使用各物種既有 maximum speed／Body Motion 身分，再套用 death-review config 的速度、轉向與換向間隔。切換 phase 時不得瞬移或把速度歸零，而是從當下 velocity 平滑轉向第一個游走方向；移動仍須留在既有 world bounds 內。相同 seed 與狀態必須可重現；不得每幀取亂數、共同追逐一個隱藏 wander target，或讓 Renderer 私自位移怪物。
@@ -255,6 +270,13 @@ Run result 在致命傷成立時已建立並凍結，但只在接受 `enterRunRe
 - 被接受的 shield hit 重設 recharge 並啟動 invulnerability，被 invulnerability 忽略的 hit 不會；
 - shield recharge 只讀 RUNNING simulation time、保留 interval overflow 並停止於 maximum；
 - 同 owner 多 Glyph 接觸只產生一個 candidate，Husk 仍參與 active outline；
+- RHOMBUS 三個 canonical components 同時接觸仍只產生一筆 owner candidate，orbit position 會改變 precise collision 而 depth band 不會；
+- Creature contact 與 hostile projectile collectors 共用一個只重設一次的 candidate buffer，並由同一 resolver stable sort／解析；
+- 一枚 RHOMBUS `<>` 即使有兩個 Glyph views 也只產生一筆 candidate，curved swept collision 不會因 fixed-step 位移穿過玩家；
+- RHOMBUS 每波完整等角圓環中的 staged 尖刺不產生 candidate；只有按穩定圓周順序釋放為 active 後才參與 swept collision；
+- RHOMBUS 尖刺在 global invulnerability 期間第一次 precise overlap 仍只消耗一次，不能在無敵結束後再次命中；broad-phase candidate 不消耗 projectile；
+- RHOMBUS 進入 `COLLAPSING` 時，圓環中尚未釋放與在途尖刺都在同一步凍結並失去 collision／damage identity，後續粒子消散與 fade-out 不得修改玩家生命或延後 reward；
+- 玩家進入 `DEATH_REVIEW` 後，現存 hostile projectiles 不再造成 damage 或改寫 run result；
 - 多 owner 同步接觸使用 stable ordering，且不能在同一 invulnerability window 批次扣血；
 - `PAUSED_MENU`、`PAUSED_UPGRADE`、`PAUSED_MODIFIER` 與未來註冊在同一 pause classification 的 phase，只有在run已執行過`RUNNING` fixed step後再實際轉回`RUNNING`時，才於下一個fixed step前授予一次resume invulnerability；普通初次開局、run-start testing Modifier選擇、非暫停overlay與重複resume不授予；
 - queued Modifier／upgrade decisions 中途不短暫恢復或重複授予；最終恢復時的 deadline 與既有受擊無敵取較晚者，且不改寫 accepted-hit identity、受擊 presentation 或 shield recharge 排程；

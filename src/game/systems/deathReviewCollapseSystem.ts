@@ -1,4 +1,5 @@
 import type { WorldState } from '../runtime/worldState.ts'
+import { updateCreatureCollapsePresentation } from './creatureCollapseSystem.ts'
 
 function finishEncounterCollapse(
   world: WorldState,
@@ -35,6 +36,7 @@ export function runDeathReviewCollapseSystem(
     for (const enemy of world.enemies) {
       if (enemy.encounterId === encounter.id) {
         enemy.collapseRemainingMs = encounter.collapseRemainingMs
+        updateCreatureCollapsePresentation(world, enemy)
       }
     }
     if (encounter.collapseRemainingMs === 0) {
@@ -50,6 +52,7 @@ export function runDeathReviewCollapseSystem(
       0,
       enemy.collapseRemainingMs - deltaMs,
     )
+    updateCreatureCollapsePresentation(world, enemy)
     if (enemy.collapseRemainingMs === 0) {
       enemy.phase = 'DEAD'
       enemy.rewardCommitted = true

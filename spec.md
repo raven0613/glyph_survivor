@@ -69,7 +69,7 @@
 - 系統保留可直接傷害生命值的明確 damage route，供未來怪物能力使用；它不能靠臨時條件偷偷繞過護盾。
 - 護盾在一段沒有被接受受擊的 Gameplay simulation time 後逐層回復。任何完整 Gameplay 暫停、死亡回看與結算期間都不推進回復或無敵時間。
 - 一局進行中，只要從任何會完全停止一般 Gameplay simulation 的權威暫停狀態回到戰場，玩家都必須在 config 定義的一小段 RUNNING simulation time 內具有全域受傷無敵。這是所有暫停 phase 共用的 resume 契約，不綁定升級系統；初次開局、死亡回看、結算或單純顯示 UI 都不算從暫停恢復。
-- 目前玩家因碰觸具戰鬥碰撞的怪物完整 Glyph 輪廓而受傷；敵方投射物延後實作，但未來必須走同一套 incoming-player-damage 契約。
+- 目前玩家因碰觸具戰鬥碰撞的怪物完整 Glyph 輪廓而受傷；`RHOMBUS` 的 `<>` 螺旋尖刺則是第一個使用共用 hostile projectile Runtime 的敵方投射物內容，仍必須走同一套 incoming-player-damage 契約，不得建立第二套扣血、護盾或無敵邏輯。等待於初始圓環的尖刺尚未取得碰撞／傷害身分；逐枚釋放後，尖刺第一次 precise swept overlap 就消耗，即使該次傷害被全域無敵忽略也不能留到之後重擊。RHOMBUS 進入 `COLLAPSING` 時，圓環中尚未釋放與所有在途尖刺都立即凍結、失去傷害身分並以短粒子與快速 fade-out 消散。
 - 無論還有多少護盾，只要生命值歸零，玩家就立即死亡並進入 `DEATH_REVIEW`，而不是直接顯示結算。死亡當下凍結本局 Gameplay time、統計與 immutable run result；玩家失去移動、攻擊與受擊身分，現存怪物則立即解除玩家 target，不得繼續追向死亡座標或聚集在屍體周圍，而是改為各自錯開、可重現的無目標游走，同時保留 Body Motion 與允許的生命週期演出，讓戰場保持動態供玩家截圖。玩家 Glyph 轉四分之一圈躺地，經過 config 定義的躺地等待後顯示「進入結算」按鈕；只有玩家按下該操作才進入 `GAME_OVER` 與結算畫面，等待期間不得自動跳轉或產生新的戰鬥結果。
 
 實際降低生命值的 accepted hit 以玩家閃爍、rendering-only 的 `.` Glyph 碎片與不影響權威位置的小震動呈現。只要仍有至少一層護盾，玩家身邊固定只顯示一對帶輕微光暈的淺藍語意括號，形成 `(@)`；左右括號各自具有以括號本身為中心的獨立霧面光暈，不合成以玩家為中心的共同 aura，也不以模糊字形製造實體殘影。精確層數仍由 HUD 顯示。護盾受擊後若仍有層數，括號只震動而不消失；最後一層被消耗時才震動並向左右外側 fade out。護盾由零回復為正值時，括號從玩家中心淡入並展開至常駐位置；已有括號時不因其他層回復而疊加另一對。這些效果都不參與 Gameplay，所有實際顏色與可調 presentation 數值只存在集中、可驗證的 visual theme config，不寫入產品文件或 renderer magic number。
@@ -137,7 +137,7 @@ SLIMESLIMESLIME...
 - `ROCK`：固定由 `RO／CK` 的 2 × 2 Body Blueprint 組成。往右移動時四個穩定 Glyph 依 `RO／CK → CR／KO → KC／OR → OK／RC` 順時針滾動，往左則反向；轉向必須從當前 pose 連續倒播，不交換字元、Glyph ID、Durability 或 canonical topology。完整一圈的 active 旋轉時間與每個 90° 落點後的停頓時間是兩個獨立 content parameters，延長停頓不得連帶拖慢翻轉。
 - `SNAKE`：`S` 是永遠不變的頭部，neutral body 為微抬起的 `S` 加上水平直線的 `NAKE`。往左時 `S` 位於左端，往右時五個穩定 Glyph 的位置鏡像為畫面上的 `EKANS`，但 `E` 不會成為頭；轉身不得瞬移。移動節拍固定以穩定的 `K` Glyph 為擠壓中心：`S-N-A` 作為一組保持內部相對排列並沿 body axis 靠近 `E`，`E` 同時從另一側靠近該組，夾在中間的同一個 `K` 只沿畫面 y 軸向上抬起，形成被擠出來的卡通姿態。極短 hold 後，`K` 回到基線、兩側俐落拉直並乾淨收勢。擠壓中心不得沿 chain 移動，左右鏡像後仍必須由同一個 `K` 上抬，也不能退化成多重 sine wave。
 
-首批普通敵人同屬一個發亮／視覺優先階級，但各自使用可辨識的暗色基礎色系：`Z` 使用偏暗綠色系、`BO` 使用暗骨白／偏暖中性灰色系、`BAT` 使用偏暗且彩度稍高的深紫色系、`ROCK` 使用與骨頭區隔的偏冷岩灰色系、`SNAKE` 使用偏暗且具有辨識彩度的青綠色系。正常、直接受擊的 primary feedback 與 `HUSK` 都必須沿用該物種自己的色系；Damage Spread 的專屬 secondary feedback 是明確例外，改為沿用來源玩家攻擊的色系。這裡的「同階級」是指各狀態使用相同的發亮強度與優先順序，不是要求不同色相具有相同的基礎明度或接近一致的最終有效亮度；不得為了數值對齊而把後期怪物調成淺色、粉彩或低彩度。`SLIME` 使用暗而飽和的綠色基底並採 Boss 發亮階級，其亮度強調應比普通敵人稍強，但仍低於玩家攻擊，也不需要把本體調成淺綠。精確 color、alpha、基礎色範圍與發亮強度只存在集中管理且可驗證的 Battlefield Visual Theme config，不在產品文件重複固定數值。
+首批普通敵人同屬一個發亮／視覺優先階級，但各自使用可辨識的暗色基礎色系：`Z` 使用偏暗綠色系、`BO` 使用暗骨白／偏暖中性灰色系、`BAT` 使用偏暗且彩度稍高的深紫色系、`ROCK` 使用與骨頭區隔的偏冷岩灰色系、`SNAKE` 使用偏暗且具有辨識彩度的青綠色系。正常、直接受擊的 primary feedback 與 `HUSK` 都必須沿用該物種自己的色系；Damage Spread 的專屬 secondary feedback 是明確例外，改為沿用來源玩家攻擊的色系。這裡的「同階級」是指各狀態使用相同的發亮強度與優先順序，不是要求不同色相具有相同的基礎明度或接近一致的最終有效亮度；不得為了數值對齊而把後期怪物調成淺色、粉彩或低彩度。`SLIME` 使用暗而飽和的綠色基底；`RHOMBUS` 使用暗而有重量的黃沙色基底。兩者都採 Boss 發亮階級，其亮度強調應比普通敵人稍強但仍低於玩家攻擊，也不得靠洗成淺色或低彩度偽造 Boss 階級。精確 color、alpha、基礎色範圍與發亮強度只存在集中管理且可驗證的 Battlefield Visual Theme config，不在產品文件重複固定數值。
 
 一局開始後，普通敵人的首次出場順序固定為：
 
@@ -262,8 +262,9 @@ Damage Targets 是本次實際降低 Current Durability 的 `HEALTHY` 或 `DAMAG
 2. 優先選擇 Damage Shape 內的 `HEALTHY`／`DAMAGED` Cells。
 3. 若仍未補足 quota，每個被命中的 `HUSK` Impact Cell 先依該次攻擊的 authoritative traversal direction，沿向前的直線方向尋找同一 body 內第一個 `HEALTHY`／`DAMAGED` Cell。候選必須位於來源 Cell 前方，且其 authoritative Glyph Circle 與該方向射線相交；先選沿射線最早相交者，再以較小橫向偏差、較短 topology distance 與穩定 Glyph ID 裁決。這個方向優先會讓點狀攻擊先沿軌跡鑽出一條洞。
 4. 只有當該來源 Husk 的向前射線已找不到任何存活 Cell，才代表這條方向通道已經鑽通；此時才改用 canonical Glyph topology distance，選擇最近的存活 frontier Cell，讓後續命中從洞口向旁邊蠶食。不得因側邊 Cell 的 topology distance 較短，就搶在仍存在的前方存活 Cell之前受傷。
-5. 每個 `HEALTHY`／`DAMAGED` Cell 在同一次攻擊中最多成為一次 Damage Target；若多個 Husk source 指向同一目標，依穩定來源順序保留第一條，其他來源繼續尋找下一個合法方向候選或 fallback。若整個 body 的存活 Cells 少於 quota，就只處理仍存活的不同 Cells，不把剩餘次數重複疊到最後一格。
-6. 等價候選與等長 topology path 使用穩定 Glyph ID 次序裁決，確保結果可重現，不得隨機把傷害轉移到無關位置。路徑本身在等長選擇中也應優先保持向前投影並降低橫向偏移，避免終點在前方、逐 Cell 傳導卻無故向側邊蛇行。
+5. Directional ray 與 frontier fallback 都不得跨越不存在的 canonical edge。若一個 authored disconnected component 已沒有 Living Cell，命中它的 Husk 仍可播放 local impact response，但不能只因另一個 component 共用 owner 就把 direct damage 跳過空隙轉移過去；除非未來能力明確 author cross-component traversal。
+6. 每個 `HEALTHY`／`DAMAGED` Cell 在同一次攻擊中最多成為一次 Damage Target；若多個 Husk source 指向同一目標，依穩定來源順序保留第一條，其他來源繼續尋找下一個合法方向候選或 fallback。若整個 body 的存活 Cells 少於 quota，就只處理仍存活的不同 Cells，不把剩餘次數重複疊到最後一格。
+7. 等價候選與等長 topology path 使用穩定 Glyph ID 次序裁決，確保結果可重現，不得隨機把傷害轉移到無關位置。路徑本身在等長選擇中也應優先保持向前投影並降低橫向偏移，避免終點在前方、逐 Cell 傳導卻無故向側邊蛇行。
 
 不同攻擊形狀必須提供符合自身玩法的 traversal direction。Gameplay projectile 使用碰撞當下的實際 velocity direction，而不是初始發射角；持續移動的接觸武器使用 previous authoritative position 到實際 contact point 的 swept-motion direction，不能拿 knockback direction 冒充；Cone AREA attack 則讓每個 Husk Impact Cell 使用從該 Cone 的 muzzle origin 指向該 Cell 的局部射線，而不是讓整個扇形共用一條中心線。Projectile Count 產生的每一道 Cone 仍是獨立 attack event，使用自己的 origin 與方向。其他 Area DamageShape 若未來加入，也必須明確定義每個 Husk source 的方向，不能悄悄退回全域最近搜尋。
 
@@ -355,6 +356,19 @@ SLIME
 - 可分裂
 - 被打散後慢慢聚回
 
+RHOMBUS
+
+特色：
+
+- 巨型黃沙色 `RHOMBUS` 字母形成硬質實心菱形
+- 一個次菱形與一個單格方塊以不同平面、方向與錯開節拍環繞主體
+- 三個部位屬於同一個 Creature owner，但保持三個 canonical-disconnected components
+- 主體、次菱形與單格方塊都能作為同 owner 的 Assisted targeting anchor；武器選擇離未修正權威彈道最近的合法 anchor，不把它們拆成三隻怪物
+- 每波先讓全部 `<>` 尖刺以主體中心為圓心等角分布成完整圓環，各自預先朝向其專屬發射曲線的初始切線；再依圓周順序與 prepared 間隔逐枚釋放，沿各自旋轉後的真實曲線向外前進，形成清楚的漩渦。不得讓所有尖刺共用同一起點／同一條路徑，或鏡像成兩列曲線；尖刺字元使用共用 hostile-attack font bank，不使用 RHOMBUS Body font
+- 全體耗盡後先短暫亮起，再像磚瓦一樣垮落並堆成不規則字母瓦礫
+
+RHOMBUS 是第二隻正式 Boss。首版固定形狀、RHOMBUS-only 字型、磚瓦耐久群、兩組 orbit、depth band、hostile projectile、出場與垮落契約集中在 [`docs/content/rhombus-boss.md`](docs/content/rhombus-boss.md)。
+
 GOLEM
 
 特色：
@@ -423,7 +437,7 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 例如：
 
-普通子彈：打最近敵人。
+普通子彈：在既有 acquisition gate 內，依尚未套用 assisted correction 的權威發射彈道選擇最接近的合法目標 anchor。多部位同 owner 可以提供多個 stable anchors，但仍只有一個 Creature／HP／reward identity；鎖定後追蹤所選 anchor，不在每個 fixed step 偷換部位。同一 assisted volley 只做一次初始 query 並共用該 owner／anchor。
 
 穿透：打一整條。
 
@@ -442,7 +456,7 @@ SLIME 首版使用根 Body Blueprint 的初始 Cell 數量作固定比例基準�
 
 首版前三把武器的玩法身分已確認：
 
-- Assisted `o` 是遠距、單體、有限修正的基準子彈。
+- Assisted `o` 是遠距、單體、有限修正的基準子彈；它以真實未修正發射彈道和 stable target anchors 決定有限輔助，失去所選 anchor 後沿既有規則轉為 ballistic，不重新搜尋同 owner 的其他部位。
 - 噴火槍沿玩家瞄準方向形成約 `90°` 的短程扇形 AREA attack；單一 Glyph 每次承受的傷害低於 assisted `o`，但可以同時侵蝕多個 Impact Cells。橘黃 `.`／`*` 火星是 rendering-only presentation，不是會各自造成傷害的 gameplay projectiles；首版噴火槍不自帶 Fire DoT。
 - 能量球以 Printable ASCII `O` 在玩家身邊持續旋轉，單次 Glyph 傷害低於 assisted `o`、高於噴火槍，並將命中的整個 creature root 往玩家外側擊退。軌道、碰撞、接觸狀態與 whole-body knockback 都由 Runtime 權威持有，光暈與拖尾才是 rendering-only。每顆球對每個 creature owner 獨立判定接觸：新進入或離開後再次進入必須立即可命中；只有連續重疊才以 prepared `rehitCooldownMs` 防止每個 fixed step 重複傷害，而且只有 Damage System 確認至少一個 Impact Cell 才能開始或刷新該節流。
 
@@ -517,8 +531,8 @@ Run Modifier 是 Boss 被正式擊敗後取得的本局世界規則。它和武�
 - 同一 Modifier 一局只能取得一次，已持有者不再出現在 reward pool。
 - Modifier 可能在武器／Module Build 尚未成形時就取得；每張首版 Modifier 必須能獨立形成玩法，不能依賴特定武器、Rank 或另一張 Modifier 才有作用。
 - Boss Encounter 只有在完整 `COLLAPSING` 結束並正式進入 `DEFEATED` 後，才授權一次 Modifier reward。
-- Eligible definitions 足夠時提供三選一；只剩兩張未持有 definitions 時允許二選一。
-- 選擇期間進入獨立 `PAUSED_MODIFIER`，Gameplay simulation 完全停止。Runtime 以 stable offer／choice ID 原子驗證並 commit；React 只負責卡片與動畫。
+- Eligible definitions 足夠時提供三選一；剩兩張時提供二選一；只剩一張時仍建立正常單卡 offer並等待玩家明確Confirm，不自動取得、不跳過也不重複已持有 definition。零 eligible definitions 的 fallback 尚未定案。
+- 選擇期間進入獨立 `PAUSED_MODIFIER`，Gameplay simulation 完全停止。Runtime 以 stable offer／choice ID 原子驗證並 commit；React 只負責卡片與動畫。若卡片預設亮起，它必須是真實 selected state，Confirm 立即可用；focus／hover 不能冒充選取。
 - Modifier reward、queued Modifier decisions 與 XP upgrade decisions 之間不得短暫恢復 simulation。同步結果優先序為 `PLAYER_DIED → MODIFIER_REWARD → XP_UPGRADE`。
 - 開發驗收期間可以用 validated Runtime config flag `enableRunStartModifierOfferForTesting`，在合法初始武器建立後、第一個 fixed step 前開啟一次正常 Modifier offer。這個測試入口不消耗 Boss reward、不推進正式 Boss offer RNG；選到的 Modifier 仍屬本局 owned set，因此之後 Boss 依剩餘 eligible definitions 正常 N 選一。正式／release path 關閉此 flag。
 
@@ -570,7 +584,7 @@ XP 升級時：
 畫面稍微變暗。
 中央跳出三張卡片。
 三張卡片混合包含已解鎖的新武器與通用 Module；第一次升級保證至少出現一張 eligible 武器卡。
-這個「固定三張」契約只屬於 XP 的 `WEAPON | MODULE` upgrade offer；Boss Run Modifier reward 是獨立 domain，並依上一節允許二選一。
+這個「固定三張」契約只屬於 XP 的 `WEAPON | MODULE` upgrade offer；Boss Run Modifier reward 是獨立 domain，並依上一節依eligible count允許三張、兩張或一張正常 offer。
 玩家先選卡片，再完成該卡片需要的 target decision：
 
 - Module 卡：選擇投資哪把武器；若沒有相同 Module 且 Slots 已滿，再選擇覆蓋哪個 Slot。

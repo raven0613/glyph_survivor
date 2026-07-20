@@ -147,6 +147,7 @@ export function prepareDirectDamageBatch(
       const topology = createGlyphTopologyIndex(
         world.glyphStore.getOwnerGlyphs(ownerId).map((glyph) => ({
           id: glyph.id,
+          topologyComponentId: glyph.topologyComponentId,
           topologyX: glyph.topologyX,
           topologyY: glyph.topologyY,
           worldX: 0,

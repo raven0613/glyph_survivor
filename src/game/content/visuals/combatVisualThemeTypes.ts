@@ -8,6 +8,7 @@ export const GLYPH_APPEARANCE_PROFILE = Object.freeze({
   ROCK: 'ROCK',
   SNAKE: 'SNAKE',
   SLIME_BOSS: 'SLIME_BOSS',
+  RHOMBUS_BOSS: 'RHOMBUS_BOSS',
 } as const)
 
 export type GlyphAppearanceProfileId =
@@ -205,6 +206,28 @@ export interface ExperienceDropAppearance<ColorValue = number> {
   readonly flashDurationMs: number
 }
 
+export interface RhombusHostileSpikeAppearance<ColorValue = number> {
+  readonly active: VisualColor<ColorValue>
+  readonly dissipation: VisualColor<ColorValue>
+  readonly dissipationDurationMs: number
+  readonly fadeOutStartRatio: number
+  readonly particleCount: number
+  readonly particleDistance: number
+  readonly particleScale: number
+  readonly particleCharacters: readonly string[]
+}
+
+export interface RhombusCollapseAppearance<ColorValue = number> {
+  readonly brightnessLift: VisualColor<ColorValue>
+  readonly settledPile: VisualColor<ColorValue>
+  readonly brightnessLiftDurationMs: number
+}
+
+export interface RhombusEffectAppearance<ColorValue = number> {
+  readonly hostileSpike: RhombusHostileSpikeAppearance<ColorValue>
+  readonly collapse: RhombusCollapseAppearance<ColorValue>
+}
+
 export interface CombatVisualTheme<ColorValue = number> {
   readonly map: {
     readonly canvasBackground: VisualColor<ColorValue>
@@ -236,6 +259,7 @@ export interface CombatVisualTheme<ColorValue = number> {
     readonly spreadFeedbackScaleBonus: number
     readonly spreadFeedbackDurationMs: number
     readonly topologyTransfer: TopologyTransferAppearance<ColorValue>
+    readonly rhombus: RhombusEffectAppearance<ColorValue>
     readonly runModifiers: {
       readonly composition: RunModifierCompositionAppearance
       readonly volatile: VolatileEffectAppearance<ColorValue>

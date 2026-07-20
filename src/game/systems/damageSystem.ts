@@ -17,6 +17,7 @@ import type { EnemyState } from '../runtime/worldEntities.ts'
 import { isEnemyOutlineCollisionPhase } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { recordWeaponDamage } from '../runtime/runStatistics.ts'
+import { getCreatureDefinition } from '../content/gameContent.ts'
 import { getDamageSpreadBandIndex } from './damageSpreadGeometry.ts'
 import { schedulePendingDamageTransfer } from './pendingDamageTransferSystem.ts'
 import { resolveOrbitContactDamageResult } from './orbitWeaponSystem.ts'
@@ -112,6 +113,7 @@ function createOwnerSelectionCells(
     glyph,
     id: glyph.id,
     state: glyph.state,
+    topologyComponentId: glyph.topologyComponentId,
     topologyX: glyph.topologyX,
     topologyY: glyph.topologyY,
     worldX: getGlyphWorldX(ownerX, glyph),
@@ -178,6 +180,8 @@ function collectPrimaryDamageForOwner(
     shape,
     event.targetMode,
     event.frontierTraversal,
+    getCreatureDefinition(world.content, enemy.definitionId)
+      .damageTopologyTraversalScope,
   )
   world.diagnostics.topologyPathSearchTimeMs +=
     performance.now() - pathSearchStartedAtMs

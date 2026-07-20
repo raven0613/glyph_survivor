@@ -34,6 +34,7 @@ import {
   updateGlyphLocalPosition,
 } from './glyphStoreLayout.ts'
 import { updateGlyphRolePresentation } from './glyphStorePresentation.ts'
+import { DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID } from './glyphLayout.ts'
 
 export { GLYPH_MATERIAL } from './glyphMaterial.ts'
 export type { GlyphMaterialId } from './glyphMaterial.ts'
@@ -122,6 +123,8 @@ export function createGlyphStore({
       baseCharacter: input.baseCharacter,
       baseGlyphFrame: input.baseGlyphFrame,
       role: input.role,
+      topologyComponentId:
+        input.topologyComponentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID,
       topologyX: input.topologyX,
       topologyY: input.topologyY,
       layoutBaseX: localX,

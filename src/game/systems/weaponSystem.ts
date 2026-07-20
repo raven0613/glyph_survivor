@@ -1,6 +1,6 @@
 import { spawnProjectile } from '../runtime/spawnProjectile.ts'
 import type { WorldState } from '../runtime/worldState.ts'
-import { selectBestProjectileTarget } from './targetSelection.ts'
+import { selectBestProjectileTargetLock } from './targetSelection.ts'
 import { TARGET_STRATEGY } from '../content/weapons/weaponDefinition.ts'
 import {
   DAMAGE_FRONTIER_TRAVERSAL,
@@ -11,6 +11,8 @@ import { spawnFlameEmitter } from '../runtime/spawnFlameEmitter.ts'
 import type { ResolvedConeWeaponProfile } from './resolveWeaponProfile.ts'
 import { getNextDamageEventId } from '../runtime/worldState.ts'
 import { getCenteredEmissionAngleOffset } from './attackEmissionAngles.ts'
+import { getCreatureDefinition } from '../content/gameContent.ts'
+import { resolveCreatureTargetAnchors } from './creatureTargetAnchors.ts'
 
 function rotateDirectionX(
   directionX: number,
@@ -127,10 +129,10 @@ export function runWeaponSystem(world: WorldState, deltaMs: number): void {
     const candidates = world.enemySpatialHash.queryCircle(
       player.x,
       player.y,
-      trackingProfile.range,
+      trackingProfile.range + world.maximumEnemyQueryRadius,
       world.targetCandidates,
     )
-    const target = selectBestProjectileTarget(
+    const targetLock = selectBestProjectileTargetLock(
       candidates,
       player.x,
       player.y,
@@ -138,11 +140,17 @@ export function runWeaponSystem(world: WorldState, deltaMs: number): void {
       player.aimY,
       trackingProfile.range,
       trackingProfile.maximumCorrectionCos,
+      (candidate) =>
+        resolveCreatureTargetAnchors(
+          candidate,
+          getCreatureDefinition(world.content, candidate.definitionId),
+          world.targetAnchorCandidates,
+        ),
     )
     world.diagnostics.targetSearchCount += 1
 
-    if (target) {
-      target.trackingLoad += attackPattern.emissionCount
+    if (targetLock) {
+      targetLock.target.trackingLoad += attackPattern.emissionCount
     }
 
     for (
@@ -176,7 +184,8 @@ export function runWeaponSystem(world: WorldState, deltaMs: number): void {
         directionX,
         directionY,
         profile,
-        targetEnemyId: target?.id ?? null,
+        targetEnemyId: targetLock?.target.id ?? null,
+        targetAnchorId: targetLock?.anchorId ?? null,
       })
     }
     weapon.attackSequence += 1

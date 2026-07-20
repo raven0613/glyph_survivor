@@ -88,6 +88,7 @@ function resolveExplosion(
   const topology = createGlyphTopologyIndex(
     ownerGlyphs.map((glyph) => ({
       id: glyph.id,
+      topologyComponentId: glyph.topologyComponentId,
       topologyX: glyph.topologyX,
       topologyY: glyph.topologyY,
       worldX: 0,

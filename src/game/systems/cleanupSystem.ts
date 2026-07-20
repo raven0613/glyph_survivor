@@ -1,4 +1,6 @@
 import type { WorldState } from '../runtime/worldState.ts'
+import { HOSTILE_PROJECTILE_PHASE } from '../runtime/hostileProjectileState.ts'
+import { removeCreatureCollapsePresentation } from './creatureCollapseSystem.ts'
 
 function removeAtSwap<T>(items: T[], index: number): T {
   const removed = items[index]
@@ -18,6 +20,21 @@ export function runCleanupSystem(world: WorldState): void {
     }
   }
 
+  for (
+    let index = world.hostileProjectiles.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    if (
+      world.hostileProjectiles[index].phase === HOSTILE_PROJECTILE_PHASE.SPENT
+    ) {
+      world.hostileProjectilePool.push(
+        removeAtSwap(world.hostileProjectiles, index),
+      )
+      world.diagnostics.hostileProjectilesReturnedToPool += 1
+    }
+  }
+
   for (let index = world.drops.length - 1; index >= 0; index -= 1) {
     if (!world.drops[index].isAlive) {
       world.dropPool.push(removeAtSwap(world.drops, index))
@@ -32,6 +49,7 @@ export function runCleanupSystem(world: WorldState): void {
         world.bossEncounters.delete(enemy.encounterId)
       }
       world.enemyById.delete(enemy.id)
+      removeCreatureCollapsePresentation(world, enemy.id)
       world.glyphStore.removeOwner(enemy.id)
       world.enemyPool.push(removeAtSwap(world.enemies, index))
     }

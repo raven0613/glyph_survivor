@@ -14,6 +14,7 @@ Run Modifier 是玩家在一局內取得、會改寫敵方 Glyph Cell 世界規�
 - 首版 Modifier 沒有 Rank、重複疊加或覆蓋規則。未來若允許同名 Modifier 再次取得，必須先定義明確 Rank table 或 replacement policy，不能建立兩份相同 Runtime handler 重複觸發。
 - Modifier 仍必須透過 Glyph Cell Durability、canonical topology 與 stable Glyph ID 運作，不得建立 Enemy／Boss Entity HP 的第二套傷害模型。
 - Modifier presentation 不得決定 target、傷害、status、chain、offer 或 reward 結果。
+- 首批 Modifier 只改變敵方 Glyph Durability、topology interaction 與 Cell status；它們不增加怪物對玩家的 contact damage，也不修改 RHOMBUS hostile projectile 的 damage、route、curve 或 candidate ordering。
 
 首批 Modifier 的策略目標是：
 
@@ -66,11 +67,14 @@ Boss Modifier reward 的授權單位是 Boss Encounter，不是 split body：
 4. Token 必須在 Boss entities cleanup 前複製出所有必要 identity；等待玩家選擇時不需要保留已死亡 Boss entity。
 5. Boss 原有 XP reward 與 Modifier reward 是正交獎勵。Modifier 不取代 XP，XP 也不能冒充 Modifier choice。
 
+RHOMBUS 雖然有主菱形、次菱形與單格方塊三個 canonical-disconnected components，仍只有一個 Creature owner 與一個 Boss Encounter。只有全部 463 Cells 成為 Husk、專屬垮落完成且該 Encounter 已授權的 Volatile source events 排空後，才建立一次 XP 與一次 Modifier reward；不得依三個 components 建立三份 token。完整 Boss 內容見 [`rhombus-boss.md`](rhombus-boss.md)。
+
 Modifier offer 遵守：
 
 - 有至少三個 eligible definitions 時，提供三張不同 choices。
 - 只剩兩個 eligible definitions 時，允許二選一。
-- 首版不定義單張自動取得或零 eligible 的 fallback；目前 Boss schedule／content 必須確保每次 reward 至少仍有兩個 eligible definitions。未來若可能低於兩張，必須先更新本文。
+- 只剩一個 eligible definition 時，建立只含該 definition 的正常單卡 offer。它不會自動取得、靜默跳過或以已持有 definition 補位；Runtime 保持 `PAUSED_MODIFIER`，直到玩家送出正常 `selectModifier` command。
+- 零 eligible definitions 的 fallback 尚未定案；Boss schedule／content 若可能走到零張，實作前必須先更新本文，不得自動重複、跳過 reward 或臨時改發其他 reward。
 - 已持有 definitions 必須排除。
 - choice ID 與 offer ID 穩定且非空。
 - 有三個以上 eligible definitions 時，以 run seed 派生的 dedicated `BOSS_REWARD` Modifier RNG、stable content order 與 stable ID tie-break 選出三張；combat、enemy、rendering、XP-upgrade與`RUN_START_TEST` RNG消耗不得改變結果。
@@ -94,6 +98,13 @@ Runtime 必須重新驗證：
 
 失敗時不得消耗 offer、不得加入 Modifier、不得恢復 simulation。成功時以單一 transaction 加入 definition ID、重建 disposable resolved Modifier profile、消耗 authorization／offer，然後才決定下一個 paused decision 或回到 `RUNNING`。
 
+React 的選取與確認狀態必須一致：
+
+- React 以目前 active offer 專屬的 `selectedChoiceId` 保存真實選取，不從卡片顏色、focus 或 hover 反推選擇。
+- 單卡 offer 初始化時，唯一 choice 直接成為真實 selected choice；Confirm 立即 enabled，且送出的仍是目前 active `offerId` 與該 `choiceId`。這只是預選，不是自動 commit。
+- 任何顯示為預設亮起的 Modifier 卡都必須同時具有真實 selected state；可存取語意需反映選取，例如 `aria-pressed="true"`。Focus／hover 必須有不同 presentation，不能讓玩家看到像已選取但 Confirm 仍 disabled 的狀態。
+- 新 offer 出現時先清除上一個 offer 的 local selection，再只依新 offer 建立合法預選；React remount 或 stale local state 不得提交舊 choice。
+
 ### 3.2 Run-start testing offer
 
 Modifier 實作與驗收期間使用一個集中、validated 的 Runtime config flag：
@@ -106,9 +117,10 @@ enableRunStartModifierOfferForTesting: boolean
 
 - `false` 是正式／release path；`startRun` 沿既有流程開始，不建立測試authorization／offer，也不消耗任何test-offer RNG。
 - `true` 時，Runtime 在初始 Weapon 已合法選定、WorldState 已建立之後，但在任何 `RUNNING` fixed step、Gameplay time、Weapon equipped time、spawn、cooldown 或 director work 發生之前，建立每局恰好一次的 `RUN_START_TEST` authorization，並直接進入 `PAUSED_MODIFIER`。非法初始Weapon仍留在`READY`，不得先建立authorization。
-- 測試 offer 使用同一套 eligible pool、owned-definition exclusion、stable offer／choice IDs、三選一／二選一規則與 `selectModifier` transaction；不得建立 bypass command 或直接把 definition 塞進 WorldState。若eligible definitions超過顯示數量，抽選使用由run seed獨立派生的`RUN_START_TEST` RNG domain；它不得推進正式Boss Modifier offer RNG。現在三張全列時依stable content order建立choices，不需要消耗亂數。
+- 測試 offer 使用同一套 eligible pool、owned-definition exclusion、stable offer／choice IDs、三張／兩張／一張規則與 `selectModifier` transaction；不得建立 bypass command 或直接把 definition 塞進 WorldState。若eligible definitions超過顯示數量，抽選使用由run seed獨立派生的`RUN_START_TEST` RNG domain；它不得推進正式Boss Modifier offer RNG。現在三張全列時依stable content order建立choices，不需要消耗亂數。
 - 目前三個 definitions 都未持有時，開局測試 offer 顯示三張。選定後正常加入 owned set。
 - `RUN_START_TEST` 不建立或消耗 Boss reward token、不發 XP，也不計為擊敗 Boss。之後 Boss Encounter 正式進入 `DEFEATED` 時仍正常建立一次 `BOSS_REWARD` authorization，並依當下 eligible count 提供 N 選一；以目前三張首批內容而言，開局已持有一張後，Slime reward 會自然成為二選一。
+- `RUN_START_TEST` 選一張、SLIME 再選一張後，RHOMBUS reward 只剩一個 eligible definition；此時依第 3.1 節建立正常單卡 offer，預選唯一 choice 並立即允許 Confirm，但不自動取得。正式 `flag = false` 流程仍可由 SLIME 三選一後讓 RHOMBUS 正常二選一。
 - `READY → PAUSED_MODIFIER → RUNNING` 的測試路徑在任何 simulation step 前完成，視為初次開局而非從 Gameplay pause 恢復，因此 commit 後不授予 resume invulnerability。
 - Flag 必須在 LOADING／GameHost initialization 驗證為 Boolean，並對該局凍結；不得在 run 中途切換、不得放進玩家存檔，也不得由 React 或 query string 直接改寫 Runtime state。
 - Return-to-menu／run teardown完整清除test authorization、offer origin、consumed guard與owned Modifiers；prepared Host flag可以保留。New run會重新依當時凍結的config決定是否建立一次測試authorization；reset、重複`startRun`、React remount或stale command都不得在同一run建立第二次。
@@ -270,6 +282,7 @@ Living Cell enters HUSK
 - 對角線不算。
 - 不讀 world-space 距離、Body Motion、deformation 或 knockback。
 - 原本就沒有 canonical adjacency 的 authored floating Cell 不會因畫面接近而被傳到。
+- RHOMBUS 的三個 authored components 即使同 owner 也沒有 cross-component canonical adjacency；兩個 orbiting components 靠近或穿越主體時，VOLATILE 仍不得跨空隙傳播。
 - 不跨 owner。
 
 未來跨-owner 強化是獨立能力軸，必須新增明確的 world-space radius 與 cross-owner spatial query；不得把 `topologyDepth = 1` 偷換成 world-unit radius。
@@ -461,7 +474,18 @@ Multiplier 只作用於實際的 direct Damage Target：
 
 同一immediate damage batch先凍結topology，再為該batch所有direct targets計算multiplier；該batch本身新產生的Husk切口不會回頭改變同batch其他target。之後才抵達的pending topology transfer則以arrival-time snapshot判定，不沿用數個fixed steps前的component multiplier。
 
-### 9.4 Slime split／reassembly latch
+### 9.4 RHOMBUS authored disconnected components
+
+[`rhombus-boss.md`](rhombus-boss.md) 定義的主菱形、次菱形與單格方塊遵守：
+
+- 三個 components 必須維持同一 Creature owner，不能為了移動、depth sorting、targeting 或碰撞方便拆成三個 owners。
+- 三個 authored islands 都參與正常 DISCONNECTED classification，沒有 Boss／伴體豁免，也沒有永久「一定易傷」標記。
+- `largestComponentSize`、`ownerTotalLivingCellCount`、protection 與 multiplier 每次依合法 damage batch 的當下 Living topology snapshot 動態解析。主體侵蝕後，原本較小的伴體可能因 relative size 改變而得到不同結果。
+- Orbit、front／behind depth band、screen-space 重疊、Material deformation 與 root knockback 都不改 canonical topology，也不 invalidate component cache。
+- RHOMBUS 沒有 Slime split／reassembly 或 latch 特例；它的 components 不聚合、不改 owner。
+- 一個 island 已全 Husk 時不再形成 Living component。命中該 island 只能保留 local outline impact，不能藉 DISCONNECTED 或 owner identity 建立跳到其他 island 的 topology-transfer path。
+
+### 9.5 Slime split／reassembly latch
 
 Slime 的 topology destruction、Volatile chains 與 structural commit 依以下順序：
 
@@ -484,7 +508,7 @@ damage events
 
 這讓玩家有「切開 → 在重新聚合期間清除小塊」的操作窗口，同時不使用暫時被擊飛後的畫面距離假裝 topology 失聯。
 
-### 9.5 Presentation — unstable fragment
+### 9.6 Presentation — unstable fragment
 
 DISCONNECTED 不使用明顯爆光或獨立範圍特效；它讓玩家從團塊動態讀出脆弱程度。對實際 multiplier `M` 定義 presentation severity：
 
@@ -626,6 +650,7 @@ Base Appearance
 - 每個channel有明確priority、clamp與同時可見上限。Motion amplitudes不得無限制相加，surface variant不得建立無界overlay list，tint也不能成為唯一識別訊號。
 - Render snapshot攜帶bounded resolved values或semantic role＋必要的simulation-time identity，不把每顆Cell的generic status list或mutable payload交給PixiJS。
 - Modifier feedback不得覆寫 creature Appearance Profile、永久改變 Material或讓Husk離開完整輪廓。
+- 當 Glyph 使用 `BEHIND | BODY | FRONT` 等 resolved depth band 時，persistent surface 與 event overlay 必須跟隨同一 band。RHOMBUS 後方伴體的 CRACKED fragments、DISCONNECTED cue 或 Volatile overlay 不得穿透主菱形；Renderer 也不得為修正遮擋而改寫 Modifier state。
 
 ### 12.3 Authority and readability
 
@@ -657,7 +682,7 @@ Modifier 必須可讀，但 presentation 不是權威狀態：
 - active／peak Volatile cluster／point counts、minimum-readable fallback count、cluster-particle pool misses與optional-density suppressions；
 - active／peak Modifier core event overlays、optional particle count、optional visual-budget suppressions與effect-pool misses；
 - Modifier damage actual delta，並保留 causal Weapon Instance attribution；
-- Modifier offer RNG／eligible count／two-card fallback count。
+- Modifier offer RNG／eligible count／one-card／two-card offer count。
 
 不得以降低damage accuracy、丟棄queued explosion、提前完成collapse／進入`DEFEATED`、略過status或縮小topology query來換取frame time。可降級的只有非必要presentation粒子、附加glow與其他renderer-owned裝飾。
 
@@ -679,7 +704,9 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 - authorizes exactly one Modifier reward only after Boss Encounter reaches `DEFEATED`
 - keeps Boss XP reward separate from the Modifier reward
 - excludes already-owned Modifier definitions from later offers
-- offers three unique choices when possible and two when exactly two remain
+- offers three unique choices when possible, two when exactly two remain, and one normal choice when exactly one remains
+- keeps a one-choice Modifier offer paused until explicit confirmation and never auto-acquires, skips, or duplicates a definition
+- initializes the unique one-card choice as the real selected state, enables Confirm immediately, exposes selected accessibility state, and clears stale selection between offers
 - produces the same Modifier offer from the same seed and eligible state
 - rejects stale, replayed, unknown, or already-owned Modifier commands without consuming the offer
 - keeps gameplay fully paused through Modifier selection and queued XP upgrade decisions
@@ -704,6 +731,10 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 - applies the configured component-ratio multiplier only once to direct Damage Targets
 - naturally leaves one-component one-letter and two-letter bodies at `×1.0`
 - includes authored floating Cells in normal component classification
+- classifies RHOMBUS as one owner with three authored islands, updates protection from current Living sizes, and never grants a Boss exemption
+- does not rebuild RHOMBUS topology cache from orbit／depth-band／screen-overlap changes
+- prevents RHOMBUS Volatile and Husk topology transfer from crossing component gaps
+- authorizes exactly one RHOMBUS Encounter reward after all three components collapse
 - evaluates remote direct DISCONNECTED only when the pulse arrives
 - keeps newly severed components from benefiting until the next direct event
 - carries the Slime disconnected multiplier through owner transfer and reassembly
@@ -734,7 +765,7 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 | 2. OVERLOAD vertical slice | 共用Damage Application boundary、status flags／payload、Overload threshold、Crack消耗、非等比壓縮、短徑向shock與prepared fragment atlas／pool | 重擊有「壓縮—頓點—回彈」；鄰居裂字清楚但仍看成原Cell；下一個不同direct event只加成／消耗一次 |
 | 3. DISCONNECTED vertical slice | Living component cache、prepared protection threshold、倍率公式、direct-target snapshot、severity、spacing loosen、ambient micro-burst與component hit shake | 切出小團塊後，不看數字也能辨識脆弱程度；受擊是整塊短震而非爆光；畫面鬆動不改hitbox或被擊退後的判定 |
 | 4. VOLATILE vertical slice | Husk transition outcome、reaction-chain IDs、breadth-first queues、`waveIntervalMs`、每步budget、stable fairness、same-owner topology damage，以及具中心亮點的clustered point burst／domino core events | 每顆source死亡都能讀到不規則團簇光點的短爆發，峰值形成緊密花椰菜狀輪廓並分批消散；同時仍能看清`A → B → C → D`依config節奏逐波接棒，同wave分支同時發生，沒有圓形波、沒有丟事件、暫停不偷跑 |
-| 5. Slime／Boss production flow | Volatile structural defer、Disconnected reassembly latch、Encounter collapse／DEFEATED、XP coexistence、正式Boss N選一與decision priority | 開局測試選一張後，Slime仍正常給剩餘二選一；分裂／重組增傷窗口正確；Boss不重複發獎或提前cleanup |
+| 5. Slime／Boss production flow | Volatile structural defer、Disconnected reassembly latch、Encounter collapse／DEFEATED、XP coexistence、正式Boss N選一、單卡預選／Confirm與decision priority | 開局測試選一張後，Slime正常給剩餘二選一，RHOMBUS再給最後一張正常單卡；單卡可立即Confirm但不自動取得；分裂／重組增傷窗口正確；Boss不重複發獎或提前cleanup |
 | 6. Combination／performance／feel | 三Modifier共存、additive damage composition、presentation-channel priority、pool／atlas stress、diagnostics與theme tuning | 組合有效但不遞迴暴增；所有動畫都有短attack、明確頓點與乾淨settle；大量Crack／Volatile下仍維持目標效能與可讀性 |
 
 每次驗收修正完該slice的規則與節奏後再進下一次。第六次是整體整合與調校，不應承擔前五次尚未完成的lifecycle、damage correctness或核心presentation。
@@ -746,8 +777,8 @@ Rendering stress至少量測既有Desktop-first normal／stress Glyph population
 - VOLATILE跨-owner強化的world-space radius、target geometry、card／rank來源與是否改變processing budget；
 - DISCONNECTED的low-neighbor、core reachability、bridge／articulation或細弱連接強化；
 - 同名Modifier的Rank、stack或replacement規則；
-- eligible definitions低於兩張時的單張／自動取得／替代reward流程；
-- 第二隻以後Boss的Modifier pool、reward cadence與weights；
+- eligible definitions為零時的跳過／替代reward／Boss schedule fallback流程；
+- 未來per-Boss專屬Modifier pool、weights，或任何偏離「每個正式DEFEATED Encounter一次reward」的不同行程；
 - Modifier在HUD與run result中的長期統計／展示格式；
 - status之間未列於Interaction matrix的未來元素組合；
 - replay／save跨content version需求。

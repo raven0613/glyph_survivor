@@ -1,5 +1,9 @@
 import type { CreatureDefinition } from './creatures/creatureDefinition.ts'
 import { prepareSlimeBossDefinition } from './bosses/slimeBoss.ts'
+import {
+  prepareRhombusBossDefinition,
+  type PreparedRhombusBossDefinition,
+} from './bosses/rhombusBoss.ts'
 import { prepareOrdinaryBatDefinition } from './enemies/ordinaryBat.ts'
 import { prepareOrdinaryBoneDefinition } from './enemies/ordinaryBone.ts'
 import {
@@ -23,6 +27,10 @@ import type { CombatVisualTheme } from './visuals/combatVisualTheme.ts'
 import { PROTOTYPE_COMBAT_VISUAL_THEME } from './visuals/prototypeCombatVisualTheme.ts'
 import type { RunModifierDefinition } from './modifiers/runModifierDefinition.ts'
 import { preparePrototypeRunModifiers } from './modifiers/prototypeRunModifiers.ts'
+import {
+  preparePrototypeGlyphFontBanks,
+  type PreparedGlyphFontBanks,
+} from './visuals/glyphFontBanks.ts'
 
 const FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS = 3
 const ORDINARY_ENEMY_DEBUT_TIMES_MS = Object.freeze({
@@ -42,9 +50,11 @@ const ORDINARY_ENEMY_POST_DEBUT_WEIGHTS = Object.freeze({
 
 export interface PreparedGameContent {
   readonly combatVisualTheme: CombatVisualTheme
+  readonly glyphFontBanks: PreparedGlyphFontBanks
   readonly ordinaryEnemyDefinitions: readonly CreatureDefinition[]
   readonly ordinaryEnemyProgression: OrdinaryEnemyProgression
   readonly slimeBossDefinition: CreatureDefinition
+  readonly rhombusBossDefinition: PreparedRhombusBossDefinition
   readonly creatureDefinitions: Readonly<Record<string, CreatureDefinition>>
   readonly weaponDefinitions: readonly WeaponDefinition[]
   readonly weaponDefinitionsById: Readonly<Record<string, WeaponDefinition>>
@@ -72,6 +82,26 @@ export function getCreatureDefinition(
   return definition
 }
 
+/** Adds asset-backed Boss content only after GameHost finishes LOADING. */
+export function activateRhombusBossContent(
+  content: PreparedGameContent,
+): PreparedGameContent {
+  const rhombus = content.rhombusBossDefinition.creature
+  if (content.creatureDefinitions[rhombus.id] === rhombus) {
+    return content
+  }
+  if (content.creatureDefinitions[rhombus.id]) {
+    throw new Error(`Creature definition ${rhombus.id} is already registered.`)
+  }
+  return Object.freeze({
+    ...content,
+    creatureDefinitions: Object.freeze({
+      ...content.creatureDefinitions,
+      [rhombus.id]: rhombus,
+    }),
+  })
+}
+
 export function getWeaponDefinition(
   content: PreparedGameContent,
   definitionId: string,
@@ -95,6 +125,7 @@ export function getWeaponModuleDefinition(
 }
 
 export function prepareGameContent(): PreparedGameContent {
+  const glyphFontBanks = preparePrototypeGlyphFontBanks()
   const ordinaryEnemyDefinitions = Object.freeze([
     prepareOrdinaryZombieDefinition(),
     prepareOrdinaryBoneDefinition(),
@@ -137,6 +168,21 @@ export function prepareGameContent(): PreparedGameContent {
     },
   ])
   const slimeBossDefinition = prepareSlimeBossDefinition()
+  const rhombusBossDefinition = prepareRhombusBossDefinition(glyphFontBanks)
+  const rhombusCollapseDurationMs =
+    PROTOTYPE_COMBAT_VISUAL_THEME.effects.rhombus.collapse
+      .brightnessLiftDurationMs +
+    rhombusBossDefinition.collapseProfile.maximumFallDelayMs +
+    rhombusBossDefinition.collapseProfile.fallDurationMs +
+    rhombusBossDefinition.collapseProfile.settleDurationMs
+  if (
+    rhombusCollapseDurationMs >
+    rhombusBossDefinition.creature.collapseDurationMs
+  ) {
+    throw new RangeError(
+      'RHOMBUS brightness, fall, and settle sequence must resolve within collapseDurationMs.',
+    )
+  }
   const creatureDefinitions: Record<string, CreatureDefinition> = {
     [slimeBossDefinition.id]: slimeBossDefinition,
   }
@@ -177,9 +223,11 @@ export function prepareGameContent(): PreparedGameContent {
 
   return Object.freeze({
     combatVisualTheme: PROTOTYPE_COMBAT_VISUAL_THEME,
+    glyphFontBanks,
     ordinaryEnemyDefinitions,
     ordinaryEnemyProgression,
     slimeBossDefinition,
+    rhombusBossDefinition,
     creatureDefinitions: Object.freeze(creatureDefinitions),
     weaponDefinitions,
     weaponDefinitionsById: Object.freeze(weaponDefinitionsById),
@@ -189,6 +237,7 @@ export function prepareGameContent(): PreparedGameContent {
     maximumEquippedWeapons: FIRST_PASS_MAXIMUM_EQUIPPED_WEAPONS,
     maximumEnemyBroadPhaseRadius: Math.max(
       slimeBossDefinition.broadPhaseRadius,
+      rhombusBossDefinition.maximumGameplayFootprintRadius,
       ...ordinaryEnemyDefinitions.map(
         (definition) => definition.broadPhaseRadius,
       ),

@@ -6,10 +6,21 @@ export function runGlyphDiagnosticsSystem(world: WorldState): void {
   let healthyGlyphCount = 0
   let damagedGlyphCount = 0
   let huskGlyphCount = 0
+  let orphanedGlyphCount = 0
+  let multiplyOwnedGlyphCount = 0
   let activeCrackedGlyphCount = 0
   let activeDisconnectedLatchedGlyphCount = 0
+  world.glyphDiagnosticSeenIds.clear()
 
   for (const glyph of world.glyphStore.cells) {
+    if (world.glyphDiagnosticSeenIds.has(glyph.id)) {
+      multiplyOwnedGlyphCount += 1
+    } else {
+      world.glyphDiagnosticSeenIds.add(glyph.id)
+    }
+    if (!world.enemyById.has(glyph.ownerId)) {
+      orphanedGlyphCount += 1
+    }
     switch (glyph.state) {
       case GLYPH_CELL_STATE.HEALTHY:
         healthyGlyphCount += 1
@@ -34,6 +45,8 @@ export function runGlyphDiagnosticsSystem(world: WorldState): void {
   world.diagnostics.healthyGlyphCount = healthyGlyphCount
   world.diagnostics.damagedGlyphCount = damagedGlyphCount
   world.diagnostics.huskGlyphCount = huskGlyphCount
+  world.diagnostics.orphanedGlyphCount = orphanedGlyphCount
+  world.diagnostics.multiplyOwnedGlyphCount = multiplyOwnedGlyphCount
   world.diagnostics.activeCrackedGlyphCount = activeCrackedGlyphCount
   world.diagnostics.activeDisconnectedLatchedGlyphCount =
     activeDisconnectedLatchedGlyphCount

@@ -5,8 +5,10 @@ import {
 import {
   DAMAGE_FRONTIER_TRAVERSAL,
   DAMAGE_TARGET_MODE,
+  DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE,
   type DamageFrontierTraversal,
   type DamageTargetMode,
+  type DamageTopologyTraversalScope,
 } from '../glyph/localDamage.ts'
 import { intersectsDamageShape } from './damageSpreadGeometry.ts'
 import {
@@ -41,6 +43,7 @@ export type DamageSelectionShape = CircleDamageShape | ConeDamageShape
 export interface DamageSelectionCell {
   readonly id: number
   readonly state: GlyphCellState
+  readonly topologyComponentId?: string
   readonly topologyX: number
   readonly topologyY: number
   readonly worldX: number
@@ -194,7 +197,15 @@ export function selectGlyphDamage<T extends DamageSelectionCell>(
   shape: DamageSelectionShape,
   targetMode: DamageTargetMode,
   traversal: DamageFrontierTraversal,
+  topologyTraversalScope: DamageTopologyTraversalScope =
+    DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE.CANONICAL_COMPONENT,
 ): GlyphDamageSelection<T> {
+  if (
+    topologyTraversalScope !==
+    DAMAGE_TOPOLOGY_TRAVERSAL_SCOPE.CANONICAL_COMPONENT
+  ) {
+    throw new TypeError('Unknown damage topology traversal scope.')
+  }
   const impactCells = cells
     .filter((cell) => intersectsDamageShape(cell, shape))
     .sort(

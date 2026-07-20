@@ -30,6 +30,9 @@ import { runVolatileReactionSystem } from '../systems/volatileReactionSystem.ts'
 import { runBossModifierRewardSystem } from '../systems/bossModifierRewardSystem.ts'
 import { finalizeRunResult } from './runResult.ts'
 import { beginWorldDeathReview } from './runDeathReviewStep.ts'
+import { beginPlayerDamageCandidateCollection } from './playerDamageCandidateBuffer.ts'
+import { runRhombusSpiralAttackSystem } from '../systems/rhombusSpiralAttackSystem.ts'
+import { runHostileProjectileSystem } from '../systems/hostileProjectileSystem.ts'
 import type { WorldState } from './worldState.ts'
 
 export const SIMULATION_STEP_RESULT = Object.freeze({
@@ -69,6 +72,9 @@ export function runSimulationStep(
   runSlimeSplitSystem(world)
   runDisconnectedTopologySystem(world)
   runDeathSystem(world, deltaMs)
+  beginPlayerDamageCandidateCollection(world)
+  runRhombusSpiralAttackSystem(world, deltaMs)
+  runHostileProjectileSystem(world, deltaMs)
   runPlayerContactSystem(world)
   if (runPlayerSurvivalSystem(world)) {
     finalizeRunResult(world)

@@ -10,6 +10,7 @@ import {
   createSpawnCandidate,
   isSpawnCandidateValid,
 } from './spawnGeometry.ts'
+import { scheduleFirstWaveBossSpawns } from './bossSpawnSystem.ts'
 
 const WORLD_BOUNDS = Object.freeze({
   left: 0,
@@ -17,6 +18,13 @@ const WORLD_BOUNDS = Object.freeze({
   right: GAME_CONFIG.worldWidth,
   bottom: GAME_CONFIG.worldHeight,
 })
+
+const OPPOSITE_SPAWN_SIDE = Object.freeze({
+  top: 'bottom',
+  right: 'left',
+  bottom: 'top',
+  left: 'right',
+} as const)
 
 function getSpawnIntervalMs(runTimeMs: number): number {
   return Math.max(
@@ -85,8 +93,11 @@ export function runDirectorSystem(world: WorldState, deltaMs: number): void {
     commitOrdinaryEnemySpawn(world.ordinaryEnemyProgressionState, selection)
     world.enemySpatialHash.insert(enemy)
     if (!world.firstWaveStarted) {
-      world.firstWaveStarted = true
-      world.pendingBossSpawnSide = side
+      scheduleFirstWaveBossSpawns(
+        world,
+        side,
+        OPPOSITE_SPAWN_SIDE[side],
+      )
     }
     return
   }

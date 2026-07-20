@@ -10,7 +10,7 @@ import {
 } from '../runtime/runModifierState.ts'
 
 const MAXIMUM_MODIFIER_OFFER_CHOICE_COUNT = 3
-const MINIMUM_MODIFIER_OFFER_CHOICE_COUNT = 2
+const MINIMUM_MODIFIER_OFFER_CHOICE_COUNT = 1
 
 function getEligibleDefinitions(
   definitions: readonly Readonly<RunModifierDefinition>[],
@@ -66,7 +66,7 @@ function createOffer(
   }
   const eligibleDefinitions = getEligibleDefinitions(definitions, state)
   if (eligibleDefinitions.length < MINIMUM_MODIFIER_OFFER_CHOICE_COUNT) {
-    throw new Error('At least two unowned Run Modifiers are required for an offer.')
+    throw new Error('At least one unowned Run Modifier is required for an offer.')
   }
 
   const authorizationId = `run-modifier-authorization-${state.nextAuthorizationId}`

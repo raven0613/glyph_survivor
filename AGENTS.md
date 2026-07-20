@@ -40,7 +40,7 @@ These rules come directly from `spec.md` and must survive refactors:
 - The confirmed first three weapon identities are the assisted single-target `o`, a short-range approximately right-angle aimed flamethrower Cone, and a Runtime-owned orbiting `O` with whole-body outward knockback. Their semantics live in `docs/content/weapon-system.md`; current tunable values live only in the validated weapon authoring modules linked from that document.
 - Flamethrower sparks are rendering-only particles and never deal damage. The orbiting ball's phase, position, collision, contact episodes, re-hit gating, and knockback are authoritative Runtime state. Each ball／creature-owner pair may hit immediately on a new or re-entered contact episode; only continuous overlap is throttled by its prepared `rehitCooldownMs`, and the gate commits only after Damage System confirms at least one Impact Cell.
 - Upgrades should change play patterns and builds, not only add small percentage bonuses.
-- Projectile Count is a prepared total-count effect whose Rank payloads and centered assisted／Cone spacing come only from the prepared Module config. One assisted volley shares one initial target query; Cone streams use independent attack-event IDs; orbit balls share one base phase and divide the full orbit evenly.
+- Projectile Count is a prepared total-count effect whose Rank payloads and centered assisted／Cone spacing come only from the prepared Module config. One assisted volley shares one initial target query and one selected stable owner／anchor; Cone streams use independent attack-event IDs; orbit balls share one base phase and divide the full orbit evenly. A multi-component owner may expose a bounded set of stable assisted-target anchors, scored by miss distance to the unassisted authoritative firing trajectory—using the pre-spacing base aim axis for a volley—without becoming multiple creatures, HP pools, hitboxes, or rewards. Locking saves the chosen anchor ID and must not switch anchors every fixed step.
 - Range is a complete-Rank-multiplier contract whose current Rank payloads come only from prepared Module config. It increases assisted acquisition／lock／path-distance reach, authoritative Cone length, or an orbit's maximum radial-sweep radius while preserving that orbit's base radius and contact-circle size. It never enlarges Damage Spread bands or silently changes projectile speed, Cone angle, cadence, or re-hit cooldown.
 - Permanent weapon unlocks happen outside a run. A run receives a frozen set of unlocked weapon definitions, starts with exactly one selected weapon, and may acquire only those unlocked weapons through level-up cards.
 - Level-up offers mix weapon cards and universal Module cards. The first upgrade must contain at least one eligible weapon card.
@@ -50,7 +50,7 @@ These rules come directly from `spec.md` and must survive refactors:
 - Opening the upgrade screen completely pauses gameplay simulation through card, weapon, Module Slot, and weapon-replacement selection until an authoritative commit succeeds.
 - Boss splitting redistributes existing Glyphs and durability. It must not increase total Glyph count, current durability, or maximum durability.
 - Run Modifiers are Runtime-owned world rules for the current run, not Weapon Modules. They occupy no Module Slot, survive weapon replacement, disappear with the run, may coexist when their definition IDs differ, and cannot be acquired twice unless a future explicit Rank contract says otherwise. Because a Boss reward may arrive before the Weapon／Module Build is mature, every first-pass Modifier must create a useful decision on its own rather than require a particular weapon, Module, Rank, or another Modifier to function.
-- A Boss Encounter authorizes exactly one Modifier reward only after its complete collapse resolves and it formally enters `DEFEATED`. The reward normally offers three unique, unowned definitions and may offer two when exactly two eligible definitions remain; it never inserts a Modifier into the XP weapon／Module offer domain.
+- A Boss Encounter authorizes exactly one Modifier reward only after its complete collapse resolves and it formally enters `DEFEATED`. The reward offers three unique unowned definitions when possible, two when exactly two remain, and one normal choice when exactly one remains; a one-choice offer still requires explicit confirmation and never auto-acquires. The zero-eligible fallback remains an explicit future decision. Modifier rewards never enter the XP weapon／Module offer domain.
 - Modifier development may enable one validated Boolean Runtime config flag, `enableRunStartModifierOfferForTesting`. It authorizes exactly one normal Modifier offer after a valid initial Weapon Instance exists but before the first fixed step. It never consumes a Boss token or advances the Boss-offer RNG domain; the selected definition becomes genuinely owned, so the later Boss reward excludes it normally. The release path keeps the flag false.
 - The confirmed first Run Modifiers are `VOLATILE`, `DISCONNECTED`, and `OVERLOAD`. Their formulas, damage-route interaction matrix, Cell-status payloads, Slime latch behavior, reward transaction, and prototype-config semantics live only in `docs/content/run-modifiers.md`; current tunable authoring values live in the validated config modules linked from that document and must not be duplicated as document defaults.
 - Volatile is initially a same-owner, canonical-topology depth-one reaction. Every stable Glyph can emit at most one Volatile explosion when it first enters `HUSK`; chained events advance in Runtime-owned breadth-first waves separated by the frozen content-defined Gameplay simulation-time interval, and no authoritative event may be discarded because a fixed-step processing budget, pool, renderer, or particle budget is exhausted.
@@ -276,6 +276,7 @@ Rules:
 - React StrictMode may mount, clean up, and mount again. GameHost initialization and disposal must not leak a ticker, RAF, event listener, canvas, or asset subscription.
 - React controls the initial-weapon, upgrade, and Modifier-reward DOM/UI, including cards, target／replacement previews where applicable, focus, and animation. Runtime controls whether simulation is paused, which choices and targets are legal, and whether a transaction commits.
 - UI preview state may remain local to React, but the final command must include the active offer ID and every authoritative target ID needed for one atomic Runtime validation and commit.
+- Modifier card presentation must agree with React's actual selected-choice state. A one-choice offer initializes its only choice as selected and enables Confirm immediately, but does not auto-submit. Any default-highlighted card must expose the same selected state, including accessible selection semantics; focus and hover remain visually distinct. A new offer clears stale local selection before establishing any valid default.
 
 ## 7. Game phases and lifecycle
 
@@ -520,7 +521,7 @@ Local damage flow separates impact visualization from durability targets:
 2. Spatial index returns candidate outline Glyphs; entity-level collision may be used only as a broad phase.
 3. A precise shape test produces the **Impact Cells**: every distinct `HEALTHY`, `DAMAGED`, or `HUSK` Cell intersecting the DamageShape.
 4. If there are no Impact Cells, the attack misses. If there are Impact Cells, local hit flash, particles, material displacement, and other impact effects apply only to those Cells, regardless of their life state.
-5. For each struck creature/body, select **Damage Targets** only from its living/damageable Cells. Prefer living Impact Cells first. For each remaining Husk source, form its authoritative forward ray and prefer the first living Cell whose authoritative Glyph Circle intersects that ray, ordered by first forward intersection, lateral deviation, topology distance, and stable Glyph ID. Only when no living Cell remains along that source ray may selection fall back to the nearest canonical-topology frontier. Directionally aligned candidates must not lose to a closer side Cell merely because the side Cell has a shorter topology distance.
+5. For each struck creature/body, select **Damage Targets** only from its living/damageable Cells. Prefer living Impact Cells first. For each remaining Husk source, form its authoritative forward ray and prefer the first living Cell whose authoritative Glyph Circle intersects that ray, ordered by first forward intersection, lateral deviation, topology distance, and stable Glyph ID. Only when no living Cell remains along that source ray may selection fall back to the nearest canonical-topology frontier. Directionally aligned candidates must not lose to a closer side Cell merely because the side Cell has a shorter topology distance. Neither ray traversal nor frontier fallback may cross an absent canonical edge between authored disconnected components merely because they share one owner; without an explicit cross-component policy, a fully Husk source component yields local impact feedback but no remote durability target.
 6. A single-target/point attack has a quota of `1`. An area attack's per-body `targetQuota` equals the number of distinct outline Cells of that body in its Impact Cells. Each living Cell may be selected at most once by that attack; an unfilled quota is discarded rather than stacked repeatedly onto a surviving Cell.
 7. If a spread profile exists, query exterior bands around the original whole DamageShape. Band width is a centralized validated content value; classify positive distance `d` with `(n - 1)w < d <= nw`. A Cone uses the exterior of the whole Cone, never one band per particle, sample, or Impact Cell.
 8. Spread candidates may belong to any owner but must be living/damageable Cells. Never include a Husk, fill a spread quota through topology, or transfer spread damage to another Cell. Select every living Cell precisely intersecting a configured band.
@@ -581,7 +582,7 @@ Read [`docs/content/run-modifiers.md`](docs/content/run-modifiers.md) before cha
 
 Read [`docs/content/weapon-system.md`](docs/content/weapon-system.md) before changing this area. It defines the detailed permanent-unlock boundary, run acquisition, mixed three-card offers, ordered Module Slots, Rank upgrades, overwrite behavior, atomic commands, replacement semantics, UI flow, and links to the validated authoring sources for current tuning values. Do not duplicate a conflicting version of those rules or current defaults in code comments, tests, or another document.
 
-Run Modifiers are a separate Boss-reward domain. They do not occupy Module Slots, do not use `WEAPON | MODULE` XP choices, and do not inherit the XP offer's exactly-three-card invariant when only two unowned Modifier definitions remain.
+Run Modifiers are a separate Boss-reward domain. They do not occupy Module Slots, do not use `WEAPON | MODULE` XP choices, and do not inherit the XP offer's exactly-three-card invariant when only one or two unowned Modifier definitions remain.
 
 Separate weapon concerns:
 
@@ -681,6 +682,7 @@ Rendering rules:
 - Use PixiJS scene objects only inside the rendering layer.
 - Use a shared glyph atlas. Prefer bitmap/MSDF glyph rendering for frequently changing or numerous text visuals.
 - The first release uses a Printable ASCII glyph atlas. Expanding the required gameplay atlas to CJK or emoji is a separate product and performance decision.
+- Glyph-based hostile attacks use a shared hostile-attack font bank prepared during `LOADING` and referenced by stable bank／frame IDs. Creature-specific Body fonts must not leak into attacks implicitly; emission and dissipation paths must reuse prepared atlas frames and pooled views rather than creating `Text` or runtime textures.
 - Do not use `Text` or `HTMLText` for per-frame-updated high-volume Glyphs.
 - `Text` is acceptable for small, static, or infrequently changed labels.
 - `BitmapText` is suitable for frequently changing counters or longer text whose characters do not need independent gameplay ownership.
@@ -850,6 +852,7 @@ colors spread feedback from each source attack role's accent without a renderer 
 lets the latest successful spread hit deterministically replace the active feedback role and refresh its duration
 prefers the first living Cell along a Husk impact's forward attack ray over a closer side frontier
 falls back to the nearest topology frontier only after the forward direction is drilled through
+does not jump a Husk impact across an absent canonical edge to another same-owner component
 uses contact velocity for projectile traversal and swept motion rather than knockback direction for orbit traversal
 uses one muzzle-to-impact traversal ray per Cone Husk source and deduplicates Area targets
 pulses every Cell on a deterministic frontier-transfer path in source-to-target order without drawing a line
@@ -875,7 +878,8 @@ creates one run-start test offer only after a valid initial Weapon and before th
 commits the run-start test offer through the normal Modifier transaction without consuming a Boss token, advancing the Boss RNG domain, or granting resume invulnerability
 clears the test authorization and consumed guard on run teardown, then creates at most one fresh authorization for the next valid run
 authorizes one Boss Modifier reward only after the Encounter reaches DEFEATED
-offers three unique unowned Modifiers when possible and two when exactly two remain
+offers three unique unowned Modifiers when possible, two when exactly two remain, and one normal explicitly confirmed choice when exactly one remains
+keeps a default-highlighted Modifier card synchronized with the actual selected choice and enables Confirm without a redundant second click
 rejects stale or duplicate Modifier commands without consuming the reward
 keeps Modifier and queued XP decisions continuously paused and resumes only once
 emits one Volatile explosion only for the first Living-to-Husk transition
@@ -942,6 +946,6 @@ Do not silently hard-code these product decisions when they materially affect im
 - analytics/telemetry collection;
 - the testing stack to add when tests are first implemented;
 - weapons beyond the confirmed first three, permanent unlock conditions, Module Rank tables beyond the confirmed Attack Speed／Projectile Count／Damage Spread／Range／Knockback prototype tables, offer weights, element coexistence rules, weapon evolution gates, and any ability that changes the equipment limit or preserves investments during replacement.
-- same-name Run Modifier Rank／stack／replacement rules, eligible Modifier pools with fewer than two definitions, cross-owner Volatile geometry, future DISCONNECTED bridge／core criteria, and Boss Modifier reward cadence beyond the confirmed first Slime reward.
+- same-name Run Modifier Rank／stack／replacement rules, zero-eligible Modifier reward fallback, cross-owner Volatile geometry, future DISCONNECTED bridge／core criteria, and any Boss Modifier reward cadence that departs from the confirmed one-reward-per-`DEFEATED`-Encounter contract.
 
 Use a conservative temporary default only when it is easy to reverse, and record it next to the relevant contract.

@@ -6,7 +6,7 @@ import {
 import type { UpgradeChoice } from './upgradeMachineContract.ts'
 
 export const INVALID_MODIFIER_OFFER_ERROR =
-  'Invalid Modifier offer: expected two or three unique choices.'
+  'Invalid Modifier offer: expected one to three unique choices.'
 export const INVALID_MODIFIER_SELECTION_ERROR =
   'Invalid Modifier selection: the choice is not part of the active offer.'
 
@@ -71,7 +71,7 @@ export function isValidModifierOffer(
     (candidate.origin !== RUN_MODIFIER_OFFER_ORIGIN.RUN_START_TEST &&
       candidate.origin !== RUN_MODIFIER_OFFER_ORIGIN.BOSS_REWARD) ||
     !Array.isArray(candidate.choices) ||
-    candidate.choices.length < 2 ||
+    candidate.choices.length < 1 ||
     candidate.choices.length > 3 ||
     !candidate.choices.every(isChoice)
   ) {

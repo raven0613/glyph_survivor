@@ -43,6 +43,14 @@ import {
   composeModifierPresentationMotion,
   resolveVolatileSourceScaleMultiplier,
 } from './modifierPresentationComposition.ts'
+import { getCreatureDefinition } from '../content/gameContent.ts'
+import { getComponentMotionDepthBand } from '../runtime/componentOrbitState.ts'
+import { GLYPH_DEPTH_BAND } from '../runtime/worldEntities.ts'
+import { writeHostileProjectileRenderSnapshot } from './hostileProjectileRenderSnapshot.ts'
+import {
+  writeRhombusCollapsePose,
+  type RhombusCollapsePose,
+} from './rhombusCollapsePresentation.ts'
 
 const MAX_BURST_PARTICLES_PER_GLYPH = 8
 const MAX_ACTIVE_IMPACT_PARTICLES = 192
@@ -77,7 +85,9 @@ export interface RenderFlameEmitter {
 }
 
 export interface RenderSnapshot extends RenderPlayerState {
+  readonly enemiesBehind: RenderGlyph[]
   readonly enemies: RenderGlyph[]
+  readonly enemiesFront: RenderGlyph[]
   readonly effects: RenderGlyph[]
   readonly topologyTransferPulses: RenderGlyph[]
   readonly projectiles: RenderGlyph[]
@@ -94,7 +104,9 @@ export interface RenderSnapshot extends RenderPlayerState {
 export function createRenderSnapshot(): RenderSnapshot {
   return {
     ...createRenderPlayerState(),
+    enemiesBehind: [],
     enemies: [],
+    enemiesFront: [],
     effects: [],
     topologyTransferPulses: [],
     projectiles: [],
@@ -208,10 +220,19 @@ export function writeRenderSnapshot(
     world.deathReview,
   )
 
+  let enemyBehindCount = 0
   let enemyCount = 0
+  let enemyFrontCount = 0
   let effectCount = 0
   let crackedSurfaceCount = 0
   let overloadDeformationCount = 0
+  const rhombusCollapsePose: RhombusCollapsePose = {
+    x: 0,
+    y: 0,
+    rotation: 0,
+    alpha: 0,
+    tint: 0,
+  }
   for (const enemy of world.enemies) {
     if (enemy.phase === 'DEAD') {
       continue
@@ -219,6 +240,10 @@ export function writeRenderSnapshot(
 
     const rootX = interpolate(enemy.previousX, enemy.x, interpolationAlpha)
     const rootY = interpolate(enemy.previousY, enemy.y, interpolationAlpha)
+    const creatureDefinition = getCreatureDefinition(
+      world.content,
+      enemy.definitionId,
+    )
     const materializeProgress =
       enemy.phase === 'MATERIALIZING'
         ? 1 - enemy.materializeRemainingMs / enemy.materializeDurationMs
@@ -227,8 +252,46 @@ export function writeRenderSnapshot(
       enemy.phase === 'COLLAPSING'
         ? 1 - enemy.collapseRemainingMs / enemy.collapseDurationMs
         : 0
+    const rhombusCollapseState = world.rhombusCollapseStates.get(enemy.id)
+    const rhombusCollapseElapsedMs =
+      enemy.collapseDurationMs - enemy.collapseRemainingMs
 
     for (const glyph of world.glyphStore.getOwnerGlyphs(enemy.id)) {
+      if (rhombusCollapseState) {
+        const plan = rhombusCollapseState.glyphPlanById.get(glyph.id)
+        if (!plan) {
+          throw new Error(`Missing collapse plan for RHOMBUS Glyph ${glyph.id}.`)
+        }
+        writeRhombusCollapsePose(
+          rhombusCollapsePose,
+          plan,
+          rhombusCollapseElapsedMs,
+          world.content.rhombusBossDefinition.collapseProfile,
+          world.content.combatVisualTheme.effects.rhombus.collapse,
+        )
+        if (
+          isWorldPositionVisible(
+            rhombusCollapsePose.x,
+            rhombusCollapsePose.y,
+            camera,
+          )
+        ) {
+          writeRenderGlyph(
+            snapshot.enemies,
+            enemyCount,
+            glyph.id,
+            glyph.glyphFrame,
+            rhombusCollapsePose.x,
+            rhombusCollapsePose.y,
+            glyph.scale,
+            rhombusCollapsePose.alpha,
+            rhombusCollapsePose.tint,
+            rhombusCollapsePose.rotation,
+          )
+          enemyCount += 1
+        }
+        continue
+      }
       const material = getGlyphMaterialDefinition(glyph.material)
       const impactPresentation = resolveGlyphImpactPresentation(
         world.content.combatVisualTheme,
@@ -326,9 +389,26 @@ export function writeRenderSnapshot(
       overloadDeformationCount =
         modifierPresentation.overloadDeformationIndex
 
+      const depthBand = getComponentMotionDepthBand(
+        enemy,
+        creatureDefinition,
+        glyph.bodySlotId,
+      )
+      const depthOutput =
+        depthBand === GLYPH_DEPTH_BAND.BEHIND
+          ? snapshot.enemiesBehind
+          : depthBand === GLYPH_DEPTH_BAND.FRONT
+            ? snapshot.enemiesFront
+            : snapshot.enemies
+      const depthIndex =
+        depthBand === GLYPH_DEPTH_BAND.BEHIND
+          ? enemyBehindCount
+          : depthBand === GLYPH_DEPTH_BAND.FRONT
+            ? enemyFrontCount
+            : enemyCount
       writeRenderGlyph(
-        snapshot.enemies,
-        enemyCount,
+        depthOutput,
+        depthIndex,
         glyph.id,
         glyph.glyphFrame,
         x,
@@ -339,7 +419,13 @@ export function writeRenderSnapshot(
         glyph.rotation +
           modifierMotion.rotation,
       )
-      enemyCount += 1
+      if (depthBand === GLYPH_DEPTH_BAND.BEHIND) {
+        enemyBehindCount += 1
+      } else if (depthBand === GLYPH_DEPTH_BAND.FRONT) {
+        enemyFrontCount += 1
+      } else {
+        enemyCount += 1
+      }
 
       effectCount = writeImpactEffects(
         snapshot,
@@ -365,7 +451,9 @@ export function writeRenderSnapshot(
       )
     }
   }
+  snapshot.enemiesBehind.length = enemyBehindCount
   snapshot.enemies.length = enemyCount
+  snapshot.enemiesFront.length = enemyFrontCount
   snapshot.effects.length = effectCount
   snapshot.crackedSurfaces.length = crackedSurfaceCount
   snapshot.overloadDeformations.length = overloadDeformationCount
@@ -418,6 +506,13 @@ export function writeRenderSnapshot(
     }
   }
   snapshot.projectiles.length = projectileCount
+  writeHostileProjectileRenderSnapshot(
+    world,
+    snapshot.projectiles,
+    snapshot.effects,
+    camera,
+    interpolationAlpha,
+  )
 
   let orbitCount = 0
   for (const orbit of world.orbitAttacks) {

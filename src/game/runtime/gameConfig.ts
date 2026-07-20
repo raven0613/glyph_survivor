@@ -28,7 +28,7 @@ const gameConfig = {
   deathReviewEnemyWanderIntervalMs: 1_400,
   deathReviewEnemyWanderSpeedMultiplier: 0.42,
   deathReviewEnemyWanderTurnResponsiveness: 3.2,
-  enableRunStartModifierOfferForTesting: false,
+  enableRunStartModifierOfferForTesting: true,
 }
 
 assertValidPlayerSurvivalConfig(gameConfig)

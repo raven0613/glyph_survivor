@@ -10,6 +10,7 @@ import {
   writeRenderSnapshot,
 } from '../bridge/renderSnapshot.ts'
 import {
+  activateRhombusBossContent,
   prepareGameContent,
   type PreparedGameContent,
 } from '../content/gameContent.ts'
@@ -173,16 +174,17 @@ export async function createGameHost({
   let gameContent: PreparedGameContent
   let renderAdapter
   try {
-    gameContent = prepareGameContent()
+    const loadingContent = prepareGameContent()
     runWeaponUnlocks = prepareRunWeaponUnlocks(
-      gameContent,
+      loadingContent,
       unlockedWeaponDefinitionIds,
     )
     renderAdapter = await createRenderAdapter(
       canvas,
-      gameContent.combatVisualTheme,
+      loadingContent,
       signal,
     )
+    gameContent = activateRhombusBossContent(loadingContent)
   } catch (error) {
     gameActor.send({ type: 'LOAD_FAILED', error })
     actorSubscription.unsubscribe()

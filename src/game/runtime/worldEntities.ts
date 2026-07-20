@@ -24,6 +24,53 @@ export type EnemyLayoutMode = 'AUTHORED' | 'COMPILED'
 export type BossEncounterPhase = 'ACTIVE' | 'COLLAPSING' | 'DEFEATED'
 export type HorizontalFacing = -1 | 1
 
+export const GLYPH_DEPTH_BAND = Object.freeze({
+  BEHIND: 'BEHIND',
+  BODY: 'BODY',
+  FRONT: 'FRONT',
+} as const)
+
+export type GlyphDepthBand =
+  (typeof GLYPH_DEPTH_BAND)[keyof typeof GLYPH_DEPTH_BAND]
+
+export interface ComponentOrbitState {
+  profileId: string
+  motionGroupId: number
+  readonly glyphIds: number[]
+  axisCosine: number
+  axisSine: number
+  phaseRadians: number
+  revolutionElapsedMs: number
+  pauseRemainingMs: number
+  initialDelayRemainingMs: number
+  offsetX: number
+  offsetY: number
+  depthBand: GlyphDepthBand
+}
+
+export interface BossSpawnRequestState {
+  pendingSide: SpawnSide | null
+  committedEnemyId: number | null
+}
+
+export interface FirstWaveBossSpawnState {
+  readonly slime: BossSpawnRequestState
+  readonly rhombus: BossSpawnRequestState
+}
+
+export interface CreatureTargetAnchorPosition {
+  id: string | null
+  x: number
+  y: number
+}
+
+export interface CreatureTrackingTargetPosition {
+  x: number
+  y: number
+  radius: number
+  phase: EnemyPhase
+}
+
 export interface BossEncounterState {
   readonly id: number
   readonly rootBossId: number
@@ -119,6 +166,7 @@ export interface EnemyState {
   bodyMotionFacing: HorizontalFacing
   bodyMotionTargetFacing: HorizontalFacing
   bodyMotionTurnProgress: number
+  readonly componentOrbitStates: ComponentOrbitState[]
   layoutMode: EnemyLayoutMode
   phase: EnemyPhase
   materializeRemainingMs: number
@@ -156,6 +204,7 @@ export interface ProjectileState {
   trackingMode: ProjectileTrackingMode
   trackingState: ProjectileTrackingState
   targetEnemyId: number | null
+  targetAnchorId: string | null
   launchDirectionX: number
   launchDirectionY: number
   trackingRange: number

@@ -1,6 +1,7 @@
 export const GLYPH_MATERIAL = Object.freeze({
   BASIC: 'BASIC',
   ROCK: 'ROCK',
+  RHOMBUS: 'RHOMBUS',
   SLIME: 'SLIME',
 } as const)
 
@@ -49,6 +50,19 @@ const MATERIAL_DEFINITIONS: Readonly<
     springStrength: 90,
     damping: 20,
     maximumOffset: 3,
+  }),
+  [GLYPH_MATERIAL.RHOMBUS]: Object.freeze({
+    id: GLYPH_MATERIAL.RHOMBUS,
+    hitFlashDurationMs: 82,
+    hitPulseScale: 1.035,
+    hitBurstCharacters: Object.freeze(['#', '+']),
+    hitBurstParticleCount: 2,
+    hitBurstDistance: 14,
+    hitBurstScale: 0.25,
+    knockbackImpulse: 12,
+    springStrength: 115,
+    damping: 25,
+    maximumOffset: 2,
   }),
   [GLYPH_MATERIAL.SLIME]: Object.freeze({
     id: GLYPH_MATERIAL.SLIME,

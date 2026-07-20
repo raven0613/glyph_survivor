@@ -30,6 +30,7 @@ import {
   validateAndFreezeVolatileEffectAppearance,
 } from './volatileVisualTheme.ts'
 import { validateAndFreezeRunModifierCompositionAppearance } from './modifierCompositionVisualTheme.ts'
+import { validateAndFreezeRhombusEffectAppearance } from './rhombusVisualTheme.ts'
 
 export * from './combatVisualThemeTypes.ts'
 export * from './glyphAppearancePresentation.ts'
@@ -154,6 +155,30 @@ function prepareCombatVisualTheme(
         ),
         stepIntervalMs: input.effects.topologyTransfer.stepIntervalMs,
         pulseDurationMs: input.effects.topologyTransfer.pulseDurationMs,
+      },
+      rhombus: {
+        hostileSpike: {
+          ...input.effects.rhombus.hostileSpike,
+          active: prepareVisualColor(
+            input.effects.rhombus.hostileSpike.active,
+            'RHOMBUS hostile spike active',
+          ),
+          dissipation: prepareVisualColor(
+            input.effects.rhombus.hostileSpike.dissipation,
+            'RHOMBUS hostile spike dissipation',
+          ),
+        },
+        collapse: {
+          ...input.effects.rhombus.collapse,
+          brightnessLift: prepareVisualColor(
+            input.effects.rhombus.collapse.brightnessLift,
+            'RHOMBUS collapse brightness lift',
+          ),
+          settledPile: prepareVisualColor(
+            input.effects.rhombus.collapse.settledPile,
+            'RHOMBUS collapse settled pile',
+          ),
+        },
       },
       runModifiers: {
         composition: { ...input.effects.runModifiers.composition },
@@ -302,10 +327,16 @@ function validateTierAssignments(theme: CombatVisualTheme): void {
       'Z, BO, BAT, ROCK, and SNAKE must share the ORDINARY emphasis tier.',
     )
   }
-  const slimeAppearance =
-    theme.glyphAppearances[GLYPH_APPEARANCE_PROFILE.SLIME_BOSS]
-  if (slimeAppearance.brightnessTierId !== GLYPH_BRIGHTNESS_TIER.BOSS) {
-    throw new RangeError('SLIME must use the BOSS emphasis tier.')
+  for (const profileId of [
+    GLYPH_APPEARANCE_PROFILE.SLIME_BOSS,
+    GLYPH_APPEARANCE_PROFILE.RHOMBUS_BOSS,
+  ] as const) {
+    if (
+      theme.glyphAppearances[profileId].brightnessTierId !==
+      GLYPH_BRIGHTNESS_TIER.BOSS
+    ) {
+      throw new RangeError(`${profileId} must use the BOSS emphasis tier.`)
+    }
   }
   const ordinaryTier =
     theme.glyphBrightnessTiers[GLYPH_BRIGHTNESS_TIER.ORDINARY]
@@ -374,6 +405,14 @@ function validateAndFreezeCombatVisualTheme(
   const composition = validateAndFreezeRunModifierCompositionAppearance(
     input.effects.runModifiers.composition,
     { positive: requirePositiveFinite },
+  )
+  const rhombus = validateAndFreezeRhombusEffectAppearance(
+    input.effects.rhombus,
+    {
+      validateColor: validateVisualColor,
+      positive: requirePositiveFinite,
+      range: requireFiniteRange,
+    },
   )
   requirePositiveFinite(
     input.effects.topologyTransfer.pulseDurationMs,
@@ -480,6 +519,7 @@ function validateAndFreezeCombatVisualTheme(
       topologyTransfer: Object.freeze({
         ...input.effects.topologyTransfer,
       }),
+      rhombus,
       runModifiers: Object.freeze({
         composition,
         volatile,

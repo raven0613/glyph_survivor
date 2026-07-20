@@ -7,6 +7,7 @@ import type { GlyphCell } from '../glyph/glyphStore.ts'
 import type { EnemyState } from '../runtime/worldEntities.ts'
 import type { WorldState } from '../runtime/worldState.ts'
 import { runSnakeSqueezeBodyMotion } from './snakeBodyMotion.ts'
+import { advanceComponentOrbitState } from '../runtime/componentOrbitState.ts'
 
 type CreatureBodyMotionStrategy = (
   world: WorldState,
@@ -74,6 +75,9 @@ function getCyclePhase(
   if (profile.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL) {
     return 0
   }
+  if (profile.behaviorId === CREATURE_BODY_MOTION_BEHAVIOR.COMPONENT_ORBIT) {
+    return 0
+  }
   const duration = profile.cycleDurationMs
   if (duration <= 0) {
     return 0
@@ -112,6 +116,21 @@ function setGlyphMotion(
 }
 
 const noBodyMotion: CreatureBodyMotionStrategy = () => {}
+
+const componentOrbit: CreatureBodyMotionStrategy = (
+  world,
+  enemy,
+  definition,
+  deltaMs,
+) => {
+  advanceComponentOrbitState(
+    enemy,
+    definition,
+    world.glyphStore,
+    deltaMs,
+    world.diagnostics,
+  )
+}
 
 const batFlap: CreatureBodyMotionStrategy = (world, enemy, definition) => {
   const phase = getCyclePhase(enemy, definition)
@@ -352,6 +371,7 @@ const BODY_MOTION_STRATEGIES: Readonly<
   [CREATURE_BODY_MOTION_BEHAVIOR.NONE]: noBodyMotion,
   [CREATURE_BODY_MOTION_BEHAVIOR.BAT_FLAP]: batFlap,
   [CREATURE_BODY_MOTION_BEHAVIOR.BONE_RATTLE]: boneRattle,
+  [CREATURE_BODY_MOTION_BEHAVIOR.COMPONENT_ORBIT]: componentOrbit,
   [CREATURE_BODY_MOTION_BEHAVIOR.ROCK_ROLL]: rockRoll,
   [CREATURE_BODY_MOTION_BEHAVIOR.SNAKE_SQUEEZE]:
     runSnakeSqueezeBodyMotion,

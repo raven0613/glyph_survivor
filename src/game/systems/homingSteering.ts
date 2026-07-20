@@ -1,8 +1,13 @@
-import type { EnemyState, ProjectileState } from '../runtime/worldEntities.ts'
+import type { ProjectileState } from '../runtime/worldEntities.ts'
+
+export interface SteeringTarget {
+  readonly x: number
+  readonly y: number
+}
 
 export function steerProjectileTowardTarget(
   projectile: ProjectileState,
-  target: EnemyState,
+  target: SteeringTarget,
   deltaMs: number,
 ): void {
   const deltaX = target.x - projectile.x

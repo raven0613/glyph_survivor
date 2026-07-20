@@ -9,6 +9,10 @@ import {
   beginPlayerDeathReview,
 } from './playerDeathReview.ts'
 import type { WorldState } from './worldState.ts'
+import {
+  beginAllHostileProjectileDissipation,
+  runHostileProjectileDissipationSystem,
+} from '../systems/hostileProjectileSystem.ts'
 
 export function beginWorldDeathReview(world: WorldState): boolean {
   const started = beginPlayerDeathReview(
@@ -29,6 +33,8 @@ export function beginWorldDeathReview(world: WorldState): boolean {
   for (const projectile of world.projectiles) {
     projectile.isAlive = false
   }
+  world.rhombusAttackStates.clear()
+  beginAllHostileProjectileDissipation(world)
   world.orbitAttacks.length = 0
   return true
 }
@@ -49,6 +55,7 @@ export function runDeathReviewStep(
   )
   runGlyphMaterialSystem(world, deltaMs)
   runFlamePresentationSystem(world, deltaMs)
+  runHostileProjectileDissipationSystem(world, deltaMs)
   runDeathReviewMovementSystem(world, deltaMs, GAME_CONFIG)
   runDeathReviewCollapseSystem(world, deltaMs)
   runCleanupSystem(world)

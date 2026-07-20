@@ -28,6 +28,7 @@ export interface GlyphCell {
   readonly baseCharacter: string
   readonly baseGlyphFrame: number
   readonly role: GlyphBodySlotRole
+  readonly topologyComponentId: string
   readonly topologyX: number
   readonly topologyY: number
   readonly layoutBaseX: number
@@ -75,6 +76,7 @@ export interface CreateGlyphInput {
   readonly baseCharacter: string
   readonly baseGlyphFrame: number
   readonly role: GlyphBodySlotRole
+  readonly topologyComponentId?: string
   readonly topologyX: number
   readonly topologyY: number
   readonly maxDurability: number

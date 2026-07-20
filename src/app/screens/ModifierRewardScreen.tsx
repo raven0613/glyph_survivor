@@ -3,6 +3,7 @@ import type {
   UiModifierChoice,
 } from '../../game/bridge/uiSnapshot.ts'
 import type { RunModifierOfferOrigin } from '../../game/runtime/runModifierState.ts'
+import { getInitialModifierChoiceId } from './modifierRewardSelection.ts'
 import './ModifierRewardScreen.scss'
 
 interface ModifierRewardScreenProps {
@@ -20,7 +21,10 @@ export function ModifierRewardScreen({
   recoverableError,
   onCommit,
 }: ModifierRewardScreenProps) {
-  const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null)
+  const initialChoiceId = getInitialModifierChoiceId(choices)
+  const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(
+    initialChoiceId,
+  )
   const firstChoiceRef = useRef<HTMLButtonElement>(null)
   const selectedChoice = choices.find(({ id }) => id === selectedChoiceId)
   const isRunStartTest = origin === 'RUN_START_TEST'

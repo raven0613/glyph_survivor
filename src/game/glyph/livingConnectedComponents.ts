@@ -1,7 +1,9 @@
 import { isGlyphLivingState, type GlyphCellState } from './glyphCell.ts'
+import { DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID } from './glyphLayout.ts'
 
 export interface LivingTopologyCell {
   readonly id: number
+  readonly topologyComponentId?: string
   readonly state: GlyphCellState
   readonly topologyX: number
   readonly topologyY: number
@@ -19,6 +21,9 @@ function compareCanonicalCells(
   second: LivingTopologyCell,
 ): number {
   return (
+    (first.topologyComponentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID).localeCompare(
+      second.topologyComponentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID,
+    ) ||
     first.topologyY - second.topologyY ||
     first.topologyX - second.topologyX ||
     first.id - second.id
@@ -31,7 +36,10 @@ export function findLivingConnectedComponents<T extends LivingTopologyCell>(
   const livingByCoordinate = new Map<string, T>()
   for (const cell of cells) {
     if (isGlyphLivingState(cell.state)) {
-      livingByCoordinate.set(`${cell.topologyX},${cell.topologyY}`, cell)
+      livingByCoordinate.set(
+        `${cell.topologyComponentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID}:${cell.topologyX},${cell.topologyY}`,
+        cell,
+      )
     }
   }
   const visited = new Set<number>()
@@ -51,7 +59,7 @@ export function findLivingConnectedComponents<T extends LivingTopologyCell>(
       component.push(cell)
       for (const [offsetX, offsetY] of NEIGHBOR_OFFSETS) {
         const neighbor = livingByCoordinate.get(
-          `${cell.topologyX + offsetX},${cell.topologyY + offsetY}`,
+          `${cell.topologyComponentId ?? DEFAULT_GLYPH_TOPOLOGY_COMPONENT_ID}:${cell.topologyX + offsetX},${cell.topologyY + offsetY}`,
         )
         if (neighbor && !visited.has(neighbor.id)) {
           visited.add(neighbor.id)

@@ -11,7 +11,9 @@ import type { CombatVisualTheme } from '../content/visuals/combatVisualTheme.ts'
 
 export interface SceneLayers {
   readonly worldRoot: Container
+  readonly enemyBehindLayer: ParticleContainer<Particle>
   readonly enemyLayer: ParticleContainer<Particle>
+  readonly enemyFrontLayer: ParticleContainer<Particle>
   readonly crackedSurfaceLayer: ParticleContainer<Particle>
   readonly overloadDeformationLayer: Container
   readonly overloadShockwaveLayer: ParticleContainer<Particle>
@@ -73,6 +75,24 @@ function createBackground(
   return backgroundLayer
 }
 
+function createEnemyGlyphLayer(
+  atlas: GlyphAtlas,
+  label: string,
+): ParticleContainer<Particle> {
+  return new ParticleContainer<Particle>({
+    texture: atlas.printableFrames[0],
+    boundsArea: createWorldBounds(),
+    label,
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
+  })
+}
+
 export function createSceneLayers(
   stage: Container,
   atlas: GlyphAtlas,
@@ -94,17 +114,9 @@ export function createSceneLayers(
       color: true,
     },
   })
-  const enemyLayer = new ParticleContainer<Particle>({
-    texture: atlas.printableFrames[0],
-    boundsArea: createWorldBounds(),
-    dynamicProperties: {
-      position: true,
-      rotation: true,
-      vertex: true,
-      uvs: false,
-      color: true,
-    },
-  })
+  const enemyBehindLayer = createEnemyGlyphLayer(atlas, 'enemy-behind')
+  const enemyLayer = createEnemyGlyphLayer(atlas, 'enemy-body')
+  const enemyFrontLayer = createEnemyGlyphLayer(atlas, 'enemy-front')
   const crackedSurfaceLayer = new ParticleContainer<Particle>({
     texture: atlas.printableFrames[0],
     boundsArea: createWorldBounds(),
@@ -151,6 +163,13 @@ export function createSceneLayers(
   const projectileLayer = new ParticleContainer<Particle>({
     texture: atlas.frames.projectile,
     boundsArea: createWorldBounds(),
+    dynamicProperties: {
+      position: true,
+      rotation: true,
+      vertex: true,
+      uvs: false,
+      color: true,
+    },
   })
   const topologyTransferPulseLayer = new ParticleContainer<Particle>({
     texture: atlas.printableFrames[0],
@@ -214,7 +233,9 @@ export function createSceneLayers(
   worldRoot.addChild(
     backgroundLayer,
     dropLayer,
+    enemyBehindLayer,
     enemyLayer,
+    enemyFrontLayer,
     crackedSurfaceLayer,
     overloadDeformationLayer,
     topologyTransferPulseLayer,
@@ -230,7 +251,9 @@ export function createSceneLayers(
 
   return Object.freeze({
     worldRoot,
+    enemyBehindLayer,
     enemyLayer,
+    enemyFrontLayer,
     crackedSurfaceLayer,
     overloadDeformationLayer,
     overloadShockwaveLayer,

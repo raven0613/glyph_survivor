@@ -54,8 +54,11 @@ export function createSpawnCandidate(
   camera: CameraView,
   side: SpawnSide,
   random: () => number,
+  footprintRadius = 0,
 ): { readonly x: number; readonly y: number } {
-  const distance = SPAWN_DISTANCE_MIN + random() * SPAWN_DISTANCE_RANGE
+  const distance =
+    Math.max(SPAWN_DISTANCE_MIN, footprintRadius + 1) +
+    random() * SPAWN_DISTANCE_RANGE
 
   if (side === 'top' || side === 'bottom') {
     return {

@@ -143,6 +143,14 @@ export const PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING = {
       impactBaseTint: '#267a42',
       huskBaseTint: '#1f6637',
     },
+    [GLYPH_APPEARANCE_PROFILE.RHOMBUS_BOSS]: {
+      id: GLYPH_APPEARANCE_PROFILE.RHOMBUS_BOSS,
+      brightnessTierId: GLYPH_BRIGHTNESS_TIER.BOSS,
+      durabilityBaseTints: ['#806324', '#98752a', '#aa8734', '#b69542'],
+      eyeDurabilityBaseTints: null,
+      impactBaseTint: '#a58232',
+      huskBaseTint: '#4f3c1c',
+    },
   },
   drops: {
     experience: {
@@ -166,6 +174,23 @@ export const PROTOTYPE_COMBAT_VISUAL_THEME_AUTHORING = {
       alpha: 0.62,
       stepIntervalMs: 45,
       pulseDurationMs: 120,
+    },
+    rhombus: {
+      hostileSpike: {
+        active: { tint: '#b88f39', alpha: 0.9 },
+        dissipation: { tint: '#78602f', alpha: 0.72 },
+        dissipationDurationMs: 180,
+        fadeOutStartRatio: 0.22,
+        particleCount: 4,
+        particleDistance: 24,
+        particleScale: 0.28,
+        particleCharacters: ['.', '+'],
+      },
+      collapse: {
+        brightnessLift: { tint: '#c49c48', alpha: 0.78 },
+        settledPile: { tint: '#4c3b1d', alpha: 0.46 },
+        brightnessLiftDurationMs: 240,
+      },
     },
     runModifiers: {
       composition: {
